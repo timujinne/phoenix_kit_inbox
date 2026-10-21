@@ -70,6 +70,7 @@ phoenix_kit_inbox_messages           subject, body, thread_uuid, parent_uuid, se
  └─ phoenix_kit_inbox_attachments    one row per attached file: a reference, not the bytes
 
 phoenix_kit_inbox_identities         sending identities: an email integration + the name shown
+ └─ phoenix_kit_inbox_identity_roles the roles a common sender (shared, no mailbox) is open to
 phoenix_kit_inbox_signatures         a mailbox's signatures (Markdown), at most one default
 ```
 
@@ -80,7 +81,7 @@ All primary keys are UUIDv7 and every schema carries `use PhoenixKit.SchemaPrefi
 Older PhoenixKit modules shipped their DDL inside core's versioned chain (the V90+ scheme). Inbox follows the newer pattern already used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`:
 
 - `PhoenixKitInbox.Migrations` is the coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` creates the tables; `V02` makes a user's deletion keep their mailboxes and every message (owner `ON DELETE SET NULL`, mailbox references `RESTRICT`) and makes shared addresses unique regardless of case; `V03` adds message attachments; `V04` adds sending identities and mailbox signatures. Shipped versions are immutable
+- `PhoenixKitInbox.Migrations.V01` creates the tables; `V02` makes a user's deletion keep their mailboxes and every message (owner `ON DELETE SET NULL`, mailbox references `RESTRICT`) and makes shared addresses unique regardless of case; `V03` adds message attachments; `V04` adds sending identities and mailbox signatures; `V05` external recipients with their status; `V06` the roles of a common sender, given on the update to the roles holding `inbox.send_external` or `"*"` (Owner aside). Shipped versions are immutable
 - Version is tracked in a `COMMENT ON TABLE` on `phoenix_kit_inbox_mailboxes`, so the coordinator can tell "not installed" from "installed at V1"
 - `mix phoenix_kit.update` discovers the coordinator, compares versions, and generates the host migration
 
@@ -158,13 +159,28 @@ Messages.send_message(scope, from_mailbox, %{
 alias PhoenixKitInbox.Identities
 
 Identities.list_usable(scope)              #=> [%{identity_uuid, label, kind, from_address, from_name, …}]
+Identities.list_usable(scope, mailbox)     # only those a message from `mailbox` may go out as
 Identities.resolve(scope, identity_uuid)   #=> {:ok, %{integration_uuid, from_address, from_name, kind, …}}
                                            #   | {:error, :forbidden | :broken | :not_found}
 Identities.resolve(scope, identity_uuid, from_mailbox)  # also {:error, :identity_not_for_mailbox}
 Identities.reply_to_options(scope, mailbox) #=> [%{address, label, default}]
 ```
 
-The From **address** is never typed: it is the login (SMTP username) of the integration, which must be a mail provider (`:email_send` capability) with credentials. A **shared** identity uses a system integration and is managed by holders of `inbox.manage_shared`; bound to a shared mailbox, everyone with `write` on it uses it from there; bound to none, it is the common sender for personal mailboxes, for holders of `inbox.send_external`, and sends as `"<user name> | <from_name>"`. A **personal** identity uses the owner's own integration and only their personal mailbox. Every resolve (use `resolve/3` for a send) checks the integration again; one that is gone, disconnected, not a mail provider, owned by someone else or has no login address marks the identity `broken` and is refused, until it works again. The settings pages show the stored status and check on demand (`Identities.recheck/2`).
+The From **address** is never typed: it is the login (SMTP username) of the integration, which must be a mail provider (`:email_send` capability) with credentials. A **shared** identity uses a system integration and is managed by holders of `inbox.manage_shared`; bound to a shared mailbox, everyone with `write` on it uses it from there; bound to none, it is the common sender for personal mailboxes, for holders of `inbox.send_external` with one of its roles in effect, and sends as `"<user name> | <from_name>"`. A **personal** identity uses the owner's own integration and only their personal mailbox. Every resolve (use `resolve/3` for a send) checks the integration again; one that is gone, disconnected, not a mail provider, owned by someone else or has no login address marks the identity `broken` and is refused, until it works again. The settings pages show the stored status and check on demand (`Identities.recheck/2`).
+
+#### Shared mail and its roles
+
+A common sender is "shared mail": people send *as* it, nobody reads it through the module. Each one has its own list of roles, kept with the identity:
+
+```elixir
+Identities.create_shared(scope, %{"label" => "Company", "integration_uuid" => uuid,
+                                  "role_uuids" => [sales_role_uuid]})
+Identities.update_identity(scope, identity, %{"role_uuids" => []})   # open to nobody (but Owner)
+Identities.list_shared(scope)    #=> [%{identity, from_address, roles: [%{uuid, name}]}]
+Identities.role_choices(scope)   #=> [%{uuid, name, sends_external}] — every role but Owner
+```
+
+The roles only narrow: using one still needs `inbox.send_external`, and one of the roles **in effect** for the scope (a user acting as one of their roles has that one only) must be on its list; Owner may always use it and is never on a list. Owner, `nil` and unknown uuids in `"role_uuids"` are dropped; `create_shared/2` without the key opens the sender to the roles holding `inbox.send_external` or `"*"`. A role that does not itself give `inbox.send_external` may be on a list — the right is the user's. The list is read on every send, in the task after the commit and on a retry, so a role taken off stops what has not gone yet. A sender bound to a shared mailbox has no roles (it goes by the mailbox); the email nudge ignores them. Someone with `inbox.send_external` and no sender open to them for the sending mailbox gets `{:error, :external_not_allowed}` on an external address.
 
 Reply-To choices are the user's own email and the address of every shared mailbox they can write to; the default is the sending shared mailbox's address (none if it has no address), or for the personal mailbox the user's saved choice (`Identities.set_default_reply_to/2`), else their email.
 

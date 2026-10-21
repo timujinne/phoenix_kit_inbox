@@ -31,6 +31,8 @@ defmodule PhoenixKitInbox.ExternalSendTest do
     {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(alice)
     {:ok, bob_mb} = Mailboxes.ensure_user_mailbox(bob)
     system_smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+    # The role that sends externally; the common sender is opened to it.
+    senders = grant_role!(alice, @external)
 
     {:ok, common} =
       Identities.create_shared(scope_for(admin, ["inbox", "inbox.manage_shared"]), %{
@@ -50,7 +52,8 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       bob_mb: bob_mb,
       common: common,
       system_smtp: system_smtp,
-      scope: scope_for(alice, @external)
+      senders: senders,
+      scope: scope_for(alice, @external, [senders])
     }
   end
 
@@ -242,6 +245,38 @@ defmodule PhoenixKitInbox.ExternalSendTest do
 
     test "an external address needs a sending identity", ctx do
       assert send_mail(ctx, %{"identity_uuid" => ""}) == {:error, :external_needs_identity}
+    end
+
+    test "with no sender open to the user's roles for this mailbox, it says so", ctx do
+      other = grant_role!(ctx.alice, [])
+      scope = scope_for(ctx.alice, @external, [other])
+
+      assert send_mail(ctx, %{"identity_uuid" => ""}, scope: scope) ==
+               {:error, :external_not_allowed}
+
+      # A sender bound to another mailbox is no sender for this one.
+      desk = shared_mailbox_fixture(ctx.admin, %{name: "Desk"})
+      grant_fixture(desk, ctx.alice, "write")
+
+      {:ok, _} =
+        Identities.create_shared(scope_for(ctx.admin, ["inbox", "inbox.manage_shared"]), %{
+          "label" => "Desk sender",
+          "integration_uuid" => ctx.system_smtp,
+          "mailbox_uuid" => desk.uuid
+        })
+
+      assert send_mail(ctx, %{"identity_uuid" => ""}, scope: scope) ==
+               {:error, :external_not_allowed}
+
+      assert Messages.list_folder(ctx.alice_mb.uuid, "sent") == []
+      refute_received {:outbound, _, _, _}
+    end
+
+    test "the common sender with a role in effect off its list is refused", ctx do
+      other = grant_role!(ctx.alice, [])
+
+      assert send_mail(ctx, %{}, scope: scope_for(ctx.alice, @external, [other])) ==
+               {:error, {:identity_unusable, :forbidden}}
     end
 
     test "another user's personal sender is refused", ctx do
@@ -499,6 +534,22 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       refute_received {:outbound, _, _, _}
     end
 
+    test "checks the roles of the common sender again, read now", ctx do
+      {message, uuids} = pending_send(ctx)
+
+      {:ok, _} =
+        Identities.update_identity(
+          scope_for(ctx.admin, ["inbox", "inbox.manage_shared"]),
+          ctx.common,
+          %{"role_uuids" => []}
+        )
+
+      External.deliver_now(message, uuids, ctx.scope, ctx.alice_mb)
+
+      assert Enum.all?(rows(message), &(&1.status == "failed" and &1.error =~ "forbidden"))
+      refute_received {:outbound, _, _, _}
+    end
+
     test "sends from what the check returns now", ctx do
       {message, uuids} = pending_send(ctx)
 
@@ -684,6 +735,21 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       assert Messages.retry_external(scope_for(ctx.bob, @external), ctx.bob_mb, ctx.message.uuid) ==
                {:error, :message_not_found}
 
+      refute_received {:outbound, _, _, _}
+    end
+
+    test "checks the roles of the common sender again", ctx do
+      {:ok, _} =
+        Identities.update_identity(
+          scope_for(ctx.admin, ["inbox", "inbox.manage_shared"]),
+          ctx.common,
+          %{"role_uuids" => []}
+        )
+
+      assert Messages.retry_external(ctx.scope, ctx.alice_mb, ctx.message.uuid) ==
+               {:error, {:identity_unusable, :forbidden}}
+
+      assert Enum.all?(rows(ctx.message), &(&1.status == "failed"))
       refute_received {:outbound, _, _, _}
     end
 

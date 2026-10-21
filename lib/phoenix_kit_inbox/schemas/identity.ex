@@ -13,7 +13,8 @@ defmodule PhoenixKitInbox.Schemas.Identity do
       of `inbox.manage_shared`. Bound to a shared mailbox (`mailbox_uuid`:
       everyone with `"write"` on it may use it) or to none — then it is the
       common sender for personal mailboxes, used by holders of
-      `inbox.send_external`.
+      `inbox.send_external` with one of its roles in effect
+      (`PhoenixKitInbox.Schemas.IdentityRole`; Owner always).
     * `"personal"` — the owner's own integration (`owner: {:user, owner_uuid}`),
       used only from the owner's personal mailbox.
 
@@ -63,8 +64,8 @@ defmodule PhoenixKitInbox.Schemas.Identity do
   def changeset(identity, attrs) do
     identity
     |> cast(attrs, [:label, :from_name])
-    |> update_change(:label, &String.trim/1)
-    |> update_change(:from_name, &String.trim/1)
+    |> update_change(:label, &trim/1)
+    |> update_change(:from_name, &trim/1)
     |> validate_required([:label, :kind, :integration_uuid])
     |> validate_length(:label, max: 255)
     |> validate_length(:from_name, max: 255)
@@ -75,4 +76,8 @@ defmodule PhoenixKitInbox.Schemas.Identity do
     |> validate_inclusion(:status, @statuses)
     |> check_constraint(:kind, name: :phoenix_kit_inbox_identities_kind_check)
   end
+
+  # A field emptied on an edit arrives as a nil change.
+  defp trim(nil), do: nil
+  defp trim(value), do: String.trim(value)
 end

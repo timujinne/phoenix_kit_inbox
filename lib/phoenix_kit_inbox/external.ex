@@ -27,6 +27,13 @@ defmodule PhoenixKitInbox.External do
   or retry with a fresh scope. A retry checks the same way, for the user
   who retries, and the email log names them (`user_uuid`).
 
+  The right itself (`allowed?/2`) is `inbox.send_external`, or a personal
+  identity. Which common sender (shared, bound to no mailbox) a holder may
+  go out as is narrowed further by its roles (`PhoenixKitInbox.Identities`):
+  that check is part of `Identities.resolve/3`, so the task and a retry read
+  the sender's roles anew — a role taken off after the commit stops the
+  email — against the roles in effect in the same `%Scope{}`.
+
   A transport that raises, exits or throws is a failed send. An exit after
   the relay took the message would make that a false "failed" — the retry's
   email-log guard is what keeps such a message from going twice.
