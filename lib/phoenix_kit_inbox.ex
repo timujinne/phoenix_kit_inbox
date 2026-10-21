@@ -58,6 +58,9 @@ defmodule PhoenixKitInbox do
 
   @settings_key "inbox_enabled"
   @nudges_settings_key "inbox_email_nudges_enabled"
+  @external_settings_key "inbox_external_enabled"
+  @external_max_bytes_key "inbox_external_max_bytes"
+  @default_external_max_bytes 25 * 1024 * 1024
 
   # ===========================================================================
   # Required callbacks
@@ -299,6 +302,14 @@ defmodule PhoenixKitInbox do
   def before_user_delete(user_uuid), do: PhoenixKitInbox.Mailboxes.handle_user_deletion(user_uuid)
 
   @impl PhoenixKit.Module
+  @doc """
+  Supervised processes: `PhoenixKitInbox.TaskSupervisor`, under which the
+  external part of a send runs after its transaction commits
+  (`PhoenixKitInbox.Outbound`).
+  """
+  def children, do: [{Task.Supervisor, name: PhoenixKitInbox.TaskSupervisor}]
+
+  @impl PhoenixKit.Module
   @doc "OTP apps whose templates Tailwind should scan for CSS classes."
   def css_sources, do: [:phoenix_kit_inbox]
 
@@ -357,6 +368,43 @@ defmodule PhoenixKitInbox do
   @spec set_email_nudges(boolean()) :: term()
   def set_email_nudges(enabled) when is_boolean(enabled) do
     Settings.update_boolean_setting_with_module(@nudges_settings_key, enabled, module_key())
+  end
+
+  @doc """
+  Whether messages may go to addresses outside the application — the
+  `inbox_external_enabled` setting, off by default. External mail also needs
+  the host's `outbound_filter` (see `PhoenixKitInbox.Outbound`).
+  """
+  @spec external_enabled?() :: boolean()
+  def external_enabled? do
+    Settings.get_boolean_setting(@external_settings_key, false)
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
+  @doc "Turns sending to external addresses on or off."
+  @spec set_external_enabled(boolean()) :: term()
+  def set_external_enabled(enabled) when is_boolean(enabled) do
+    Settings.update_boolean_setting_with_module(@external_settings_key, enabled, module_key())
+  end
+
+  @doc """
+  Largest total of a message's attachments for external recipients, in
+  bytes as they travel (base64) — the `inbox_external_max_bytes` setting,
+  #{@default_external_max_bytes} by default.
+  """
+  @spec external_max_bytes() :: pos_integer()
+  def external_max_bytes do
+    case Settings.get_integer_setting(@external_max_bytes_key, @default_external_max_bytes) do
+      bytes when is_integer(bytes) and bytes > 0 -> bytes
+      _ -> @default_external_max_bytes
+    end
+  rescue
+    _ -> @default_external_max_bytes
+  catch
+    :exit, _ -> @default_external_max_bytes
   end
 
   # ===========================================================================

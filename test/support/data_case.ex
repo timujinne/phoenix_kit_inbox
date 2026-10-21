@@ -302,6 +302,80 @@ defmodule PhoenixKitInbox.DataCase do
   end
 
   @doc """
+  Points `PhoenixKitInbox.Outbound` at the recording test transport
+  (`PhoenixKitInbox.Test.Outbound`), opens external sending
+  (`inbox_external_enabled` on, `outbound_filter: :none`) and restores the
+  previous configuration afterwards. A `setup` callback for `async: false`
+  cases — the configuration is global. Every call to the transport arrives
+  in the test process as `{:outbound, email, integration_uuid, opts}`.
+  """
+  def outbound_setup(_context \\ %{}) do
+    keys = [:outbound, :test_outbound, :outbound_filter, :test_emails_enabled]
+    saved = Map.new(keys, &{&1, Application.fetch_env(:phoenix_kit_inbox, &1)})
+
+    Application.put_env(:phoenix_kit_inbox, :outbound, PhoenixKitInbox.Test.Outbound)
+    Application.put_env(:phoenix_kit_inbox, :test_outbound, %{pid: self()})
+    Application.put_env(:phoenix_kit_inbox, :outbound_filter, :none)
+    {:ok, _} = PhoenixKitInbox.set_external_enabled(true)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Enum.each(saved, fn
+        {key, {:ok, value}} -> Application.put_env(:phoenix_kit_inbox, key, value)
+        {key, :error} -> Application.delete_env(:phoenix_kit_inbox, key)
+      end)
+    end)
+
+    :ok
+  end
+
+  @doc "What the test transport answers from now on: a result, or a 3-arity fun."
+  def outbound_result(result) do
+    config = Application.get_env(:phoenix_kit_inbox, :test_outbound, %{})
+    Application.put_env(:phoenix_kit_inbox, :test_outbound, Map.put(config, :result, result))
+  end
+
+  @doc "Sets the host `outbound_filter` (`{module, fun}`, `:none` or `nil` for none)."
+  def outbound_filter(filter) do
+    if filter,
+      do: Application.put_env(:phoenix_kit_inbox, :outbound_filter, filter),
+      else: Application.delete_env(:phoenix_kit_inbox, :outbound_filter)
+  end
+
+  @doc "Makes the stand-in `PhoenixKit.Modules.Emails.enabled?/0` answer true."
+  def emails_module_enabled! do
+    Application.put_env(:phoenix_kit_inbox, :test_emails_enabled, true)
+  end
+
+  @doc """
+  A `phoenix_kit_email_logs` row as `phoenix_kit_emails` writes one for a
+  send tagged with `message_tags` (status `"sent"` unless given).
+  """
+  def email_log_fixture(message_tags, status \\ "sent") do
+    message_id = "pk_" <> Ecto.UUID.generate()
+
+    TestRepo.query!(
+      """
+      INSERT INTO phoenix_kit_email_logs
+        (message_id, "to", "from", status, message_tags, inserted_at, updated_at)
+      VALUES ($1, 'someone@example.com', 'sender@example.com', $2, $3, now(), now())
+      """,
+      [message_id, status, message_tags]
+    )
+
+    message_id
+  end
+
+  @doc """
+  Waits for the external part of a send to finish: the
+  `{:inbox_external_updated, message_uuid}` broadcast on the sending
+  mailbox's topic, to which the caller must have subscribed
+  (`PhoenixKitInbox.External.subscribe/1`) before sending.
+  """
+  def await_external(message_uuid) do
+    ExUnit.Assertions.assert_receive({:inbox_external_updated, ^message_uuid}, 2_000)
+  end
+
+  @doc """
   Translates changeset errors into a `%{field => [message]}` map. Used
   by tests that assert on changeset error messages.
   """

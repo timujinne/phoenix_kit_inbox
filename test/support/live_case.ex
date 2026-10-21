@@ -55,7 +55,12 @@ defmodule PhoenixKitInbox.LiveCase do
           stored_file_fixture: 3,
           files_in_library: 1,
           mail_integration_fixture: 1,
-          mail_integration_fixture: 2
+          mail_integration_fixture: 2,
+          outbound_setup: 1,
+          outbound_result: 1,
+          await_external: 1,
+          emails_module_enabled!: 0,
+          email_log_fixture: 2
         ]
 
       import PhoenixKitInbox.LiveCase

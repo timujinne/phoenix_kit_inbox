@@ -29,6 +29,9 @@ support_dir = Path.expand("support", __DIR__)
   "test_endpoint.ex",
   "test_migration.ex",
   "activity_log_assertions.ex",
+  "outbound_stub.ex",
+  "outbound_filters.ex",
+  "fake_emails_module.ex",
   "data_case.ex",
   "live_case.ex"
 ]
@@ -121,6 +124,10 @@ Application.put_env(:phoenix_kit_inbox, :test_repo_available, repo_available)
 # (PubSub topics, ModuleRegistry) resolve during tests.
 {:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
 {:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
+
+# The module's own children (the task supervisor external sends run under),
+# as core's supervisor would start them in a host.
+{:ok, _pid} = Supervisor.start_link(PhoenixKitInbox.children(), strategy: :one_for_one)
 
 # Exclude integration tests when DB is not available
 exclude = if repo_available, do: [], else: [:integration]
