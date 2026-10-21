@@ -70,16 +70,16 @@ All primary keys are UUIDv7 and every schema carries `use PhoenixKit.SchemaPrefi
 Older PhoenixKit modules shipped their DDL inside core's versioned chain (the V90+ scheme). Inbox follows the newer pattern already used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`:
 
 - `PhoenixKitInbox.Migrations` is the coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` is the first (immutable) version
-- Version is tracked in a `COMMENT ON TABLE` on `phoenix_kit_inbox_mailboxes`, so a future V02 can tell "not installed" from "installed at V1"
+- `PhoenixKitInbox.Migrations.V01` creates the tables; `V02` makes a user's deletion keep their mailboxes and every message (owner `ON DELETE SET NULL`, mailbox references `RESTRICT`) and makes shared addresses unique regardless of case. Shipped versions are immutable
+- Version is tracked in a `COMMENT ON TABLE` on `phoenix_kit_inbox_mailboxes`, so the coordinator can tell "not installed" from "installed at V1"
 - `mix phoenix_kit.update` discovers the coordinator, compares versions, and generates the host migration
 
 Nothing has to be released in `phoenix_kit` for this module's schema to change.
 
 ### Adding a version
 
-1. Write `lib/phoenix_kit_inbox/migrations/v02.ex` with `up/1` and `down/1`
-2. Bump `@current_version` in `PhoenixKitInbox.Migrations` and add the `2 ->` clause to `apply_step/2`
+1. Write `lib/phoenix_kit_inbox/migrations/vNN.ex` with `up/1` and `down/1`
+2. Bump `@current_version` in `PhoenixKitInbox.Migrations` and add the `apply_step/3` clauses for it
 3. **Never edit a shipped version module** — hosts already past it will not re-run it
 
 New SQL must stay prefix-safe: bare index names on `CREATE`, schema-anchored existence checks, `Helpers.uuid_v7_call/1` for the UUID default. See core's AGENTS.md, "Prefix-safe migrations".
@@ -94,14 +94,13 @@ alias PhoenixKitInbox.Mailboxes
 # Personal mailbox — created on first call, returned thereafter
 {:ok, mailbox} = Mailboxes.ensure_user_mailbox(current_user)
 
-# Shared mailbox + grants
-{:ok, support} = Mailboxes.create_shared_mailbox(owner.uuid, %{
+# Shared mailbox + grants — needs inbox.manage_shared on the caller's scope
+{:ok, support} = Mailboxes.create_shared_mailbox(scope, %{
   name: "Customer Support",
   address: "support@example.com"
 })
 
-{:ok, _} = Mailboxes.grant_access(support.uuid, teammate.uuid, "write",
-             granted_by_uuid: owner.uuid)
+{:ok, _} = Mailboxes.grant_access(scope, support, teammate.uuid, "write")   # admin on support
 
 Mailboxes.access_level(support, owner.uuid)           #=> "admin"  (ownership implies admin)
 Mailboxes.authorize(support, teammate.uuid, "write")  #=> :ok
@@ -113,15 +112,25 @@ Mailboxes.list_accessible_mailboxes(user.uuid)        #=> personal first, then s
 ```elixir
 alias PhoenixKitInbox.Messages
 
-{:ok, message} = Messages.send_message(from_mailbox, sender_user_uuid, %{
-  "to" => "bob@example.com, support",   # address or slug, comma separated
+{:ok, message} = Messages.send_message(scope, from_mailbox, %{
+  "to" => "@bob, support",              # @username, email, or shared mailbox; comma separated
   "cc" => "carol@example.com",
   "subject" => "Quarterly numbers",
   "body" => "Attached below."
 })
 ```
 
-The whole send is one `Ecto.Multi`: recipients resolve, the message is written, and deliveries fan out — or none of it happens. A recipient that doesn't resolve fails the send with `{:error, {:unknown_recipients, ["typo@example.com"]}}` rather than being silently dropped.
+The sender needs `write` on `from_mailbox` and, in the scope form, the `"inbox"` permission. The older `send_message(from_mailbox, sender_user_uuid, attrs)` form still works and checks the same grant.
+
+The whole send is one `Ecto.Multi`: recipients resolve, the message is written, and deliveries fan out — or none of it happens. A recipient that doesn't resolve fails the send with `{:error, {:unknown_recipients, ["typo@example.com"]}}` rather than being silently dropped; a term naming two people fails with `{:error, {:ambiguous_recipients, [...]}}`.
+
+Only **members** can be addressed or suggested: by default a user any of whose roles carries `"inbox"` or `"*"`, or the Owner. A host replaces the rule with:
+
+```elixir
+config :phoenix_kit_inbox, recipient_filter: {MyApp.Inbox, :addressable?}  # (user) -> boolean
+```
+
+Each send records a snapshot of the sender and recipients in the message's `metadata` and one permanent `inbox.message_sent` activity (counts only).
 
 ### Reading and filing
 
@@ -131,20 +140,21 @@ Messages.count_folder(mailbox.uuid, "inbox")
 Messages.fetch_for_mailbox(mailbox.uuid, message_uuid)   # scoped — never reads someone else's mail
 Messages.list_thread(message.thread_uuid)
 
-Messages.mark_seen(mailbox.uuid, message_uuid)
-Messages.toggle_star(mailbox.uuid, message_uuid)
-Messages.move_to_folder(mailbox.uuid, message_uuid, "archive")
-Messages.purge(mailbox.uuid, message_uuid)   # removes only THIS mailbox's copy
+Messages.mark_seen(scope, mailbox, message_uuid)        # read on the mailbox
+Messages.toggle_star(scope, mailbox, message_uuid)      # read
+Messages.move_to_folder(scope, mailbox, message_uuid, "archive")   # write
+Messages.purge(scope, mailbox, message_uuid)   # write; removes only THIS mailbox's copy
 ```
 
 ### Drafts
 
 ```elixir
-{:ok, draft} = Messages.save_draft(mailbox, user_uuid, %{"subject" => "WIP"})
-{:ok, draft} = Messages.save_draft(mailbox, user_uuid, %{"uuid" => draft.uuid, "body" => "more"})
+{:ok, draft} = Messages.save_draft(scope, mailbox, %{"to" => "@bob", "subject" => "WIP"})
+Messages.draft_recipients(draft)   #=> %{"to" => "@bob", "cc" => "", "bcc" => ""}
+{:ok, draft} = Messages.save_draft(scope, mailbox, %{"uuid" => draft.uuid, "body" => "more"})
 
 # Sending promotes the same row — same uuid, status flips to "sent"
-{:ok, sent} = Messages.send_message(mailbox, user_uuid, %{
+{:ok, sent} = Messages.send_message(scope, mailbox, %{
   "uuid" => draft.uuid, "to" => "bob@example.com", "subject" => "WIP"
 })
 ```
@@ -165,8 +175,8 @@ PhoenixKitInbox.Notify.email_nudges_available?()  #=> is phoenix_kit_emails actu
 
 The module key is `"inbox"`. Two levels:
 
-1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module.
-2. **Mailbox grants** — decide which mailboxes a user sees once inside. Owning a mailbox implies `"admin"` on it; everything else needs a row in `phoenix_kit_inbox_mailbox_grants`.
+1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module. Two sub-permissions add capabilities, checked by the context functions with `Scope.can?/2`: `inbox.manage_shared` (create shared mailboxes, set addresses) and `inbox.send_external` (reserved for sending to outside addresses).
+2. **Mailbox grants** — decide which mailboxes a user sees once inside, and what they may do there (every function that changes something takes the caller's scope and checks both gates itself). Owning a mailbox implies `"admin"` on it; everything else needs a row in `phoenix_kit_inbox_mailbox_grants`.
 
 Levels are ordered `read < write < admin`:
 

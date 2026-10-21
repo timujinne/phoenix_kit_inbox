@@ -35,7 +35,7 @@ The one outward-facing thing here is the **email nudge** in `PhoenixKitInbox.Not
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — first version, **immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses. **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
@@ -71,13 +71,17 @@ Consequences worth remembering before changing anything:
 
 - **Per-recipient state lives on the delivery, never on the message.** Marking a group thread read must not mark it read for the other four recipients. Any new per-person flag goes on `Delivery`.
 - **`Messages.fetch_for_mailbox/2` is scoped through the delivery.** Asking for a message uuid a mailbox was never sent returns `{:error, :message_not_found}` — that is the read-authorization boundary, not an incidental join.
-- **`purge/2` marks the delivery `"deleted"`, not the message.** Deleting your copy of a thread must not delete anyone else's.
+- **`purge/3` marks the delivery `"deleted"`, not the message.** Deleting your copy of a thread must not delete anyone else's.
 - **`thread_uuid` is NOT NULL and a root message's equals its own uuid.** It can't be set before insert, so `backfill_thread_uuid/2` writes it inside the same `Multi`.
 - **Folders are a column, not a table.** Six fixed values. User-defined labels would be a new table + join, i.e. a V02 — not a v1 guess.
 
 ## Sending
 
-`Messages.send_message/3` is one `Ecto.Multi`. A message is never half-delivered.
+`Messages.send_message/4` (scope form) and `/3` (mailbox + sender uuid) are one `Ecto.Multi`. A message is never half-delivered.
+
+- **The send authorizes itself**: `write` on the sending mailbox, plus the `"inbox"` permission in the scope form. The compose form only hides what would fail. Saving a draft needs `write` too.
+- Recipients resolve through `Mailboxes.fetch_mailbox_by_recipient/1`: `@name` and emails look for a user first, bare names for a shared mailbox first; users only inside the recipient circle (`PhoenixKitInbox.Members`, host-overridable via `:recipient_filter`). Two candidates for one term → `{:ambiguous_recipients, [...]}`.
+- The message's `metadata` gets a server-written `"sender"`/`"recipients"` snapshot; the recipients include `bcc` rows, so show them to the sender only (`list_recipients/2` does that filtering for deliveries).
 
 - An unresolvable recipient fails the **whole** send (`{:error, {:unknown_recipients, [...]}}`). Silently dropping a recipient is worse than refusing — the sender finds out immediately.
 - A mailbox listed in both To and Cc gets one copy at the stronger role (`dedupe_recipients/1`), because the unique index on `(message, mailbox, role)` would otherwise let the same person appear twice.
@@ -88,8 +92,10 @@ Consequences worth remembering before changing anything:
 
 Two gates, and they are different questions:
 
-1. **Module permission** — `Scope.has_module_access?(scope, "inbox")`. Can this user open Inbox at all? Checked in every LiveView's `mount/3` and re-checked in `handle_params/3`.
+1. **Module permission** — `Scope.has_module_access?(scope, "inbox")`. Can this user open Inbox at all? Checked in every LiveView's `mount/3` and re-checked in `handle_params/3`. Sub-permissions (`inbox.manage_shared`, `inbox.send_external`) are checked with `Scope.can?/2` **in the context function** that needs them, so those functions take the caller's `%Scope{}` (`create_shared_mailbox/2`, `update_mailbox/3`).
 2. **Mailbox grants** — `Mailboxes.authorize(mailbox, user_uuid, "write")`. Which mailboxes can they see once inside? Ownership short-circuits to `"admin"`, so an owner never has a grant row for their own mailbox.
+
+**Every function that changes data takes the caller's `%Scope{}` and checks both gates itself** through `Mailboxes.authorize_scope/3` (which re-reads the mailbox, so a stale or hand-built struct grants nothing): seen/star need `read`; drafts, move, purge and sending need `write`; grants, archive/restore and `update_mailbox/3` need `admin`. LiveViews pass `socket.assigns.scope` and only render the outcome. The one exception is `Messages.send_message/3` (mailbox + sender uuid), kept for hosts and checked against the grants. Sending refuses an archived mailbox. A `parent_uuid` (send or draft) is kept only if the sender can read that message — a mailbox they own or are granted holds a copy, or sent it; otherwise it is dropped and the message starts its own thread. A caller-supplied `thread_uuid` is never used.
 
 Levels are ordered `read < write < admin` via `MailboxGrant.covers?/2`.
 
@@ -103,6 +109,7 @@ lib/phoenix_kit_inbox/
 ├── paths.ex                              # ALL URL building — never hardcode a path
 ├── errors.ex                             # error atom -> gettext string
 ├── mailboxes.ex                          # mailbox lifecycle + access control
+├── members.ex                            # recipient circle (who is addressable)
 ├── messages.ex                           # compose, send, list, file
 ├── notify.ex                             # activity log + optional email nudge
 ├── migrations.ex                         # version coordinator

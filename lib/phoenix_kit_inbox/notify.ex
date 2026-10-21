@@ -23,19 +23,24 @@ defmodule PhoenixKitInbox.Notify do
 
   require Logger
 
+  alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
 
   @doc """
-  Announces a sent message: one activity event per recipient (which core turns
-  into that user's in-app notification), plus an optional email nudge.
+  Announces a sent message: one permanent `inbox.message_sent` activity for
+  the send itself, one activity event per recipient (which core turns into
+  that user's in-app notification), plus an optional email nudge.
 
   `bcc` recipients are notified like anyone else — they just don't appear in
   anyone else's recipient list.
   """
   @spec message_sent(Message.t(), Mailbox.t(), [%{role: String.t(), mailbox: Mailbox.t()}]) :: :ok
   def message_sent(%Message{} = message, %Mailbox{} = sender, recipients) do
+    log_sent(message, recipients)
+
     Enum.each(recipients, fn %{mailbox: recipient_mailbox} ->
       notify_recipient(message, sender, recipient_mailbox)
     end)
@@ -43,17 +48,64 @@ defmodule PhoenixKitInbox.Notify do
     :ok
   end
 
+  # The audit line for "this user sent a message": kept forever, and therefore
+  # free of personal data — counts only, no subject, no addresses (those live
+  # in the module's own tables, see `Messages.send_message/4`). No target, so
+  # it notifies nobody.
+  defp log_sent(message, recipients) do
+    if Code.ensure_loaded?(PhoenixKit.Activity) do
+      PhoenixKit.Activity.log(%{
+        action: "inbox.message_sent",
+        module: "inbox",
+        mode: "auto",
+        actor_uuid: message.sender_user_uuid,
+        resource_type: "inbox_message",
+        resource_uuid: message.uuid,
+        target_uuid: nil,
+        permanent: true,
+        metadata: %{
+          "internal_recipients" => length(recipients),
+          "external_recipients" => 0,
+          "attachments" => 0
+        }
+      })
+    end
+  rescue
+    e ->
+      Logger.warning("[Inbox] activity logging failed: #{Exception.message(e)}")
+      :error
+  end
+
   defp notify_recipient(message, sender, recipient_mailbox) do
-    log_activity(message, sender, recipient_mailbox)
+    recipient_mailbox
+    |> readers()
+    |> Enum.each(&log_activity(message, sender, recipient_mailbox, &1))
+
     send_email_nudge(message, sender, recipient_mailbox)
   end
+
+  # Everyone who reads the mailbox: its owner and, for a shared one, every
+  # grantee — each grant is at least "read". An ownerless mailbox (its user
+  # was deleted) has nobody left to tell.
+  defp readers(%Mailbox{kind: "shared"} = mailbox) do
+    grantees = mailbox.uuid |> Mailboxes.list_grants() |> Enum.map(& &1.user_uuid)
+
+    [mailbox.owner_uuid | grantees] |> Enum.reject(&is_nil/1) |> Enum.uniq()
+  rescue
+    e ->
+      Logger.warning("[Inbox] could not list mailbox readers: #{Exception.message(e)}")
+      Enum.reject([mailbox.owner_uuid], &is_nil/1)
+  end
+
+  defp readers(%Mailbox{owner_uuid: nil}), do: []
+  defp readers(%Mailbox{owner_uuid: owner_uuid}), do: [owner_uuid]
 
   # ── activity / in-app notification ──────────────────────────────────────────
 
   # The canonical PhoenixKit pattern: you never write to the notifications
   # table. You log an activity with a `target_uuid`, and core turns it into that
   # user's notification (when target_uuid != actor_uuid).
-  defp log_activity(message, sender, recipient_mailbox) do
+  defp log_activity(message, sender, recipient_mailbox, target_uuid) do
     if Code.ensure_loaded?(PhoenixKit.Activity) do
       PhoenixKit.Activity.log(%{
         action: "inbox.message_received",
@@ -62,7 +114,7 @@ defmodule PhoenixKitInbox.Notify do
         actor_uuid: message.sender_user_uuid,
         resource_type: "inbox_message",
         resource_uuid: message.uuid,
-        target_uuid: recipient_mailbox.owner_uuid,
+        target_uuid: target_uuid,
         metadata: %{
           "subject" => message.subject,
           "sender_mailbox" => sender.name,
@@ -96,7 +148,7 @@ defmodule PhoenixKitInbox.Notify do
   defp send_email_nudge(message, sender, recipient_mailbox) do
     with true <- emails_module_available?(),
          true <- email_nudges_enabled?(),
-         address when is_binary(address) <- recipient_address(recipient_mailbox) do
+         address when is_binary(address) <- nudge_address(recipient_mailbox) do
       deliver_nudge(address, message, sender, recipient_mailbox)
     else
       _ -> :skipped
@@ -139,10 +191,25 @@ defmodule PhoenixKitInbox.Notify do
     _ -> false
   end
 
-  defp recipient_address(%Mailbox{address: address}) when is_binary(address) and address != "",
+  @doc """
+  Where the email nudge for `mailbox` goes: the owner's **current** login
+  email for a personal mailbox (its `address` is a snapshot taken when it
+  was created), the `address` of a shared one. `nil` when there is none.
+  """
+  @spec nudge_address(Mailbox.t()) :: String.t() | nil
+  def nudge_address(%Mailbox{kind: "user", owner_uuid: owner_uuid}) when is_binary(owner_uuid) do
+    case PhoenixKit.RepoHelper.repo().get(User, owner_uuid) do
+      %User{email: email} when is_binary(email) and email != "" -> email
+      _ -> nil
+    end
+  end
+
+  def nudge_address(%Mailbox{kind: "user"}), do: nil
+
+  def nudge_address(%Mailbox{address: address}) when is_binary(address) and address != "",
     do: address
 
-  defp recipient_address(_), do: nil
+  def nudge_address(_), do: nil
 
   # Built through core's mailer rather than a Swoosh adapter of our own, so the
   # host's configured provider, blocklist, and (when phoenix_kit_emails is
@@ -185,7 +252,7 @@ defmodule PhoenixKitInbox.Notify do
   @spec unaddressable(list()) :: [String.t()]
   def unaddressable(recipients) do
     recipients
-    |> Enum.filter(fn %{mailbox: mailbox} -> is_nil(recipient_address(mailbox)) end)
+    |> Enum.filter(fn %{mailbox: mailbox} -> is_nil(nudge_address(mailbox)) end)
     |> Enum.map(fn %{mailbox: mailbox} -> mailbox.name end)
   end
 end

@@ -8,6 +8,7 @@ defmodule PhoenixKitInboxTest do
   """
 
   alias PhoenixKit.Dashboard.Tab
+  alias PhoenixKit.Users.Permissions
 
   test "module_key is the lowercase underscore key used everywhere" do
     assert PhoenixKitInbox.module_key() == "inbox"
@@ -30,13 +31,30 @@ defmodule PhoenixKitInboxTest do
     assert is_binary(metadata.description)
   end
 
+  test "permission_metadata declares the send_external and manage_shared sub-permissions" do
+    subs = PhoenixKitInbox.permission_metadata().sub_permissions
+
+    assert Enum.map(subs, & &1.key) == ["send_external", "manage_shared"]
+
+    for sub <- subs do
+      assert sub.key =~ ~r/^[a-z][a-z0-9_]*$/
+      assert is_binary(sub.label)
+      assert is_binary(sub.description)
+    end
+  end
+
+  test "core composes the sub-permissions under the inbox key" do
+    assert Permissions.parent_key("inbox.manage_shared") == "inbox"
+    assert Permissions.parent_key("inbox.send_external") == "inbox"
+  end
+
   test "css_sources returns this OTP app so Tailwind scans our templates" do
     assert PhoenixKitInbox.css_sources() == [:phoenix_kit_inbox]
   end
 
   test "migration_module points at this module's own coordinator" do
     assert PhoenixKitInbox.migration_module() == PhoenixKitInbox.Migrations
-    assert PhoenixKitInbox.Migrations.current_version() == 1
+    assert PhoenixKitInbox.Migrations.current_version() == 2
   end
 
   describe "admin_tabs/0" do

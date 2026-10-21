@@ -17,7 +17,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   ## Access
 
   Composing requires `"write"` on the sending mailbox — `"read"` grantees on a
-  shared mailbox can follow the conversation but can't send as it.
+  shared mailbox can follow the conversation but can't send as it. The check
+  that counts is in `Messages.send_message/4`, called with the session scope.
   """
 
   use PhoenixKitWeb, :live_view
@@ -38,6 +39,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       socket
       |> assign(:page_title, gettext_str("New message"))
       |> assign(:module_access, scope && Scope.has_module_access?(scope, "inbox"))
+      |> assign(:scope, scope)
       |> assign(:current_user, user)
       |> assign(:mailboxes, sendable_mailboxes(user))
       |> assign(:mailbox, nil)
@@ -160,10 +162,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   defp prefill_draft(socket, uuid) do
     case Messages.fetch_for_mailbox(socket.assigns.mailbox.uuid, uuid) do
       {:ok, %{message: %Message{status: "draft"} = message}} ->
-        recipients =
-          message.uuid
-          |> Messages.list_recipients()
-          |> Enum.group_by(& &1.role, &recipient_handle(&1.mailbox))
+        recipients = Messages.draft_recipients(message)
 
         socket
         |> assign(:draft_uuid, message.uuid)
@@ -172,9 +171,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         |> assign(
           :form,
           to_form(%{
-            "to" => recipients |> Map.get("to", []) |> Enum.join(", "),
-            "cc" => recipients |> Map.get("cc", []) |> Enum.join(", "),
-            "bcc" => recipients |> Map.get("bcc", []) |> Enum.join(", "),
+            "to" => recipients["to"],
+            "cc" => recipients["cc"],
+            "bcc" => recipients["bcc"],
             "subject" => message.subject || "",
             "body" => message.body || ""
           })
@@ -192,17 +191,20 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     {:noreply, assign(socket, :form, to_form(strip_meta(params)))}
   end
 
+  # The Save draft button is a phx-click, which carries no form fields — the
+  # draft is whatever the form holds, as kept current by "validate".
   def handle_event("save_draft", params, socket) do
-    {:noreply, save_draft(socket, strip_meta(params))}
+    {:noreply, save_draft(socket, Map.merge(socket.assigns.form.params, strip_meta(params)))}
   end
 
   def handle_event("send", params, socket) do
     params = strip_meta(params)
 
+    # Authorization (inbox permission, write on the mailbox) is checked by
+    # send_message/4 itself; the From picker only hides what would fail.
     with %{} = mailbox <- socket.assigns.mailbox,
-         :ok <- Mailboxes.authorize(mailbox, user_uuid(socket), "write"),
          attrs <- send_attrs(socket, params),
-         {:ok, _message} <- Messages.send_message(mailbox, user_uuid(socket), attrs) do
+         {:ok, _message} <- Messages.send_message(socket.assigns.scope, mailbox, attrs) do
       {:noreply,
        socket
        |> put_flash(:info, gettext_str("Message sent."))
@@ -220,17 +222,24 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   end
 
   def handle_event("discard", _params, socket) do
-    socket =
-      case {socket.assigns.mailbox, socket.assigns.draft_uuid} do
-        {%{} = mailbox, uuid} when is_binary(uuid) ->
-          Messages.delete_draft(mailbox, uuid)
-          put_flash(socket, :info, gettext_str("Draft discarded."))
+    case {socket.assigns.mailbox, socket.assigns.draft_uuid} do
+      {%{} = mailbox, uuid} when is_binary(uuid) ->
+        case Messages.delete_draft(socket.assigns.scope, mailbox, uuid) do
+          :ok ->
+            {:noreply,
+             socket
+             |> put_flash(:info, gettext_str("Draft discarded."))
+             |> push_navigate(to: back_path(socket))}
 
-        _ ->
-          socket
-      end
+          # The draft stays, so the page does too: leaving would look like
+          # it had been discarded.
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, Errors.message(reason))}
+        end
 
-    {:noreply, push_navigate(socket, to: back_path(socket))}
+      _ ->
+        {:noreply, push_navigate(socket, to: back_path(socket))}
+    end
   end
 
   def handle_event("select_mailbox", %{"mailbox" => uuid}, socket) do
@@ -244,11 +253,11 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     attrs =
       params
-      |> Map.take(~w(subject body))
+      |> Map.take(~w(to cc bcc subject body))
       |> Map.put("uuid", socket.assigns.draft_uuid)
       |> Map.put("parent_uuid", socket.assigns.parent_uuid)
 
-    case Messages.save_draft(mailbox, user_uuid(socket), attrs) do
+    case Messages.save_draft(socket.assigns.scope, mailbox, attrs) do
       {:ok, message} ->
         socket
         |> assign(:draft_uuid, message.uuid)
@@ -270,13 +279,6 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   # Phoenix injects "_target"/"_csrf_token" into form payloads; they'd end up in
   # the form assign and re-render as stray values.
   defp strip_meta(params), do: Map.drop(params, ~w(_target _csrf_token))
-
-  defp user_uuid(socket) do
-    case socket.assigns[:current_user] do
-      %{uuid: uuid} -> uuid
-      _ -> nil
-    end
-  end
 
   defp back_path(%{assigns: %{mailbox: %{uuid: uuid}}}), do: Paths.inbox(mailbox: uuid)
   defp back_path(_socket), do: Paths.inbox()
@@ -337,7 +339,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             field={@form[:to]}
             type="text"
             label={gettext_str("To")}
-            placeholder={gettext_str("Username, email or shared mailbox — comma separated")}
+            placeholder={gettext_str("@username, email or shared mailbox — comma separated")}
             list="phoenix-kit-inbox-recipients"
           />
           <.input
@@ -404,14 +406,10 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
   defp sender_mailbox_handle(%Message{sender_mailbox_uuid: uuid}) do
     case Mailboxes.fetch_mailbox(uuid) do
-      {:ok, mailbox} -> recipient_handle(mailbox)
+      {:ok, mailbox} -> Mailboxes.recipient_handle(mailbox) || ""
       _ -> ""
     end
   end
-
-  # Prefer the address (what a person recognizes), fall back to the slug (what
-  # always resolves).
-  defp recipient_handle(mailbox), do: mailbox.address || mailbox.slug
 
   defp prefixed_subject(prefix, nil), do: String.trim_trailing(prefix)
 

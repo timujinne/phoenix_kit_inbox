@@ -63,6 +63,7 @@ defmodule PhoenixKitInbox.Schemas.MailboxGrant do
     |> cast(attrs, [:mailbox_uuid, :user_uuid, :access, :granted_by_uuid])
     |> validate_required([:mailbox_uuid, :user_uuid, :access])
     |> validate_inclusion(:access, @levels)
+    |> foreign_key_constraint(:user_uuid)
     |> unique_constraint([:mailbox_uuid, :user_uuid],
       name: :phoenix_kit_inbox_mailbox_grants_mailbox_user_index
     )

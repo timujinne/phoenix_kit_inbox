@@ -5,6 +5,7 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
   alias PhoenixKitInbox.Messages
 
   setup %{conn: conn} do
+    enable_inbox!()
     alice = user_fixture()
     bob = user_fixture()
 
@@ -72,12 +73,12 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
     assert delivery.seen_at
   end
 
-  test "switching folders patches the URL", %{conn: conn} do
+  test "switching folders patches the URL", %{conn: conn, alice_mb: alice_mb} do
     {:ok, view, _html} = live(conn, "/en/admin/inbox")
 
     view |> element("button[phx-value-folder='sent']") |> render_click()
 
-    assert_patched(view, "/en/admin/inbox?folder=sent")
+    assert_patched(view, PhoenixKitInbox.Paths.inbox(mailbox: alice_mb.uuid, folder: "sent"))
   end
 
   test "a message can be trashed from the reading pane", %{conn: conn, alice: alice, bob: bob} do
@@ -110,6 +111,59 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
     html = render(view)
     assert html =~ "Invoice March"
     refute html =~ "Holiday plans"
+  end
+
+  test "a bcc recipient is hidden from the other readers", ctx do
+    carol = user_fixture()
+    {:ok, carol_mb} = Mailboxes.ensure_user_mailbox(carol)
+
+    {:ok, message} =
+      Messages.send_message(ctx.bob_mb, ctx.bob.uuid, %{
+        "to" => ctx.alice.email,
+        "bcc" => carol.email,
+        "subject" => "Blind copy"
+      })
+
+    {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox?message=#{message.uuid}")
+
+    assert has_element?(view, "#recipient-#{ctx.alice_mb.uuid}")
+    refute has_element?(view, "#recipient-#{carol_mb.uuid}")
+  end
+
+  test "the sender sees the bcc recipients of their own message", ctx do
+    carol = user_fixture()
+    {:ok, carol_mb} = Mailboxes.ensure_user_mailbox(carol)
+
+    {:ok, message} =
+      Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+        "to" => ctx.bob.email,
+        "bcc" => carol.email,
+        "subject" => "Blind copy"
+      })
+
+    {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox?folder=sent&message=#{message.uuid}")
+
+    assert has_element?(view, "#recipient-#{carol_mb.uuid}")
+  end
+
+  test "a read grantee's forged move and purge are refused", ctx do
+    shared = shared_mailbox_fixture(ctx.bob, %{name: "Read only here"})
+    grant_fixture(shared, ctx.alice, "read")
+
+    {:ok, message} =
+      Messages.send_message(ctx.bob_mb, ctx.bob.uuid, %{
+        "to" => shared.slug,
+        "subject" => "Stays put"
+      })
+
+    {:ok, view, _html} =
+      live(ctx.conn, "/en/admin/inbox?mailbox=#{shared.uuid}&message=#{message.uuid}")
+
+    render_hook(view, "move", %{"uuid" => message.uuid, "folder" => "trash"})
+    render_hook(view, "delete_forever", %{"uuid" => message.uuid})
+
+    assert [%{message: %{uuid: uuid}}] = Messages.list_folder(shared.uuid, "inbox")
+    assert uuid == message.uuid
   end
 
   test "a user without the inbox permission sees only the denial notice", %{conn: conn} do

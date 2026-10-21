@@ -22,12 +22,16 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   import Ecto.Query
 
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitInbox.Members
   alias PhoenixKitInbox.Schemas.Delivery
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.MailboxGrant
 
   @type access :: String.t()
+
+  @manage_shared "inbox.manage_shared"
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
@@ -41,9 +45,12 @@ defmodule PhoenixKitInbox.Mailboxes do
   """
   @spec fetch_mailbox(binary()) :: {:ok, Mailbox.t()} | {:error, :mailbox_not_found}
   def fetch_mailbox(uuid) when is_binary(uuid) do
-    case repo().get(Mailbox, uuid) do
-      nil -> {:error, :mailbox_not_found}
-      mailbox -> {:ok, mailbox}
+    # A malformed uuid (a hand-edited `?mailbox=`) is "not found", not a crash.
+    with {:ok, uuid} <- Ecto.UUID.cast(uuid),
+         %Mailbox{} = mailbox <- repo().get(Mailbox, uuid) do
+      {:ok, mailbox}
+    else
+      _ -> {:error, :mailbox_not_found}
     end
   end
 
@@ -91,107 +98,190 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   Accepted, case-insensitively:
 
-    * a mailbox `address` — `"alice@example.com"`
-    * a shared mailbox `slug` or `name` — `"support"` or `"Customer Support"`
-    * a **username** — `"alice"`
-    * a user's login **email**, even if they have no mailbox yet
+    * `"@alice"` — a **username**, the `@` stripped; a shared mailbox's slug
+      only when no user has that username
+    * `"alice@example.com"` — a user's login **email**, then a shared
+      mailbox's `address`
+    * `"support"` / `"Customer Support"` — a shared mailbox's slug, name or
+      address first, then a username (the pre-`@` behaviour)
+
+  Users are only found inside the recipient circle (`PhoenixKitInbox.Members`):
+  a customer account resolves to nothing. Personal mailboxes are reached
+  through their user, never through their own `address`, which is a snapshot
+  of the owner's email at creation and goes stale when it changes.
+
+  Two candidates for one term — two members whose usernames differ only in
+  case (possible on cores before `username` became `citext`), or two shared
+  mailboxes with one name — return `{:error, :ambiguous_recipient}` rather
+  than an arbitrary pick.
 
   ## Why users are looked up, not just mailboxes
 
-  Two things were wrong when this only queried `phoenix_kit_inbox_mailboxes`
-  on `address`/`slug`:
-
-    1. A username matched nothing. It lives on the user record and was never
-       copied onto the mailbox, so `"alice"` was unresolvable while
-       `"alice@example.com"` worked — with no hint which was expected.
-    2. Personal mailboxes are created lazily on first visit to Inbox, so a user
-       who had never opened the page had no mailbox row and was unaddressable
-       by *any* spelling. You could not message a colleague until they happened
-       to click the tab.
-
-  Falling back to a user lookup fixes both: an account is reachable from the
-  moment it exists, and its mailbox is created here, on demand, when the first
-  message is addressed to it. That write happens outside the send transaction
-  (`Messages.send_message/3` resolves recipients before opening it), so a send
-  that later fails leaves behind only a mailbox the user would have got on
-  their next visit anyway.
+  Personal mailboxes are created lazily on first visit to Inbox, so a user
+  who had never opened the page had no mailbox row. Resolving through the
+  user makes an account reachable from the moment it exists; its mailbox is
+  created here, on demand, when the first message is addressed to it. That
+  write happens outside the send transaction (`Messages.send_message/3`
+  resolves recipients before opening it), so a send that later fails leaves
+  behind only a mailbox the user would have got on their next visit anyway.
   """
   @spec fetch_mailbox_by_recipient(String.t()) ::
-          {:ok, Mailbox.t()} | {:error, :recipient_not_found}
+          {:ok, Mailbox.t()} | {:error, :recipient_not_found | :ambiguous_recipient}
   def fetch_mailbox_by_recipient(term) when is_binary(term) do
-    normalized = term |> String.trim() |> String.downcase()
-
-    if normalized == "" do
-      {:error, :recipient_not_found}
-    else
-      case existing_mailbox_for(normalized) do
-        nil -> mailbox_for_user(normalized)
-        mailbox -> {:ok, mailbox}
-      end
+    case classify_recipient(term) do
+      :blank -> {:error, :recipient_not_found}
+      {:username, name} -> first_match([&user_by_username/1, &shared_by_handle/1], name)
+      {:email, email} -> first_match([&user_by_email/1, &shared_by_address/1], email)
+      {:bare, name} -> first_match([&shared_by_any/1, &user_by_username/1], name)
     end
   end
 
   def fetch_mailbox_by_recipient(_), do: {:error, :recipient_not_found}
 
-  # `name` is matched too so a shared mailbox can be addressed the way it is
-  # displayed ("Customer Support"), not only by its derived slug.
-  defp existing_mailbox_for(normalized) do
-    from(m in Mailbox,
-      where: m.status == "active",
-      where:
-        m.address == ^normalized or m.slug == ^normalized or
-          fragment("lower(?)", m.name) == ^normalized,
-      limit: 1
-    )
-    |> repo().one()
-  end
+  defp classify_recipient(term) do
+    case term |> String.trim() |> String.downcase() do
+      "" ->
+        :blank
 
-  defp mailbox_for_user(normalized) do
-    case find_active_user(normalized) do
-      nil ->
-        {:error, :recipient_not_found}
-
-      user ->
-        case ensure_user_mailbox(user) do
-          {:ok, mailbox} -> {:ok, mailbox}
-          # Creation failed (e.g. the address collides with a shared mailbox).
-          # Report it as unresolvable rather than leaking a changeset into a
-          # recipient list.
-          {:error, _reason} -> {:error, :recipient_not_found}
+      "@" <> name ->
+        case String.trim(name) do
+          "" -> :blank
+          name -> {:username, name}
         end
+
+      normalized ->
+        if String.contains?(normalized, "@"), do: {:email, normalized}, else: {:bare, normalized}
     end
   end
 
-  # `lower/1` on both sides rather than `ilike`: this is an equality match, and
-  # core stores emails as citext while `username` is a plain string.
-  defp find_active_user(normalized) do
-    from(u in User,
-      where: u.is_active == true,
-      where:
-        fragment("lower(?)", u.username) == ^normalized or
-          fragment("lower(?)", u.email) == ^normalized,
-      order_by: [asc: u.inserted_at],
-      limit: 1
-    )
-    |> repo().one()
+  # Each lookup answers {:ok, mailbox}, {:error, :ambiguous_recipient} or
+  # :none; the first that is not :none decides.
+  defp first_match(lookups, term) do
+    Enum.reduce_while(lookups, {:error, :recipient_not_found}, fn lookup, acc ->
+      case lookup.(term) do
+        :none -> {:cont, acc}
+        result -> {:halt, result}
+      end
+    end)
   end
+
+  defp shared_by_handle(term) do
+    shared_matching(term, fn q -> where(q, [m], m.slug == ^term) end)
+  end
+
+  defp shared_by_address(term) do
+    shared_matching(term, fn q -> where(q, [m], fragment("lower(?)", m.address) == ^term) end)
+  end
+
+  # `name` is matched too so a shared mailbox can be addressed the way it is
+  # displayed ("Customer Support"), not only by its derived slug.
+  defp shared_by_any(term) do
+    shared_matching(term, fn q ->
+      where(
+        q,
+        [m],
+        fragment("lower(?)", m.address) == ^term or m.slug == ^term or
+          fragment("lower(?)", m.name) == ^term
+      )
+    end)
+  end
+
+  # Slug and address are unique, so an exact hit on either wins; several
+  # mailboxes sharing a display name are ambiguous.
+  defp shared_matching(term, narrow) do
+    candidates =
+      from(m in Mailbox, where: m.status == "active" and m.kind == "shared")
+      |> narrow.()
+      |> repo().all()
+
+    exact =
+      Enum.find(candidates, &(&1.address && String.downcase(&1.address) == term)) ||
+        Enum.find(candidates, &(&1.slug == term))
+
+    case {exact, candidates} do
+      {%Mailbox{} = mailbox, _} -> {:ok, mailbox}
+      {nil, []} -> :none
+      {nil, [mailbox]} -> {:ok, mailbox}
+      {nil, _several} -> {:error, :ambiguous_recipient}
+    end
+  end
+
+  # `lower/1` on both sides rather than `ilike`: this is an equality match,
+  # and it stays one on cores where `username` is still a plain string.
+  defp user_by_username(term) do
+    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.username) == ^term) end)
+  end
+
+  defp user_by_email(term) do
+    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.email) == ^term) end)
+  end
+
+  defp users_matching(narrow) do
+    from(u in User, order_by: [asc: u.inserted_at])
+    |> narrow.()
+    |> Members.scope_query()
+    |> repo().all()
+    |> Members.keep()
+    |> case do
+      [] -> :none
+      [user] -> mailbox_for_user(user)
+      _several -> {:error, :ambiguous_recipient}
+    end
+  end
+
+  defp mailbox_for_user(user) do
+    case ensure_user_mailbox(user) do
+      {:ok, mailbox} ->
+        {:ok, mailbox}
+
+      # Creation failed. Report it as unresolvable rather than leaking a
+      # changeset into a recipient list.
+      {:error, _reason} ->
+        :none
+    end
+  end
+
+  @doc """
+  The handle that addresses `mailbox` from a To field — `"@username"` (or the
+  email, for a user without one) for a personal mailbox, the address or slug
+  for a shared one. `nil` for a personal mailbox whose owner is gone.
+
+  Used to prefill a reply; it always resolves back through
+  `fetch_mailbox_by_recipient/1` while the owner is a member.
+  """
+  @spec recipient_handle(Mailbox.t()) :: String.t() | nil
+  def recipient_handle(%Mailbox{kind: "user", owner_uuid: owner_uuid})
+      when is_binary(owner_uuid) do
+    case repo().get(User, owner_uuid) do
+      nil -> nil
+      user -> user_handle(user)
+    end
+  end
+
+  def recipient_handle(%Mailbox{kind: "user"}), do: nil
+  def recipient_handle(%Mailbox{} = mailbox), do: mailbox.address || mailbox.slug
+
+  @doc "A user's To-field handle: `\"@username\"`, or the email without one."
+  @spec user_handle(map()) :: String.t() | nil
+  def user_handle(%{username: username}) when is_binary(username) and username != "",
+    do: "@" <> username
+
+  def user_handle(%{email: email}), do: email
 
   @doc """
   Addressable recipients, for the compose field's suggestion list.
 
   Returns `%{handle: String.t(), label: String.t()}` — `handle` is what goes in
-  the To field and is guaranteed to resolve through
-  `fetch_mailbox_by_recipient/1`; `label` is the human description shown beside
-  it.
+  the To field and resolves through `fetch_mailbox_by_recipient/1`; `label`
+  is the human description shown beside it.
 
-  Covers **shared mailboxes and users**, not just existing mailboxes. Searching
-  only mailboxes is what made this useless: a colleague who had never opened
-  Inbox had no mailbox row and so never appeared, which is exactly the case
-  where a suggestion is most needed.
+  Offers **shared mailboxes and members** (`PhoenixKitInbox.Members`) — users
+  outside the recipient circle never appear. A user is offered as
+  `"@username"` with their name; their email is shown only when they have
+  no username, since it is then the handle itself.
 
-  Usernames are preferred as the handle because they are what people know each
-  other by; the email is shown in the label so an ambiguous display name can
-  still be told apart.
+  Covers users who have no mailbox yet: a colleague who never opened Inbox
+  is exactly the one a suggestion helps most.
   """
   @spec search_recipients(binary(), String.t(), keyword()) :: [
           %{handle: String.t(), label: String.t()}
@@ -230,14 +320,16 @@ defmodule PhoenixKitInbox.Mailboxes do
   end
 
   # The sender is excluded — a To field offering you yourself is noise, and
-  # messaging yourself is still possible by typing the handle.
+  # messaging yourself is still possible by typing the handle. A host rule
+  # can't be expressed in SQL, so with one the limit applies after it.
   defp user_suggestions(user_uuid, term, limit) do
     query =
       from(u in User,
-        where: u.is_active == true and u.uuid != ^user_uuid,
-        order_by: [asc: u.username],
-        limit: ^limit
+        where: u.uuid != ^user_uuid,
+        order_by: [asc: u.username]
       )
+
+    query = if Members.host_filter?(), do: query, else: limit(query, ^limit)
 
     query
     |> filter_by_term(term, fn q, pattern ->
@@ -248,12 +340,17 @@ defmodule PhoenixKitInbox.Mailboxes do
           ilike(u.first_name, ^pattern) or ilike(u.last_name, ^pattern)
       )
     end)
+    |> Members.scope_query()
     |> repo().all()
-    |> Enum.map(fn user ->
-      %{handle: user.username || user.email, label: suggestion_label(user)}
-    end)
+    |> Members.keep()
+    |> Enum.take(limit)
+    |> Enum.map(&%{handle: user_handle(&1), label: suggestion_label(&1)})
     |> Enum.reject(&is_nil(&1.handle))
   end
+
+  defp suggestion_label(%{username: username} = user)
+       when is_binary(username) and username != "",
+       do: user_display_name(user)
 
   defp suggestion_label(user) do
     name = user_display_name(user)
@@ -351,31 +448,96 @@ defmodule PhoenixKitInbox.Mailboxes do
   # ── shared mailboxes ────────────────────────────────────────────────────────
 
   @doc """
-  Creates a shared mailbox owned by `owner_uuid`.
+  Whether `scope` may create shared mailboxes and set their addresses — the
+  `inbox.manage_shared` sub-permission, while the module is enabled.
+  """
+  @spec can_manage_shared?(Scope.t() | nil) :: boolean()
+  def can_manage_shared?(scope), do: Scope.can?(scope, @manage_shared)
+
+  @doc """
+  Creates a shared mailbox owned by the scope's user.
+
+  Requires `inbox.manage_shared` (`{:error, :forbidden}` otherwise) — checked
+  here rather than only in the UI, so a forged form submit or a host call
+  can't create one either. There is deliberately no variant taking a bare
+  owner uuid.
 
   `attrs` needs at least `:name`; `:slug` is derived from the name when absent.
+  An `:address` must be unique among shared mailboxes (regardless of case) and
+  may not be a user's login email.
   """
-  @spec create_shared_mailbox(binary(), map()) ::
-          {:ok, Mailbox.t()} | {:error, Ecto.Changeset.t()}
-  def create_shared_mailbox(owner_uuid, attrs) when is_binary(owner_uuid) do
-    attrs =
-      attrs
-      |> normalize_attrs()
-      |> Map.put("kind", "shared")
-      |> Map.put("owner_uuid", owner_uuid)
-      |> put_default_slug()
+  @spec create_shared_mailbox(Scope.t(), map()) ::
+          {:ok, Mailbox.t()} | {:error, :forbidden | Ecto.Changeset.t()}
+  def create_shared_mailbox(%Scope{} = scope, attrs) when is_map(attrs) do
+    with {:ok, owner_uuid} <- scope_user_uuid(scope),
+         :ok <- authorize_manage_shared(scope) do
+      attrs =
+        attrs
+        |> normalize_attrs()
+        |> Map.put("kind", "shared")
+        |> Map.put("owner_uuid", owner_uuid)
+        |> put_default_slug()
 
-    %Mailbox{}
-    |> Mailbox.changeset(attrs)
-    |> repo().insert()
+      %Mailbox{}
+      |> Mailbox.changeset(attrs)
+      |> validate_address_not_a_user_email()
+      |> repo().insert()
+    end
   end
 
-  @doc "Updates a mailbox's name/address/settings."
-  @spec update_mailbox(Mailbox.t(), map()) :: {:ok, Mailbox.t()} | {:error, Ecto.Changeset.t()}
-  def update_mailbox(%Mailbox{} = mailbox, attrs) do
-    mailbox
-    |> Mailbox.changeset(normalize_attrs(attrs))
-    |> repo().update()
+  @doc """
+  Updates a mailbox's `name`, `address` or `settings` — nothing else
+  (ownership, kind and status have their own paths).
+
+  The scope needs the `"inbox"` permission (`{:error, :forbidden}`) and
+  `"admin"` on the mailbox (`{:error, :mailbox_access_denied}`); changing the
+  `address` also needs `inbox.manage_shared` (`{:error, :forbidden}`).
+  """
+  @spec update_mailbox(Scope.t(), Mailbox.t(), map()) ::
+          {:ok, Mailbox.t()}
+          | {:error, :forbidden | :mailbox_access_denied | Ecto.Changeset.t()}
+  def update_mailbox(%Scope{} = scope, %Mailbox{} = mailbox, attrs) when is_map(attrs) do
+    changeset =
+      Mailbox.changeset(
+        mailbox,
+        attrs |> normalize_attrs() |> Map.take(~w(name address settings))
+      )
+
+    with {:ok, _fresh} <- authorize_scope(scope, mailbox, "admin"),
+         :ok <- authorize_address_change(scope, changeset) do
+      changeset
+      |> validate_address_not_a_user_email()
+      |> repo().update()
+    end
+  end
+
+  defp authorize_manage_shared(scope) do
+    if can_manage_shared?(scope), do: :ok, else: {:error, :forbidden}
+  end
+
+  defp authorize_address_change(scope, changeset) do
+    if Ecto.Changeset.changed?(changeset, :address),
+      do: authorize_manage_shared(scope),
+      else: :ok
+  end
+
+  # A shared address equal to someone's login email would make that string
+  # mean two different recipients. Personal mailboxes are exempt — their
+  # address *is* their owner's email.
+  defp validate_address_not_a_user_email(changeset) do
+    address = Ecto.Changeset.get_change(changeset, :address)
+
+    if Ecto.Changeset.get_field(changeset, :kind) == "shared" and is_binary(address) and
+         user_email_taken?(address) do
+      Ecto.Changeset.add_error(changeset, :address, "is a user's login email")
+    else
+      changeset
+    end
+  end
+
+  defp user_email_taken?(address) do
+    from(u in User, where: fragment("lower(?)", u.email) == ^String.downcase(address))
+    |> repo().exists?()
   end
 
   @doc """
@@ -383,30 +545,103 @@ defmodule PhoenixKitInbox.Mailboxes do
   sentinel on the existing `status` column, never a `deleted_at` timestamp).
 
   Personal mailboxes cannot be archived: a user always has somewhere for mail
-  to land.
+  to land. Needs the `"inbox"` permission and `"admin"` on the mailbox.
   """
-  @spec archive_mailbox(Mailbox.t()) ::
-          {:ok, Mailbox.t()} | {:error, Ecto.Changeset.t() | :cannot_archive_personal_mailbox}
-  def archive_mailbox(%Mailbox{kind: "user"}), do: {:error, :cannot_archive_personal_mailbox}
+  @spec archive_mailbox(Scope.t(), Mailbox.t()) ::
+          {:ok, Mailbox.t()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :cannot_archive_personal_mailbox
+             | :forbidden
+             | :mailbox_access_denied}
+  def archive_mailbox(%Scope{} = scope, %Mailbox{} = mailbox) do
+    with {:ok, fresh} <- authorize_scope(scope, mailbox, "admin") do
+      case fresh do
+        %Mailbox{kind: "user"} ->
+          {:error, :cannot_archive_personal_mailbox}
 
-  def archive_mailbox(%Mailbox{} = mailbox) do
-    mailbox
-    |> Mailbox.changeset(%{"status" => "archived"})
-    |> repo().update()
+        _ ->
+          fresh
+          |> Mailbox.changeset(%{"status" => "archived"})
+          |> repo().update()
+      end
+    end
   end
 
-  @doc "Reverses `archive_mailbox/1`."
-  @spec restore_mailbox(Mailbox.t()) :: {:ok, Mailbox.t()} | {:error, Ecto.Changeset.t()}
-  def restore_mailbox(%Mailbox{} = mailbox) do
-    mailbox
-    |> Mailbox.changeset(%{"status" => "active"})
-    |> repo().update()
+  @doc "Reverses `archive_mailbox/2`. Same permissions."
+  @spec restore_mailbox(Scope.t(), Mailbox.t()) ::
+          {:ok, Mailbox.t()} | {:error, Ecto.Changeset.t() | :forbidden | :mailbox_access_denied}
+  def restore_mailbox(%Scope{} = scope, %Mailbox{} = mailbox) do
+    with {:ok, fresh} <- authorize_scope(scope, mailbox, "admin") do
+      fresh
+      |> Mailbox.changeset(%{"status" => "active"})
+      |> repo().update()
+    end
   end
 
   @doc "Changeset for mailbox forms."
   @spec change_mailbox(Mailbox.t(), map()) :: Ecto.Changeset.t()
   def change_mailbox(%Mailbox{} = mailbox, attrs \\ %{}) do
     Mailbox.changeset(mailbox, normalize_attrs(attrs))
+  end
+
+  # ── account deletion ────────────────────────────────────────────────────────
+
+  @doc """
+  Readies `user_uuid`'s mailboxes for the deletion of their account — called
+  by `PhoenixKitInbox.before_user_delete/1` while the user row still exists.
+
+    * their personal mailbox is archived (personal mailboxes otherwise can't
+      be); its mail stays, readable by nobody until an admin restores it
+    * each shared mailbox they own passes to its oldest `"admin"` grantee
+      whose account is active, and that grant row goes (ownership already
+      means admin); with no such grantee it is archived
+
+  The deletion then clears `owner_uuid` on whatever is still theirs (V02:
+  `ON DELETE SET NULL`). Those foreign keys are what keep the mail; this is
+  the best-effort part that leaves no live mailbox without an owner.
+  """
+  @spec handle_user_deletion(binary()) :: :ok
+  def handle_user_deletion(user_uuid) when is_binary(user_uuid) do
+    repo().transaction(fn ->
+      from(m in Mailbox, where: m.owner_uuid == ^user_uuid and m.kind == "user")
+      |> repo().all()
+      |> Enum.each(&force_archive/1)
+
+      from(m in Mailbox, where: m.owner_uuid == ^user_uuid and m.kind == "shared")
+      |> repo().all()
+      |> Enum.each(&hand_over(&1, user_uuid))
+    end)
+
+    :ok
+  end
+
+  defp hand_over(mailbox, leaving_uuid) do
+    successor =
+      from(g in MailboxGrant,
+        join: u in User,
+        on: u.uuid == g.user_uuid,
+        where: g.mailbox_uuid == ^mailbox.uuid and g.access == "admin",
+        where: g.user_uuid != ^leaving_uuid and u.is_active == true,
+        order_by: [asc: g.inserted_at, asc: g.uuid],
+        limit: 1
+      )
+      |> repo().one()
+
+    case successor do
+      nil ->
+        force_archive(mailbox)
+
+      grant ->
+        mailbox |> Ecto.Changeset.change(owner_uuid: grant.user_uuid) |> repo().update!()
+        repo().delete!(grant)
+    end
+  end
+
+  # Straight to the column: `archive_mailbox/1` refuses personal mailboxes,
+  # and an ownerless mailbox wouldn't pass `Mailbox.changeset/2`.
+  defp force_archive(mailbox) do
+    mailbox |> Ecto.Changeset.change(status: "archived") |> repo().update!()
   end
 
   # ── grants ──────────────────────────────────────────────────────────────────
@@ -422,16 +657,34 @@ defmodule PhoenixKitInbox.Mailboxes do
   end
 
   @doc """
-  Grants (or re-grants) `user_uuid` access to a mailbox.
+  Grants (or re-grants) `user_uuid` access to a shared mailbox, recorded as
+  granted by the scope's user.
+
+  Needs the `"inbox"` permission and `"admin"` on the mailbox. Personal
+  mailboxes take no grants (`{:error, :cannot_grant_personal_mailbox}`).
 
   Upsert semantics: re-granting an existing user simply changes their level,
   which is what "set access to write" means in the UI.
   """
-  @spec grant_access(binary(), binary(), access(), keyword()) ::
-          {:ok, MailboxGrant.t()} | {:error, Ecto.Changeset.t()}
-  def grant_access(mailbox_uuid, user_uuid, access, opts \\ []) do
-    granted_by = Keyword.get(opts, :granted_by_uuid)
+  @spec grant_access(Scope.t(), Mailbox.t(), binary(), access()) ::
+          {:ok, MailboxGrant.t()}
+          | {:error,
+             Ecto.Changeset.t()
+             | :cannot_grant_personal_mailbox
+             | :forbidden
+             | :mailbox_access_denied}
+  def grant_access(%Scope{} = scope, %Mailbox{} = mailbox, user_uuid, access) do
+    with {:ok, fresh} <- authorize_scope(scope, mailbox, "admin"),
+         :ok <- ensure_shared(fresh) do
+      {:ok, granted_by} = scope_user_uuid(scope)
+      put_grant(fresh.uuid, user_uuid, access, granted_by)
+    end
+  end
 
+  defp ensure_shared(%Mailbox{kind: "shared"}), do: :ok
+  defp ensure_shared(_), do: {:error, :cannot_grant_personal_mailbox}
+
+  defp put_grant(mailbox_uuid, user_uuid, access, granted_by) do
     attrs = %{
       mailbox_uuid: mailbox_uuid,
       user_uuid: user_uuid,
@@ -439,20 +692,38 @@ defmodule PhoenixKitInbox.Mailboxes do
       granted_by_uuid: granted_by
     }
 
-    existing = repo().get_by(MailboxGrant, mailbox_uuid: mailbox_uuid, user_uuid: user_uuid)
+    # A malformed uuid falls through to the changeset, which rejects it.
+    existing =
+      case Ecto.UUID.cast(user_uuid) do
+        {:ok, uuid} -> repo().get_by(MailboxGrant, mailbox_uuid: mailbox_uuid, user_uuid: uuid)
+        :error -> nil
+      end
 
     (existing || %MailboxGrant{})
     |> MailboxGrant.changeset(attrs)
     |> then(&if existing, do: repo().update(&1), else: repo().insert(&1))
   end
 
-  @doc "Removes a user's grant on a mailbox. Idempotent."
-  @spec revoke_access(binary(), binary()) :: :ok
-  def revoke_access(mailbox_uuid, user_uuid) do
-    from(g in MailboxGrant, where: g.mailbox_uuid == ^mailbox_uuid and g.user_uuid == ^user_uuid)
-    |> repo().delete_all()
+  @doc """
+  Removes a user's grant on a mailbox. Idempotent. Needs the `"inbox"`
+  permission and `"admin"` on the mailbox.
+  """
+  @spec revoke_access(Scope.t(), Mailbox.t(), binary()) ::
+          :ok | {:error, :forbidden | :mailbox_access_denied}
+  def revoke_access(%Scope{} = scope, %Mailbox{} = mailbox, user_uuid) do
+    with {:ok, fresh} <- authorize_scope(scope, mailbox, "admin") do
+      case Ecto.UUID.cast(user_uuid) do
+        {:ok, uuid} ->
+          from(g in MailboxGrant, where: g.mailbox_uuid == ^fresh.uuid and g.user_uuid == ^uuid)
+          |> repo().delete_all()
 
-    :ok
+        # Not a uuid, so nobody holds a grant under it.
+        :error ->
+          :ok
+      end
+
+      :ok
+    end
   end
 
   @doc """
@@ -462,7 +733,9 @@ defmodule PhoenixKitInbox.Mailboxes do
   own grants table.
   """
   @spec access_level(Mailbox.t(), binary()) :: access() | nil
-  def access_level(%Mailbox{owner_uuid: owner}, user_uuid) when owner == user_uuid, do: "admin"
+  def access_level(%Mailbox{owner_uuid: owner}, user_uuid)
+      when is_binary(user_uuid) and owner == user_uuid,
+      do: "admin"
 
   def access_level(%Mailbox{uuid: mailbox_uuid}, user_uuid) when is_binary(user_uuid) do
     from(g in MailboxGrant,
@@ -487,6 +760,38 @@ defmodule PhoenixKitInbox.Mailboxes do
       {:error, :mailbox_access_denied}
     end
   end
+
+  @doc """
+  The check every caller-acting function runs: the scope's user holds the
+  `"inbox"` permission (`{:error, :forbidden}`) and at least `required` on the
+  mailbox (`{:error, :mailbox_access_denied}`).
+
+  The mailbox is re-read, so a stale or hand-built struct can't grant more
+  than the stored row does; the fresh row is returned for the caller to act
+  on (`{:error, :mailbox_not_found}` if it is gone).
+  """
+  @spec authorize_scope(Scope.t(), Mailbox.t(), access()) ::
+          {:ok, Mailbox.t()}
+          | {:error, :forbidden | :mailbox_access_denied | :mailbox_not_found}
+  def authorize_scope(%Scope{} = scope, %Mailbox{uuid: uuid}, required) do
+    with {:ok, user_uuid} <- scope_user_uuid(scope),
+         :ok <- authorize_inbox(scope),
+         {:ok, fresh} <- fetch_mailbox(uuid),
+         :ok <- authorize(fresh, user_uuid, required) do
+      {:ok, fresh}
+    end
+  end
+
+  def authorize_scope(_scope, _mailbox, _required), do: {:error, :forbidden}
+
+  defp authorize_inbox(scope) do
+    if Scope.can?(scope, "inbox"), do: :ok, else: {:error, :forbidden}
+  end
+
+  @doc "The scope's user uuid, or `{:error, :forbidden}` for an anonymous scope."
+  @spec scope_user_uuid(Scope.t() | term()) :: {:ok, binary()} | {:error, :forbidden}
+  def scope_user_uuid(%Scope{user: %{uuid: uuid}}) when is_binary(uuid), do: {:ok, uuid}
+  def scope_user_uuid(_), do: {:error, :forbidden}
 
   # ── counts ──────────────────────────────────────────────────────────────────
 

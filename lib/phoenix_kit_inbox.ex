@@ -123,13 +123,33 @@ defmodule PhoenixKitInbox do
   Permission metadata for the roles/permissions matrix.
 
   The `:key` MUST match `module_key/0` — PhoenixKit validates this at startup.
+
+  The base `"inbox"` key opens Inbox: reading and writing internal mail from
+  the user's own mailbox and the mailboxes they hold a grant on. Two
+  sub-permissions, stored by core as `"inbox.<key>"` and checked by this
+  module with `PhoenixKit.Users.Auth.Scope.can?/2`, add capabilities on top:
+
+    * `inbox.send_external` — write to addresses outside the application
+    * `inbox.manage_shared` — create shared mailboxes and set their addresses
   """
   def permission_metadata do
     %{
       key: module_key(),
       label: "Inbox",
       icon: "hero-inbox-arrow-down",
-      description: "Internal mailboxes — send and receive messages between users"
+      description: "Internal mailboxes — send and receive messages between users",
+      sub_permissions: [
+        %{
+          key: "send_external",
+          label: "Send to external addresses",
+          description: "Write to email addresses outside this application"
+        },
+        %{
+          key: "manage_shared",
+          label: "Manage shared mailboxes",
+          description: "Create shared mailboxes and set their addresses"
+        }
+      ]
     }
   end
 
@@ -196,6 +216,15 @@ defmodule PhoenixKitInbox do
       }
     ]
   end
+
+  @impl PhoenixKit.Module
+  @doc """
+  Called by core before a user is deleted: archives their personal mailbox
+  and hands each shared mailbox they own to its oldest active admin grantee
+  (or archives it). The mail itself is kept by the foreign keys either way — see
+  `PhoenixKitInbox.Mailboxes.handle_user_deletion/1`.
+  """
+  def before_user_delete(user_uuid), do: PhoenixKitInbox.Mailboxes.handle_user_deletion(user_uuid)
 
   @impl PhoenixKit.Module
   @doc "OTP apps whose templates Tailwind should scan for CSS classes."

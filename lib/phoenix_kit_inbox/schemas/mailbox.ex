@@ -11,6 +11,13 @@ defmodule PhoenixKitInbox.Schemas.Mailbox do
       user who created it; everyone else reaches it through a
       `PhoenixKitInbox.Schemas.MailboxGrant`.
 
+  `owner_uuid` is required on creation but nullable in the table (V02): when
+  the owner's account is deleted the mailbox and its mail stay, ownerless and
+  archived (see `PhoenixKitInbox.before_user_delete/1`).
+
+  A shared mailbox's `address` is unique regardless of case and may not be a
+  user's login email (`PhoenixKitInbox.Mailboxes` checks the latter on save).
+
   `address` is the mailbox's identity inside the app (`"support@example.com"`,
   or the owner's login email for a user mailbox). Inbox is an **internal**
   messaging system — nothing is sent to the outside world through this
@@ -67,6 +74,10 @@ defmodule PhoenixKitInbox.Schemas.Mailbox do
       message: "must be lowercase letters, digits and hyphens"
     )
     |> unique_constraint(:slug, name: :phoenix_kit_inbox_mailboxes_slug_index)
+    |> unique_constraint(:address,
+      name: :phoenix_kit_inbox_mailboxes_shared_address_index,
+      message: "is already used by another shared mailbox"
+    )
     |> unique_constraint(:owner_uuid, name: :phoenix_kit_inbox_mailboxes_user_owner_index)
   end
 

@@ -80,9 +80,13 @@ repo_available =
       # Then this module's own tables, through the same coordinator a real host
       # runs via `mix phoenix_kit.update` — so the suite can never pass against
       # a schema that differs from what installs get.
+      #
+      # One migration number per module version, the way a host gets one
+      # generated migration per update: an existing test DB at an older
+      # version is stepped up instead of being skipped as "already migrated".
       Ecto.Migrator.up(
         PhoenixKitInbox.Test.Repo,
-        20_260_802_000_001,
+        20_260_802_000_000 + PhoenixKitInbox.Migrations.current_version(),
         PhoenixKitInbox.Test.Migration,
         log: false
       )

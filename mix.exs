@@ -81,8 +81,11 @@ defmodule PhoenixKitInbox.MixProject do
     [
       # PhoenixKit provides the Module behaviour, Settings API, RepoHelper, and
       # the migration helpers this module's own versioned migrations call into
-      # (PhoenixKit.Migrations.Postgres.Helpers).
-      pk_dep(:phoenix_kit, "~> 2.0"),
+      # (PhoenixKit.Migrations.Postgres.Helpers). 2.16 is the first release
+      # with everything used here: sub_permissions and Scope.can?/2 (1.7.194),
+      # the before_user_delete/1 callback (2.4.0), Activity.log permanent:
+      # (2.16.0).
+      pk_dep(:phoenix_kit, "~> 2.16"),
 
       # LiveView for the admin mailbox UI.
       {:phoenix_live_view, "~> 1.1"},
