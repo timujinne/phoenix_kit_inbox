@@ -20,6 +20,8 @@ defmodule PhoenixKitInbox.Mailboxes do
   queries of their own.
   """
 
+  use Gettext, backend: PhoenixKitInbox.Gettext
+
   import Ecto.Query
 
   alias PhoenixKit.Users.Auth.Scope
@@ -441,7 +443,7 @@ defmodule PhoenixKitInbox.Mailboxes do
       full_name != "" -> full_name
       is_binary(Map.get(user, :username)) and user.username != "" -> user.username
       is_binary(Map.get(user, :email)) -> user.email |> String.split("@") |> hd()
-      true -> "User " <> String.slice(to_string(Map.get(user, :uuid)), 0, 8)
+      true -> gettext("User %{id}", id: String.slice(to_string(Map.get(user, :uuid)), 0, 8))
     end
   end
 

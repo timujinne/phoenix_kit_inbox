@@ -14,7 +14,7 @@ defmodule PhoenixKitInbox.Errors do
       "Message not found."
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Utils.Format
 
@@ -55,7 +55,13 @@ defmodule PhoenixKitInbox.Errors do
     do: gettext("A file can't be attached: it is in the trash or no longer available.")
 
   def message({:too_many_attachments, max}),
-    do: gettext("A message can carry at most %{max} files.", max: max)
+    do:
+      ngettext(
+        "A message can carry at most %{max} file.",
+        "A message can carry at most %{max} files.",
+        max,
+        max: max
+      )
 
   def message({:attachment_too_large, filename}),
     do: gettext("%{filename} is larger than the upload limit.", filename: filename)

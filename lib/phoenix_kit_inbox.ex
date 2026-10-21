@@ -51,6 +51,7 @@ defmodule PhoenixKitInbox do
   """
 
   use PhoenixKit.Module
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Settings
@@ -140,19 +141,21 @@ defmodule PhoenixKitInbox do
   def permission_metadata do
     %{
       key: module_key(),
-      label: "Inbox",
+      label: gettext_noop("Inbox"),
       icon: "hero-inbox-arrow-down",
-      description: "Internal mailboxes — send and receive messages between users",
+      description: gettext_noop("Internal mailboxes — send and receive messages between users"),
+      gettext_backend: PhoenixKitInbox.Gettext,
+      gettext_domain: "default",
       sub_permissions: [
         %{
           key: "send_external",
-          label: "Send to external addresses",
-          description: "Write to email addresses outside this application"
+          label: gettext_noop("Send to external addresses"),
+          description: gettext_noop("Write to email addresses outside this application")
         },
         %{
           key: "manage_shared",
-          label: "Manage shared mailboxes",
-          description: "Create shared mailboxes and set their addresses"
+          label: gettext_noop("Manage shared mailboxes"),
+          description: gettext_noop("Create shared mailboxes and set their addresses")
         }
       ]
     }
@@ -173,7 +176,8 @@ defmodule PhoenixKitInbox do
     [
       %Tab{
         id: :admin_inbox,
-        label: "Inbox",
+        label: gettext_noop("Inbox"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-inbox-arrow-down",
         path: "inbox",
         priority: 645,
@@ -187,7 +191,8 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_messages,
-        label: "Messages",
+        label: gettext_noop("Messages"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-envelope",
         path: "inbox",
         priority: 646,
@@ -200,7 +205,8 @@ defmodule PhoenixKitInbox do
       # Hidden: reachable from the "New message" button, not the sidebar.
       %Tab{
         id: :admin_inbox_compose,
-        label: "Compose",
+        label: gettext_noop("Compose"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-pencil-square",
         path: "inbox/compose",
         priority: 647,
@@ -212,7 +218,8 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_mailboxes,
-        label: "Mailboxes",
+        label: gettext_noop("Mailboxes"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-user-group",
         path: "inbox/mailboxes",
         priority: 648,
@@ -223,7 +230,8 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_settings,
-        label: "Settings",
+        label: gettext_noop("Settings"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-cog-6-tooth",
         path: "inbox/settings",
         priority: 649,
@@ -254,7 +262,8 @@ defmodule PhoenixKitInbox do
     [
       Tab.new!(
         id: :inbox_user_mail,
-        label: "Mail",
+        label: gettext_noop("Mail"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-envelope",
         path: "/admin/inbox",
         priority: 640,
@@ -265,7 +274,8 @@ defmodule PhoenixKitInbox do
       ),
       Tab.new!(
         id: :inbox_user_settings,
-        label: "Mail settings",
+        label: gettext_noop("Mail settings"),
+        gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-cog-6-tooth",
         path: "inbox-settings",
         priority: 641,
@@ -462,7 +472,7 @@ defmodule PhoenixKitInbox do
     |> Map.new(fn {uuid, subject, mailbox_uuid} ->
       {uuid,
        %{
-         title: subject || "(no subject)",
+         title: subject || gettext("(no subject)"),
          path: PhoenixKitInbox.Paths.raw_message_path(mailbox_uuid, uuid)
        }}
     end)

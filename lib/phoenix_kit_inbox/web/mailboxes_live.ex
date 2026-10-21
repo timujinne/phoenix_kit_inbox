@@ -20,6 +20,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   """
 
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitInbox.Errors
@@ -34,8 +35,8 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext_str("Mailboxes"))
-      |> assign(:page_subtitle, gettext_str("Shared mailboxes and who can use them"))
+      |> assign(:page_title, gettext("Mailboxes"))
+      |> assign(:page_subtitle, gettext("Shared mailboxes and who can use them"))
       |> assign(:module_access, scope && Scope.has_module_access?(scope, "inbox"))
       |> assign(:scope, scope)
       |> assign(:can_manage_shared, Mailboxes.can_manage_shared?(scope))
@@ -74,7 +75,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
          socket
          |> assign(:form, to_form(Mailboxes.change_mailbox(%Mailbox{})))
          |> load_mailboxes()
-         |> put_flash(:info, gettext_str("Mailbox “%{name}” created.", name: mailbox.name))}
+         |> put_flash(:info, gettext("Mailbox “%{name}” created.", name: mailbox.name))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :form, to_form(changeset))}
@@ -99,7 +100,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
       {:noreply,
        socket
        |> assign(:grants, Mailboxes.list_grants(mailbox.uuid))
-       |> put_flash(:info, gettext_str("Access granted."))}
+       |> put_flash(:info, gettext("Access granted."))}
     else
       {:error, reason} -> {:noreply, put_flash(socket, :error, Errors.message(reason))}
     end
@@ -111,7 +112,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
       {:noreply,
        socket
        |> assign(:grants, Mailboxes.list_grants(mailbox.uuid))
-       |> put_flash(:info, gettext_str("Access revoked."))}
+       |> put_flash(:info, gettext("Access revoked."))}
     else
       {:error, reason} -> {:noreply, put_flash(socket, :error, Errors.message(reason))}
     end
@@ -123,7 +124,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
       {:noreply,
        socket
        |> load_mailboxes()
-       |> put_flash(:info, gettext_str("Mailbox archived."))}
+       |> put_flash(:info, gettext("Mailbox archived."))}
     else
       {:error, reason} -> {:noreply, put_flash(socket, :error, Errors.message(reason))}
     end
@@ -147,13 +148,13 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     <div class="flex flex-col px-4 py-6 gap-6">
       <div :if={not @module_access} class="alert alert-warning">
         <.icon name="hero-lock-closed" class="w-5 h-5" />
-        <span>{gettext_str("You don't have permission to use Inbox.")}</span>
+        <span>{gettext("You don't have permission to use Inbox.")}</span>
       </div>
 
       <div :if={@module_access} class="flex flex-col gap-6">
         <.link navigate={Paths.inbox()} class="btn btn-ghost btn-sm self-start">
           <.icon name="hero-arrow-left" class="w-4 h-4" />
-          {gettext_str("Back to mailbox")}
+          {gettext("Back to mailbox")}
         </.link>
 
         <.create_form :if={@can_manage_shared} form={@form} />
@@ -175,7 +176,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     ~H"""
     <div class="card bg-base-100 shadow max-w-2xl">
       <div class="card-body gap-3">
-        <h2 class="card-title text-base">{gettext_str("New shared mailbox")}</h2>
+        <h2 class="card-title text-base">{gettext("New shared mailbox")}</h2>
 
         <.form
           for={@form}
@@ -187,26 +188,26 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
           <.input
             field={@form[:name]}
             type="text"
-            label={gettext_str("Name")}
-            placeholder={gettext_str("Support")}
+            label={gettext("Name")}
+            placeholder={gettext("Support")}
           />
           <.input
             field={@form[:slug]}
             type="text"
-            label={gettext_str("Slug")}
-            placeholder={gettext_str("Derived from the name when left blank")}
+            label={gettext("Slug")}
+            placeholder={gettext("Derived from the name when left blank")}
           />
           <.input
             field={@form[:address]}
             type="text"
-            label={gettext_str("Address")}
+            label={gettext("Address")}
             placeholder="support@example.com"
           />
 
           <div class="card-actions justify-end">
             <button type="submit" class="btn btn-primary btn-sm">
               <.icon name="hero-plus" class="w-4 h-4" />
-              {gettext_str("Create mailbox")}
+              {gettext("Create mailbox")}
             </button>
           </div>
         </.form>
@@ -225,16 +226,16 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     ~H"""
     <div class="card bg-base-100 shadow">
       <div class="card-body gap-3">
-        <h2 class="card-title text-base">{gettext_str("Shared mailboxes")}</h2>
+        <h2 class="card-title text-base">{gettext("Shared mailboxes")}</h2>
 
         <div :if={@mailboxes == []}>
           <.empty_state
             icon="hero-user-group"
-            title={gettext_str("No shared mailboxes yet.")}
+            title={gettext("No shared mailboxes yet.")}
             description={
               if(@can_create,
-                do: gettext_str("Create one above to let a team share an address."),
-                else: gettext_str("Shared mailboxes you are given access to appear here.")
+                do: gettext("Create one above to let a team share an address."),
+                else: gettext("Shared mailboxes you are given access to appear here.")
               )
             }
           />
@@ -244,10 +245,10 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
           <table class="table table-sm">
             <thead>
               <tr>
-                <th>{gettext_str("Name")}</th>
-                <th>{gettext_str("Address")}</th>
-                <th>{gettext_str("Your access")}</th>
-                <th class="text-right">{gettext_str("Actions")}</th>
+                <th>{gettext("Name")}</th>
+                <th>{gettext("Address")}</th>
+                <th>{gettext("Your access")}</th>
+                <th class="text-right">{gettext("Actions")}</th>
               </tr>
             </thead>
             <tbody>
@@ -261,7 +262,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
                       navigate={Paths.inbox(mailbox: mailbox.uuid)}
                       class="btn btn-ghost btn-xs"
                     >
-                      {gettext_str("Open")}
+                      {gettext("Open")}
                     </.link>
                     <button
                       :if={access == "admin"}
@@ -269,16 +270,16 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
                       phx-click="toggle_grants"
                       phx-value-uuid={mailbox.uuid}
                     >
-                      {gettext_str("Access")}
+                      {gettext("Access")}
                     </button>
                     <button
                       :if={access == "admin"}
                       class="btn btn-ghost btn-xs text-error"
                       phx-click="archive"
                       phx-value-uuid={mailbox.uuid}
-                      data-confirm={gettext_str("Archive this mailbox?")}
+                      data-confirm={gettext("Archive this mailbox?")}
                     >
-                      {gettext_str("Archive")}
+                      {gettext("Archive")}
                     </button>
                   </td>
                 </tr>
@@ -311,42 +312,37 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
             phx-click="revoke"
             phx-value-user_uuid={grant.user_uuid}
           >
-            {gettext_str("Revoke")}
+            {gettext("Revoke")}
           </button>
         </li>
       </ul>
 
       <p :if={@grants == []} class="text-sm text-base-content/60">
-        {gettext_str("Only you can use this mailbox so far.")}
+        {gettext("Only you can use this mailbox so far.")}
       </p>
 
       <.form for={@grant_form} phx-submit="grant" class="flex flex-wrap items-end gap-2">
         <.input
           field={@grant_form[:user_uuid]}
           type="text"
-          label={gettext_str("User UUID")}
+          label={gettext("User UUID")}
           class="input-sm"
         />
         <.select
           name="access"
           value="read"
           options={[
-            {gettext_str("Read"), "read"},
-            {gettext_str("Write"), "write"},
-            {gettext_str("Admin"), "admin"}
+            {gettext("Read"), "read"},
+            {gettext("Write"), "write"},
+            {gettext("Admin"), "admin"}
           ]}
           class="select-sm"
         />
         <button type="submit" class="btn btn-primary btn-sm">
-          {gettext_str("Grant access")}
+          {gettext("Grant access")}
         </button>
       </.form>
     </div>
     """
   end
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
-
-  defp gettext_str(msgid, bindings),
-    do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid, bindings)
 end

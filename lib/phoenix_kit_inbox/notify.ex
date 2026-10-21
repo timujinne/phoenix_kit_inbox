@@ -27,9 +27,14 @@ defmodule PhoenixKitInbox.Notify do
   `phoenix_kit_emails` runs, it logs them like any other send.
   """
 
+  use Gettext, backend: PhoenixKitInbox.Gettext
+
+  import Ecto.Query, only: [from: 2]
+
   require Logger
 
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKit.Utils.RecipientLocale
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
@@ -101,9 +106,12 @@ defmodule PhoenixKitInbox.Notify do
   end
 
   defp notify_recipient(message, sender, recipient_mailbox) do
-    recipient_mailbox
-    |> readers()
-    |> Enum.each(&log_activity(message, sender, recipient_mailbox, &1))
+    reader_uuids = readers(recipient_mailbox)
+    locales = reader_locales(reader_uuids)
+
+    Enum.each(reader_uuids, fn reader ->
+      log_activity(message, sender, recipient_mailbox, reader, Map.fetch!(locales, reader))
+    end)
   end
 
   # Everyone who reads the mailbox: its owner and, for a shared one, every
@@ -127,7 +135,7 @@ defmodule PhoenixKitInbox.Notify do
   # The canonical PhoenixKit pattern: you never write to the notifications
   # table. You log an activity with a `target_uuid`, and core turns it into that
   # user's notification (when target_uuid != actor_uuid).
-  defp log_activity(message, sender, recipient_mailbox, target_uuid) do
+  defp log_activity(message, sender, recipient_mailbox, target_uuid, locale) do
     if Code.ensure_loaded?(PhoenixKit.Activity) do
       PhoenixKit.Activity.log(%{
         action: "inbox.message_received",
@@ -140,7 +148,7 @@ defmodule PhoenixKitInbox.Notify do
         metadata: %{
           "subject" => message.subject,
           "sender_mailbox" => sender.name,
-          "notification_text" => notification_text(message, sender),
+          "notification_text" => notification_text(message, sender, locale),
           "notification_icon" => "hero-envelope",
           # Raw path on purpose — core prefixes stored notification links
           # itself, and a pre-prefixed one comes out doubled.
@@ -154,16 +162,48 @@ defmodule PhoenixKitInbox.Notify do
       :error
   end
 
-  defp notification_text(message, sender) do
-    subject =
-      case message.subject do
-        nil -> "(no subject)"
-        "" -> "(no subject)"
-        subject -> subject
-      end
+  # Stored with the notification, so it is rendered once, in the language of
+  # the person it is for — not of whoever happens to be sending.
+  defp notification_text(message, sender, locale) do
+    RecipientLocale.in_locale(locale, fn ->
+      subject =
+        case message.subject do
+          nil -> gettext("(no subject)")
+          "" -> gettext("(no subject)")
+          subject -> subject
+        end
 
-    "#{sender.name}: #{subject}"
+      "#{sender.name}: #{subject}"
+    end)
   end
+
+  # The locale each reader reads in, from one query for all of them: their
+  # saved preference, else the site's default.
+  defp reader_locales(user_uuids) do
+    users =
+      from(u in User, where: u.uuid in ^user_uuids)
+      |> PhoenixKit.RepoHelper.repo().all()
+      |> Map.new(&{&1.uuid, &1})
+
+    Map.new(user_uuids, fn uuid -> {uuid, RecipientLocale.for_rendering(users[uuid])} end)
+  rescue
+    e ->
+      Logger.debug("[Inbox] reader locale lookup failed: #{Exception.message(e)}")
+      Map.new(user_uuids, &{&1, RecipientLocale.for_rendering(nil)})
+  end
+
+  # The nudge's recipient, when it is one person: the owner of a personal mailbox.
+  defp user_locale(user_uuid) do
+    user = if is_binary(user_uuid), do: PhoenixKit.RepoHelper.repo().get(User, user_uuid)
+    RecipientLocale.for_rendering(user)
+  rescue
+    e ->
+      Logger.debug("[Inbox] reader locale lookup failed: #{Exception.message(e)}")
+      RecipientLocale.for_rendering(nil)
+  end
+
+  defp mailbox_locale(%Mailbox{kind: "user", owner_uuid: owner_uuid}), do: user_locale(owner_uuid)
+  defp mailbox_locale(_mailbox), do: user_locale(nil)
 
   # ── email nudge ─────────────────────────────────────────────────────────────
 
@@ -227,21 +267,14 @@ defmodule PhoenixKitInbox.Notify do
   def nudge_address(_), do: nil
 
   defp deliver_nudge(address, message, sender, recipient_mailbox, identity) do
-    subject = message.subject || "(no subject)"
+    # The nudge runs in a task with no locale of its own: it is written in the
+    # recipient's language (a shared mailbox has no one person — the site's).
+    email =
+      RecipientLocale.in_locale(mailbox_locale(recipient_mailbox), fn ->
+        nudge_email(address, message, sender, recipient_mailbox, identity)
+      end)
 
-    body = """
-    #{sender.name} sent you a message.
-
-    Subject: #{subject}
-
-    Read it: #{Paths.inbox(mailbox: recipient_mailbox.uuid, message: message.uuid)}
-    """
-
-    Swoosh.Email.new()
-    |> Swoosh.Email.to(address)
-    |> Swoosh.Email.from({identity.from_name, identity.from_address})
-    |> Swoosh.Email.subject("New message: #{subject}")
-    |> Swoosh.Email.text_body(body)
+    email
     |> Outbound.deliver(%{
       kind: :nudge,
       integration_uuid: identity.integration_uuid,
@@ -255,6 +288,28 @@ defmodule PhoenixKitInbox.Notify do
     end
   rescue
     e -> Logger.warning("[Inbox] email nudge failed: #{Exception.message(e)}")
+  end
+
+  defp nudge_email(address, message, sender, recipient_mailbox, identity) do
+    subject = message.subject || gettext("(no subject)")
+
+    body =
+      Enum.join(
+        [
+          gettext("%{sender} sent you a message.", sender: sender.name),
+          gettext("Subject: %{subject}", subject: subject),
+          gettext("Read it: %{url}",
+            url: Paths.inbox(mailbox: recipient_mailbox.uuid, message: message.uuid)
+          )
+        ],
+        "\n\n"
+      ) <> "\n"
+
+    Swoosh.Email.new()
+    |> Swoosh.Email.to(address)
+    |> Swoosh.Email.from({identity.from_name, identity.from_address})
+    |> Swoosh.Email.subject(gettext("New message: %{subject}", subject: subject))
+    |> Swoosh.Email.text_body(body)
   end
 
   @doc """

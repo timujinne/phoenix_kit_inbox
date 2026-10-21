@@ -31,7 +31,7 @@ defmodule PhoenixKitInbox.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :phoenix_kit]
+      extra_applications: [:logger, :gettext, :phoenix_kit]
     ]
   end
 
@@ -87,6 +87,9 @@ defmodule PhoenixKitInbox.MixProject do
       # (2.16.0).
       pk_dep(:phoenix_kit, "~> 2.16"),
 
+      # The module's own Gettext backend and its catalogues under priv/gettext.
+      {:gettext, "~> 1.0"},
+
       # LiveView for the admin mailbox UI.
       {:phoenix_live_view, "~> 1.1"},
 
@@ -115,7 +118,7 @@ defmodule PhoenixKitInbox.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
+      files: ~w(lib priv .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
 

@@ -61,6 +61,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   """
 
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.Libraries
@@ -83,7 +84,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext_str("New message"))
+      |> assign(:page_title, gettext("New message"))
       |> assign(:module_access, scope && Scope.has_module_access?(scope, "inbox"))
       |> assign(:scope, scope)
       |> assign(:current_user, user)
@@ -229,7 +230,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         |> put_form_params(%{"body" => body})
         |> put_flash(
           :warning,
-          gettext_str("The signature in the message was edited, so it was left as it is.")
+          gettext("The signature in the message was edited, so it was left as it is.")
         )
     end
   end
@@ -244,9 +245,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   end
 
   defp sent_flash(%Message{external_status: :pending}),
-    do: gettext_str("Message sent. The email to external addresses is on its way.")
+    do: gettext("Message sent. The email to external addresses is on its way.")
 
-  defp sent_flash(_message), do: gettext_str("Message sent.")
+  defp sent_flash(_message), do: gettext("Message sent.")
 
   defp put_form_params(socket, params) do
     assign(socket, :form, to_form(Map.merge(socket.assigns.form.params, params)))
@@ -273,7 +274,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
         socket
         |> assign(:parent_uuid, message.uuid)
-        |> assign(:page_title, gettext_str("Reply"))
+        |> assign(:page_title, gettext("Reply"))
         |> assign(
           :form,
           to_form(%{
@@ -296,7 +297,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     case Messages.fetch_for_mailbox(socket.assigns.mailbox.uuid, uuid) do
       {:ok, %{message: message}} ->
         socket
-        |> assign(:page_title, gettext_str("Forward"))
+        |> assign(:page_title, gettext("Forward"))
         |> assign(:attachments, chips_for(message.uuid))
         |> assign(
           :form,
@@ -325,7 +326,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         socket
         |> assign(:draft_uuid, message.uuid)
         |> assign(:parent_uuid, message.parent_uuid)
-        |> assign(:page_title, gettext_str("Draft"))
+        |> assign(:page_title, gettext("Draft"))
         |> assign(:attachments, chips_for(message.uuid))
         |> assign(
           :form,
@@ -391,7 +392,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           :ok ->
             {:noreply,
              socket
-             |> put_flash(:info, gettext_str("Draft discarded."))
+             |> put_flash(:info, gettext("Draft discarded."))
              |> push_navigate(to: back_path(socket))}
 
           # The draft stays, so the page does too: leaving would look like
@@ -485,7 +486,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     put_flash(
       socket,
       :error,
-      Gettext.gettext(PhoenixKitWeb.Gettext, "Not attached: %{names}. %{reason}",
+      gettext("Not attached: %{names}. %{reason}",
         names: names,
         reason: Errors.message(reason)
       )
@@ -500,7 +501,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
          true <- Libraries.can?(scope, file, :read) do
       file.original_file_name || file.file_name
     else
-      _ -> gettext_str("a file")
+      _ -> gettext("a file")
     end
   end
 
@@ -592,7 +593,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       |> assign(:draft_uuid, message.uuid)
       |> assign(:attachments, chips_for(message.uuid))
       |> assign(:form, to_form(params))
-      |> put_flash(:info, gettext_str("Draft saved."))
+      |> put_flash(:info, gettext("Draft saved."))
     else
       {:error, reason} -> put_flash(socket, :error, Errors.message(reason))
     end
@@ -624,12 +625,12 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     <div class="flex flex-col px-4 py-6 gap-4">
       <div :if={not @module_access} class="alert alert-warning">
         <.icon name="hero-lock-closed" class="w-5 h-5" />
-        <span>{gettext_str("You don't have permission to use Inbox.")}</span>
+        <span>{gettext("You don't have permission to use Inbox.")}</span>
       </div>
 
       <div :if={@module_access and @mailboxes == []} class="alert alert-info">
         <.icon name="hero-information-circle" class="w-5 h-5" />
-        <span>{gettext_str("You don't have any mailbox you can send from.")}</span>
+        <span>{gettext("You don't have any mailbox you can send from.")}</span>
       </div>
 
       <.compose_form
@@ -657,7 +658,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         show={true}
         mode={:multiple}
         selected_uuids={[]}
-        title={gettext_str("Attach existing files")}
+        title={gettext("Attach existing files")}
         phoenix_kit_current_user={@current_user}
       />
     </div>
@@ -689,7 +690,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           class="flex flex-col gap-3"
         >
           <div :if={length(@mailboxes) > 1} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext_str("From")}</span>
+            <span class="text-sm w-16 shrink-0">{gettext("From")}</span>
             <.select
               name="mailbox"
               value={@mailbox.uuid}
@@ -700,7 +701,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           </div>
 
           <div :if={@identities != []} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext_str("Send as")}</span>
+            <span class="text-sm w-16 shrink-0">{gettext("Send as")}</span>
             <.select
               id="compose-identity"
               name="identity_uuid"
@@ -713,20 +714,20 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           <.input
             field={@form[:to]}
             type="text"
-            label={gettext_str("To")}
-            placeholder={gettext_str("@username, email or shared mailbox — comma separated")}
+            label={gettext("To")}
+            placeholder={gettext("@username, email or shared mailbox — comma separated")}
             list="phoenix-kit-inbox-recipients"
           />
           <.input
             field={@form[:cc]}
             type="text"
-            label={gettext_str("Cc")}
+            label={gettext("Cc")}
             list="phoenix-kit-inbox-recipients"
           />
           <.input
             field={@form[:bcc]}
             type="text"
-            label={gettext_str("Bcc")}
+            label={gettext("Bcc")}
             list="phoenix-kit-inbox-recipients"
           />
 
@@ -739,7 +740,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             </option>
           </datalist>
           <div :if={length(@reply_to_options) > 1} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext_str("Reply-To")}</span>
+            <span class="text-sm w-16 shrink-0">{gettext("Reply-To")}</span>
             <.select
               id="compose-reply-to"
               name="reply_to"
@@ -749,19 +750,19 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             />
           </div>
 
-          <.input field={@form[:subject]} type="text" label={gettext_str("Subject")} />
-          <.textarea field={@form[:body]} label={gettext_str("Message")} rows="14" />
+          <.input field={@form[:subject]} type="text" label={gettext("Subject")} />
+          <.textarea field={@form[:body]} label={gettext("Message")} rows="14" />
           <p class="text-xs text-base-content/60 -mt-2">
-            {gettext_str("Markdown: **bold**, _italic_, [link](https://…), - lists.")}
+            {gettext("Markdown: **bold**, _italic_, [link](https://…), - lists.")}
           </p>
 
           <div :if={@signatures != []} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext_str("Signature")}</span>
+            <span class="text-sm w-16 shrink-0">{gettext("Signature")}</span>
             <.select
               id="compose-signature"
               name="signature"
               value={@signature_uuid}
-              options={[{gettext_str("No signature"), ""} | Enum.map(@signatures, &{&1.label, &1.uuid})]}
+              options={[{gettext("No signature"), ""} | Enum.map(@signatures, &{&1.label, &1.uuid})]}
               class="select-sm"
               phx-change="select_signature"
             />
@@ -771,7 +772,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
           <div class="card-actions justify-end flex-wrap gap-2 pt-2">
             <.link navigate={@back} class="btn btn-ghost btn-sm">
-              {gettext_str("Cancel")}
+              {gettext("Cancel")}
             </.link>
 
             <button
@@ -779,20 +780,20 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
               type="button"
               class="btn btn-ghost btn-sm text-error"
               phx-click="discard"
-              data-confirm={gettext_str("Discard this draft?")}
+              data-confirm={gettext("Discard this draft?")}
             >
               <.icon name="hero-trash" class="w-4 h-4" />
-              {gettext_str("Discard draft")}
+              {gettext("Discard draft")}
             </button>
 
             <button type="button" class="btn btn-ghost btn-sm" phx-click="save_draft">
               <.icon name="hero-document" class="w-4 h-4" />
-              {gettext_str("Save draft")}
+              {gettext("Save draft")}
             </button>
 
             <button type="submit" class="btn btn-primary btn-sm">
               <.icon name="hero-paper-airplane" class="w-4 h-4" />
-              {gettext_str("Send")}
+              {gettext("Send")}
             </button>
           </div>
         </.form>
@@ -824,8 +825,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             class="btn btn-ghost btn-xs btn-circle"
             phx-click="remove_attachment"
             phx-value-file={attachment.file_uuid}
-            aria-label={gettext_str("Remove attachment")}
-            title={gettext_str("Remove attachment")}
+            aria-label={gettext("Remove attachment")}
+            title={gettext("Remove attachment")}
           >
             <.icon name="hero-x-mark" class="w-3 h-3" />
           </button>
@@ -850,7 +851,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             class="btn btn-ghost btn-xs btn-circle"
             phx-click="cancel_upload"
             phx-value-ref={entry.ref}
-            aria-label={gettext_str("Cancel upload")}
+            aria-label={gettext("Cancel upload")}
           >
             <.icon name="hero-x-mark" class="w-3 h-3" />
           </button>
@@ -860,7 +861,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       <div class="flex flex-wrap items-center gap-2">
         <label class="btn btn-ghost btn-sm">
           <.icon name="hero-arrow-up-tray" class="w-4 h-4" />
-          {gettext_str("Upload files")}
+          {gettext("Upload files")}
           <.live_file_input upload={@upload} class="hidden" />
         </label>
 
@@ -871,7 +872,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           phx-click="open_media_selector"
         >
           <.icon name="hero-paper-clip" class="w-4 h-4" />
-          {gettext_str("Attach existing file")}
+          {gettext("Attach existing file")}
         </button>
       </div>
 
@@ -889,21 +890,21 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     if Identities.default_reply_to(options),
       do: choices,
-      else: [{gettext_str("No Reply-To — replies go to this mailbox"), ""} | choices]
+      else: [{gettext("No Reply-To — replies go to this mailbox"), ""} | choices]
   end
 
   # "Inside only" first: an external send is a choice, never the default.
   defp identity_choices(identities) do
     [
-      {gettext_str("Inside the application only"), ""}
+      {gettext("Inside the application only"), ""}
       | Enum.map(identities, &{"#{&1.label} <#{&1.from_address}>", &1.identity_uuid})
     ]
   end
 
-  defp upload_error_text(:too_large), do: gettext_str("Larger than the upload limit.")
-  defp upload_error_text(:too_many_files), do: gettext_str("Too many files.")
-  defp upload_error_text(:not_accepted), do: gettext_str("This file type is not accepted.")
-  defp upload_error_text(_), do: gettext_str("The upload failed.")
+  defp upload_error_text(:too_large), do: gettext("Larger than the upload limit.")
+  defp upload_error_text(:too_many_files), do: gettext("Too many files.")
+  defp upload_error_text(:not_accepted), do: gettext("This file type is not accepted.")
+  defp upload_error_text(_), do: gettext("The upload failed.")
 
   # ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -938,6 +939,4 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     quoted = body |> String.split("\n") |> Enum.map_join("\n", &("> " <> &1))
     "\n\n" <> quoted
   end
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end

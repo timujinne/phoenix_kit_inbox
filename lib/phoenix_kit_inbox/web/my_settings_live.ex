@@ -17,6 +17,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
   """
 
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Settings
   alias PhoenixKit.Users.Auth.Scope
@@ -34,7 +35,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext_str("Mail settings"))
+      |> assign(:page_title, gettext("Mail settings"))
       |> assign(:project_title, project_title())
       |> assign(:url_path, Paths.my_settings())
       |> assign(:scope, scope)
@@ -95,7 +96,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
         {:noreply,
          socket
          |> load(mailbox)
-         |> put_flash(:info, gettext_str("Reply-To saved."))}
+         |> put_flash(:info, gettext("Reply-To saved."))}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, Errors.message(reason))}
@@ -119,20 +120,20 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
       <div id="inbox-my-settings" class="flex flex-col px-4 py-6 gap-4">
         <div :if={not @module_access} class="alert alert-warning">
           <.icon name="hero-lock-closed" class="w-5 h-5" />
-          <span>{gettext_str("You don't have permission to use Inbox.")}</span>
+          <span>{gettext("You don't have permission to use Inbox.")}</span>
         </div>
 
         <div :if={@module_access} class="flex flex-wrap gap-2">
           <.link navigate={Paths.inbox()} id="open-inbox" class="btn btn-primary btn-sm">
-            <.icon name="hero-envelope" class="w-4 h-4" /> {gettext_str("Open Inbox")}
+            <.icon name="hero-envelope" class="w-4 h-4" /> {gettext("Open Inbox")}
           </.link>
         </div>
 
         <section :if={@module_access and @mailbox} class="card bg-base-100 shadow max-w-4xl">
           <div class="card-body gap-3">
-            <h2 class="card-title text-base">{gettext_str("Signatures")}</h2>
+            <h2 class="card-title text-base">{gettext("Signatures")}</h2>
             <p class="text-sm text-base-content/60">
-              {gettext_str(
+              {gettext(
                 "Added at the end of a message you write from your personal mailbox, after a “-- ” line."
               )}
             </p>
@@ -150,9 +151,9 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
           class="card bg-base-100 shadow max-w-4xl"
         >
           <div class="card-body gap-3">
-            <h2 class="card-title text-base">{gettext_str("Reply-To")}</h2>
+            <h2 class="card-title text-base">{gettext("Reply-To")}</h2>
             <p class="text-sm text-base-content/60">
-              {gettext_str(
+              {gettext(
                 "Where replies to your messages go by default: your email, or a shared mailbox you write to."
               )}
             </p>
@@ -168,16 +169,16 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
                 options={Enum.map(@reply_to_options, &{&1.label, &1.address})}
                 class="select-sm"
               />
-              <button type="submit" class="btn btn-primary btn-sm">{gettext_str("Save")}</button>
+              <button type="submit" class="btn btn-primary btn-sm">{gettext("Save")}</button>
             </.form>
           </div>
         </section>
 
         <section :if={@module_access and @mailbox} class="card bg-base-100 shadow max-w-4xl">
           <div class="card-body gap-3">
-            <h2 class="card-title text-base">{gettext_str("Senders")}</h2>
+            <h2 class="card-title text-base">{gettext("Senders")}</h2>
             <p class="text-sm text-base-content/60">
-              {gettext_str(
+              {gettext(
                 "Send from your own mail connection. The From address is the connection's login."
               )}
             </p>
@@ -195,7 +196,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
               id="my-integrations-link"
               class="link link-primary text-sm"
             >
-              {gettext_str("Manage your mail connections")}
+              {gettext("Manage your mail connections")}
             </.link>
           </div>
         </section>
@@ -203,6 +204,4 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
     </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
     """
   end
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end

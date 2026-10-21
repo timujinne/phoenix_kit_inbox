@@ -11,6 +11,7 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
   """
 
   use PhoenixKitWeb, :html
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKitInbox.Body
   alias PhoenixKitInbox.Errors
@@ -81,7 +82,7 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
         {:noreply,
          socket
          |> assign_editor(socket.assigns.sig_mailbox)
-         |> Phoenix.LiveView.put_flash(:info, gettext_str("Signature saved."))}
+         |> Phoenix.LiveView.put_flash(:info, gettext("Signature saved."))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply,
@@ -100,7 +101,7 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
         {:noreply,
          socket
          |> assign_editor(socket.assigns.sig_mailbox)
-         |> Phoenix.LiveView.put_flash(:info, gettext_str("Signature deleted."))}
+         |> Phoenix.LiveView.put_flash(:info, gettext("Signature deleted."))}
 
       {:error, reason} ->
         {:noreply, Phoenix.LiveView.put_flash(socket, :error, Errors.message(reason))}
@@ -121,7 +122,7 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
     ~H"""
     <div id={@id} class="flex flex-col gap-3">
       <p :if={@signatures == [] and is_nil(@editing)} class="text-sm text-base-content/60">
-        {gettext_str("No signatures yet.")}
+        {gettext("No signatures yet.")}
       </p>
 
       <div
@@ -132,7 +133,7 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
         <div class="flex items-center gap-2">
           <span class="font-medium">{signature.label}</span>
           <span :if={signature.is_default} class="badge badge-primary badge-sm">
-            {gettext_str("Default")}
+            {gettext("Default")}
           </span>
           <div class="ml-auto flex gap-1">
             <button
@@ -141,16 +142,16 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
               phx-click="sig_edit"
               phx-value-uuid={signature.uuid}
             >
-              <.icon name="hero-pencil-square" class="w-4 h-4" /> {gettext_str("Edit")}
+              <.icon name="hero-pencil-square" class="w-4 h-4" /> {gettext("Edit")}
             </button>
             <button
               type="button"
               class="btn btn-ghost btn-xs text-error"
               phx-click="sig_delete"
               phx-value-uuid={signature.uuid}
-              data-confirm={gettext_str("Delete this signature?")}
+              data-confirm={gettext("Delete this signature?")}
             >
-              <.icon name="hero-trash" class="w-4 h-4" /> {gettext_str("Delete")}
+              <.icon name="hero-trash" class="w-4 h-4" /> {gettext("Delete")}
             </button>
           </div>
         </div>
@@ -166,29 +167,27 @@ defmodule PhoenixKitInbox.Web.SignatureEditor do
         phx-submit="sig_save"
         class="rounded-box border border-base-300 p-3 flex flex-col gap-2"
       >
-        <.input field={@form[:label]} type="text" label={gettext_str("Name")} />
+        <.input field={@form[:label]} type="text" label={gettext("Name")} />
         <.textarea
           field={@form[:body]}
-          label={gettext_str("Signature (Markdown)")}
+          label={gettext("Signature (Markdown)")}
           rows="5"
         />
-        <.checkbox field={@form[:is_default]} label={gettext_str("Use by default")} />
+        <.checkbox field={@form[:is_default]} label={gettext("Use by default")} />
         <div class="flex justify-end gap-2">
           <button type="button" class="btn btn-ghost btn-sm" phx-click="sig_cancel">
-            {gettext_str("Cancel")}
+            {gettext("Cancel")}
           </button>
-          <button type="submit" class="btn btn-primary btn-sm">{gettext_str("Save")}</button>
+          <button type="submit" class="btn btn-primary btn-sm">{gettext("Save")}</button>
         </div>
       </.form>
 
       <div :if={is_nil(@form)}>
         <button type="button" class="btn btn-ghost btn-sm" phx-click="sig_new">
-          <.icon name="hero-plus" class="w-4 h-4" /> {gettext_str("Add signature")}
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Add signature")}
         </button>
       </div>
     </div>
     """
   end
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end

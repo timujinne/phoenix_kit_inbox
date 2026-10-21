@@ -35,6 +35,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   """
 
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   require Logger
 
@@ -69,8 +70,8 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext_str("Inbox"))
-      |> assign(:page_subtitle, gettext_str("Messages between users of this application"))
+      |> assign(:page_title, gettext("Inbox"))
+      |> assign(:page_subtitle, gettext("Messages between users of this application"))
       |> assign(:module_access, scope && Scope.has_module_access?(scope, "inbox"))
       |> assign(:scope, scope)
       |> assign(:current_user, user)
@@ -335,7 +336,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
       {:ok, :pending} ->
         {:noreply,
          socket
-         |> put_flash(:info, gettext_str("Sending again."))
+         |> put_flash(:info, gettext("Sending again."))
          |> refresh_externals()}
 
       {:error, reason} ->
@@ -465,7 +466,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
     ~H"""
     <div class="alert alert-warning">
       <.icon name="hero-lock-closed" class="w-5 h-5" />
-      <span>{gettext_str("You don't have permission to use Inbox.")}</span>
+      <span>{gettext("You don't have permission to use Inbox.")}</span>
     </div>
     """
   end
@@ -485,10 +486,10 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         class="btn btn-primary btn-sm"
       >
         <.icon name="hero-pencil-square" class="w-4 h-4" />
-        {gettext_str("New message")}
+        {gettext("New message")}
       </.link>
 
-      <button class="btn btn-ghost btn-sm" phx-click="refresh" title={gettext_str("Refresh")}>
+      <button class="btn btn-ghost btn-sm" phx-click="refresh" title={gettext("Refresh")}>
         <.icon name="hero-arrow-path" class="w-4 h-4" />
       </button>
 
@@ -496,7 +497,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
       <.link navigate={Paths.mailboxes()} class="btn btn-ghost btn-sm">
         <.icon name="hero-user-group" class="w-4 h-4" />
-        {gettext_str("Mailboxes")}
+        {gettext("Mailboxes")}
       </.link>
 
       <div :if={@mailbox} class="badge badge-outline gap-2 py-3">
@@ -556,7 +557,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
             checked={@unseen_only}
             phx-click="toggle_unseen_only"
           />
-          <span class="text-sm">{gettext_str("Unseen only")}</span>
+          <span class="text-sm">{gettext("Unseen only")}</span>
         </label>
       </div>
     </div>
@@ -582,7 +583,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
             type="search"
             name="search"
             value={@search}
-            placeholder={gettext_str("Search")}
+            placeholder={gettext("Search")}
             class="input input-sm w-full"
             phx-debounce="300"
           />
@@ -591,8 +592,8 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         <div :if={@entries == []} class="py-10">
           <.empty_state
             icon="hero-inbox"
-            title={gettext_str("Empty list.")}
-            description={gettext_str("Nothing in this folder yet.")}
+            title={gettext("Empty list.")}
+            description={gettext("Nothing in this folder yet.")}
           />
         </div>
 
@@ -611,7 +612,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
               class="btn btn-ghost btn-xs px-1"
               phx-click="toggle_star"
               phx-value-uuid={entry.message.uuid}
-              title={gettext_str("Star")}
+              title={gettext("Star")}
             >
               <.icon
                 name={if entry.delivery.starred, do: "hero-star-solid", else: "hero-star"}
@@ -624,7 +625,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
                 "truncate text-sm",
                 is_nil(entry.delivery.seen_at) && "font-bold"
               ]}>
-                {entry.message.subject || gettext_str("(no subject)")}
+                {entry.message.subject || gettext("(no subject)")}
               </div>
               <div class="truncate text-xs text-base-content/60">
                 {Body.preview(entry.message)}
@@ -689,7 +690,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
     <div class="card bg-base-100 shadow">
       <div class="card-body items-center justify-center min-h-64">
         <p class="text-base-content/50">
-          {gettext_str("Select any message in the list to view it here.")}
+          {gettext("Select any message in the list to view it here.")}
         </p>
       </div>
     </div>
@@ -702,9 +703,9 @@ defmodule PhoenixKitInbox.Web.InboxLive do
       <div class="card-body gap-4">
         <div class="flex items-start justify-between gap-2">
           <h2 class="card-title text-lg">
-            {@selected.message.subject || gettext_str("(no subject)")}
+            {@selected.message.subject || gettext("(no subject)")}
           </h2>
-          <button class="btn btn-ghost btn-xs" phx-click="close_message" title={gettext_str("Close")}>
+          <button class="btn btn-ghost btn-xs" phx-click="close_message" title={gettext("Close")}>
             <.icon name="hero-x-mark" class="w-4 h-4" />
           </button>
         </div>
@@ -744,7 +745,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
             id={"message-attachment-#{attachment.uuid}"}
             href={Paths.attachment(attachment.uuid)}
             class="btn btn-sm btn-outline gap-2 max-w-full normal-case"
-            title={gettext_str("Download")}
+            title={gettext("Download")}
             download
           >
             <.icon name="hero-paper-clip" class="w-4 h-4 shrink-0" />
@@ -799,7 +800,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         phx-value-uuid={@message.uuid}
       >
         <.icon name="hero-arrow-path" class="w-3 h-3" />
-        {gettext_str("Retry")}
+        {gettext("Retry")}
       </button>
     </div>
     """
@@ -810,10 +811,10 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   defp external_badge(:pending), do: "badge-warning badge-outline"
   defp external_badge(:unknown), do: "badge-ghost"
 
-  defp external_label(:sent), do: gettext_str("sent")
-  defp external_label(:failed), do: gettext_str("not delivered")
-  defp external_label(:pending), do: gettext_str("sending…")
-  defp external_label(:unknown), do: gettext_str("unknown — check the email log")
+  defp external_label(:sent), do: gettext("sent")
+  defp external_label(:failed), do: gettext("not delivered")
+  defp external_label(:pending), do: gettext("sending…")
+  defp external_label(:unknown), do: gettext("unknown — check the email log")
 
   attr(:message, :any, required: true)
 
@@ -845,7 +846,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         class="btn btn-primary btn-sm"
       >
         <.icon name="hero-arrow-uturn-left" class="w-4 h-4" />
-        {gettext_str("Reply")}
+        {gettext("Reply")}
       </.link>
 
       <.link
@@ -854,7 +855,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         class="btn btn-ghost btn-sm"
       >
         <.icon name="hero-arrow-uturn-right" class="w-4 h-4" />
-        {gettext_str("Forward")}
+        {gettext("Forward")}
       </.link>
 
       <button class="btn btn-ghost btn-sm" phx-click="toggle_seen" phx-value-uuid={@message.uuid}>
@@ -862,7 +863,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
           name={if @delivery.seen_at, do: "hero-envelope", else: "hero-envelope-open"}
           class="w-4 h-4"
         />
-        {if @delivery.seen_at, do: gettext_str("Mark unread"), else: gettext_str("Mark read")}
+        {if @delivery.seen_at, do: gettext("Mark unread"), else: gettext("Mark read")}
       </button>
 
       <button
@@ -873,7 +874,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         phx-value-folder="archive"
       >
         <.icon name="hero-archive-box" class="w-4 h-4" />
-        {gettext_str("Archive")}
+        {gettext("Archive")}
       </button>
 
       <button
@@ -884,7 +885,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         phx-value-folder="spam"
       >
         <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-        {gettext_str("Spam")}
+        {gettext("Spam")}
       </button>
 
       <button
@@ -895,7 +896,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         phx-value-folder="trash"
       >
         <.icon name="hero-trash" class="w-4 h-4" />
-        {gettext_str("Trash")}
+        {gettext("Trash")}
       </button>
 
       <button
@@ -903,10 +904,10 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         class="btn btn-error btn-sm"
         phx-click="delete_forever"
         phx-value-uuid={@message.uuid}
-        data-confirm={gettext_str("Delete this message from your mailbox permanently?")}
+        data-confirm={gettext("Delete this message from your mailbox permanently?")}
       >
         <.icon name="hero-trash" class="w-4 h-4" />
-        {gettext_str("Delete forever")}
+        {gettext("Delete forever")}
       </button>
     </div>
     """
@@ -920,12 +921,12 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
   defp folder_icon(folder), do: Map.get(@folder_icons, folder, "hero-folder")
 
-  defp folder_label("inbox"), do: gettext_str("Inbox")
-  defp folder_label("sent"), do: gettext_str("Sent")
-  defp folder_label("drafts"), do: gettext_str("Drafts")
-  defp folder_label("spam"), do: gettext_str("Spam")
-  defp folder_label("trash"), do: gettext_str("Trash")
-  defp folder_label("archive"), do: gettext_str("Archive")
+  defp folder_label("inbox"), do: gettext("Inbox")
+  defp folder_label("sent"), do: gettext("Sent")
+  defp folder_label("drafts"), do: gettext("Drafts")
+  defp folder_label("spam"), do: gettext("Spam")
+  defp folder_label("trash"), do: gettext("Trash")
+  defp folder_label("archive"), do: gettext("Archive")
   defp folder_label(other), do: other
 
   defp unseen_count(counts, folder), do: Map.get(counts, folder, 0)
@@ -933,16 +934,30 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   defp short_time(nil), do: ""
 
   defp short_time(datetime) do
-    Calendar.strftime(datetime, "%d %b")
+    Calendar.strftime(datetime, "%d %b", month_names())
   end
 
   defp full_time(nil), do: ""
 
   defp full_time(datetime) do
-    Calendar.strftime(datetime, "%d %b %Y, %H:%M")
+    Calendar.strftime(datetime, "%d %b %Y, %H:%M", month_names())
   end
 
-  # All user-facing copy goes through core's gettext backend — see the
-  # "Wrap user-facing strings in gettext" convention.
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
+  # Calendar.strftime/3 takes the month names as a function of the month.
+  defp month_names do
+    [abbreviated_month_names: &abbreviated_month/1]
+  end
+
+  defp abbreviated_month(1), do: pgettext("month, abbreviated", "Jan")
+  defp abbreviated_month(2), do: pgettext("month, abbreviated", "Feb")
+  defp abbreviated_month(3), do: pgettext("month, abbreviated", "Mar")
+  defp abbreviated_month(4), do: pgettext("month, abbreviated", "Apr")
+  defp abbreviated_month(5), do: pgettext("month, abbreviated", "May")
+  defp abbreviated_month(6), do: pgettext("month, abbreviated", "Jun")
+  defp abbreviated_month(7), do: pgettext("month, abbreviated", "Jul")
+  defp abbreviated_month(8), do: pgettext("month, abbreviated", "Aug")
+  defp abbreviated_month(9), do: pgettext("month, abbreviated", "Sep")
+  defp abbreviated_month(10), do: pgettext("month, abbreviated", "Oct")
+  defp abbreviated_month(11), do: pgettext("month, abbreviated", "Nov")
+  defp abbreviated_month(12), do: pgettext("month, abbreviated", "Dec")
 end

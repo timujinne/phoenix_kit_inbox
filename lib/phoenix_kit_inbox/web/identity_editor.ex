@@ -13,6 +13,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
   """
 
   use PhoenixKitWeb, :html
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.Identities
@@ -58,7 +59,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
          Phoenix.LiveView.put_flash(
            socket,
            :error,
-           gettext_str("There is no mail connection with a login address to send from yet.")
+           gettext("There is no mail connection with a login address to send from yet.")
          )}
 
       integrations ->
@@ -91,7 +92,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         {:noreply,
          socket
          |> assign_editor(socket.assigns.ident_kind)
-         |> Phoenix.LiveView.put_flash(:info, gettext_str("Sender saved."))}
+         |> Phoenix.LiveView.put_flash(:info, gettext("Sender saved."))}
 
       {:error, reason} ->
         {:noreply,
@@ -128,7 +129,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         {:noreply,
          socket
          |> assign_editor(socket.assigns.ident_kind)
-         |> Phoenix.LiveView.put_flash(:info, gettext_str("Sender deleted."))}
+         |> Phoenix.LiveView.put_flash(:info, gettext("Sender deleted."))}
 
       {:error, reason} ->
         {:noreply, Phoenix.LiveView.put_flash(socket, :error, Errors.message(reason))}
@@ -153,7 +154,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
     ~H"""
     <div id={@id} class="flex flex-col gap-3">
       <p :if={@identities == []} class="text-sm text-base-content/60">
-        {gettext_str("No senders yet.")}
+        {gettext("No senders yet.")}
       </p>
 
       <div
@@ -170,7 +171,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         </span>
         <span :if={entry.identity.status == "broken"} class="badge badge-error badge-sm gap-1">
           <.icon name="hero-exclamation-triangle" class="w-3 h-3" />
-          {gettext_str("Broken")}
+          {gettext("Broken")}
         </span>
         <span :if={entry.identity.status == "broken"} class="text-xs text-error w-full">
           {problem_text(Map.get(@problems, entry.identity.uuid))}
@@ -181,16 +182,16 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
           phx-click="ident_check"
           phx-value-uuid={entry.identity.uuid}
         >
-          <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext_str("Check")}
+          <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext("Check")}
         </button>
         <button
           type="button"
           class="btn btn-ghost btn-xs text-error"
           phx-click="ident_delete"
           phx-value-uuid={entry.identity.uuid}
-          data-confirm={gettext_str("Delete this sender?")}
+          data-confirm={gettext("Delete this sender?")}
         >
-          <.icon name="hero-trash" class="w-4 h-4" /> {gettext_str("Delete")}
+          <.icon name="hero-trash" class="w-4 h-4" /> {gettext("Delete")}
         </button>
       </div>
 
@@ -201,37 +202,37 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         phx-submit="ident_save"
         class="rounded-box border border-base-300 p-3 flex flex-col gap-2"
       >
-        <.input field={@form[:label]} type="text" label={gettext_str("Name")} />
+        <.input field={@form[:label]} type="text" label={gettext("Name")} />
         <.input
           field={@form[:from_name]}
           type="text"
-          label={gettext_str("Name shown to recipients")}
+          label={gettext("Name shown to recipients")}
         />
         <.select
           field={@form[:integration_uuid]}
-          label={gettext_str("Mail connection (its login is the From address)")}
+          label={gettext("Mail connection (its login is the From address)")}
           options={Enum.map(@integrations, &{"#{&1.name} <#{&1.from_address}>", &1.uuid})}
         />
         <.select
           :if={@kind == :shared}
           field={@form[:mailbox_uuid]}
-          label={gettext_str("Shared mailbox")}
+          label={gettext("Shared mailbox")}
           options={[
-            {gettext_str("None — the common sender for personal mailboxes"), ""}
+            {gettext("None — the common sender for personal mailboxes"), ""}
             | Enum.map(@mailboxes, &{&1.name, &1.uuid})
           ]}
         />
         <div class="flex justify-end gap-2">
           <button type="button" class="btn btn-ghost btn-sm" phx-click="ident_cancel">
-            {gettext_str("Cancel")}
+            {gettext("Cancel")}
           </button>
-          <button type="submit" class="btn btn-primary btn-sm">{gettext_str("Save")}</button>
+          <button type="submit" class="btn btn-primary btn-sm">{gettext("Save")}</button>
         </div>
       </.form>
 
       <div :if={is_nil(@form)}>
         <button type="button" class="btn btn-ghost btn-sm" phx-click="ident_new">
-          <.icon name="hero-plus" class="w-4 h-4" /> {gettext_str("Add sender")}
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("Add sender")}
         </button>
       </div>
     </div>
@@ -239,7 +240,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
   end
 
   defp bound_to(%Identity{mailbox_uuid: nil}, _names),
-    do: gettext_str("Common sender for personal mailboxes")
+    do: gettext("Common sender for personal mailboxes")
 
   defp bound_to(%Identity{mailbox_uuid: uuid}, names), do: Map.get(names, uuid, "—")
 
@@ -247,9 +248,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
 
   defp problem_text(_),
     do:
-      gettext_str(
+      gettext(
         "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
       )
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end
