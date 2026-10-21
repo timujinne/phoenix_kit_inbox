@@ -306,6 +306,50 @@ defmodule PhoenixKitInbox.Identities do
 
   defp do_resolve(_scope, _uuid, _mailbox), do: {:error, :forbidden}
 
+  @doc """
+  A **shared** identity as the module itself sends from it, with no user
+  behind the send — the email nudge (`PhoenixKitInbox.nudge_identity_uuid/0`).
+  Its integration is checked and the outcome stored, as in `resolve/3`; its
+  From name is its own (else its label). A personal identity is
+  `{:error, :forbidden}`: it is someone's own connection.
+  """
+  @spec resolve_system(term()) :: {:ok, resolved()} | {:error, :forbidden | :broken | :not_found}
+  def resolve_system(identity_uuid) do
+    with {:ok, identity} <- fetch(identity_uuid),
+         %Identity{kind: "shared"} <- identity do
+      case checked(identity) do
+        {:ok, identity, from_address} ->
+          {:ok,
+           %{
+             describe_base(identity, from_address)
+             | from_name:
+                 if(blank?(identity.from_name), do: identity.label, else: identity.from_name)
+           }}
+
+        {:error, _identity, _problem} ->
+          {:error, :broken}
+      end
+    else
+      %Identity{} -> {:error, :forbidden}
+      error -> error
+    end
+  end
+
+  @doc false
+  # `PhoenixKitInbox.set_nudge_identity/2`: `inbox.manage_shared`, and a
+  # shared identity (or nil, to clear the setting).
+  @spec authorize_nudge_identity(Scope.t(), term()) :: :ok | {:error, :forbidden | :not_found}
+  def authorize_nudge_identity(scope, identity_uuid) do
+    with :ok <- authorize_manage_shared(scope) do
+      case identity_uuid && fetch(identity_uuid) do
+        nil -> :ok
+        {:ok, %Identity{kind: "shared"}} -> :ok
+        {:ok, %Identity{}} -> {:error, :forbidden}
+        error -> error
+      end
+    end
+  end
+
   defp fetch(uuid) when is_binary(uuid) do
     with {:ok, uuid} <- Ecto.UUID.cast(uuid),
          %Identity{} = identity <- repo().get(Identity, uuid) do
@@ -350,7 +394,10 @@ defmodule PhoenixKitInbox.Identities do
 
   # From name: a bound identity its own (else the mailbox's name); the common
   # sender "<user> | <from_name>"; a personal one its own (else the user's).
-  defp describe(identity, from_address, user) do
+  defp describe(identity, from_address, user),
+    do: %{describe_base(identity, from_address) | from_name: from_name(identity, user)}
+
+  defp describe_base(identity, from_address) do
     %{
       identity_uuid: identity.uuid,
       label: identity.label,
@@ -358,7 +405,7 @@ defmodule PhoenixKitInbox.Identities do
       mailbox_uuid: identity.mailbox_uuid,
       integration_uuid: identity.integration_uuid,
       from_address: from_address,
-      from_name: from_name(identity, user)
+      from_name: nil
     }
   end
 
