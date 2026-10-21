@@ -178,7 +178,9 @@ defmodule PhoenixKitInbox.Notify do
     user = if is_binary(user_uuid), do: PhoenixKit.RepoHelper.repo().get(User, user_uuid)
     RecipientLocale.for_rendering(user)
   rescue
-    _ -> RecipientLocale.for_rendering(nil)
+    e ->
+      Logger.debug("[Inbox] reader locale lookup failed: #{Exception.message(e)}")
+      RecipientLocale.for_rendering(nil)
   end
 
   defp mailbox_locale(%Mailbox{kind: "user", owner_uuid: owner_uuid}), do: user_locale(owner_uuid)

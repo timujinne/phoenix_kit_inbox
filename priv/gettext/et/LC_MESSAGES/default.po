@@ -16,15 +16,15 @@ msgstr ""
 msgid "%{filename} is larger than the upload limit."
 msgstr "Fail %{filename} ületab üleslaadimise piiri."
 
-#: lib/phoenix_kit_inbox/notify.ex:278
+#: lib/phoenix_kit_inbox/notify.ex:280
 #, elixir-autogen, elixir-format
 msgid "%{sender} sent you a message."
 msgstr "%{sender} saatis sulle sõnumi."
 
-#: lib/phoenix_kit_inbox.ex:473
+#: lib/phoenix_kit_inbox.ex:475
 #: lib/phoenix_kit_inbox/notify.ex:166
 #: lib/phoenix_kit_inbox/notify.ex:167
-#: lib/phoenix_kit_inbox/notify.ex:273
+#: lib/phoenix_kit_inbox/notify.ex:275
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:628
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:706
 #, elixir-autogen, elixir-format
@@ -54,7 +54,7 @@ msgstr "Salvestatud kirjas on saajad nimetatud välissaajatena koos tulemusega."
 #: lib/phoenix_kit_inbox/errors.ex:80
 #, elixir-autogen, elixir-format
 msgid "A sending identity and a Reply-To need the sender's scope."
-msgstr "Saatja identiteet ja Reply-To vajavad saatja õiguste konteksti."
+msgstr "Saatja identiteet ja Reply-To vajavad saatja õigusi."
 
 #: lib/phoenix_kit_inbox/web/settings_live.ex:115
 #, elixir-autogen, elixir-format
@@ -110,7 +110,7 @@ msgstr "Aadress"
 #: lib/phoenix_kit_inbox/errors.ex:113
 #, elixir-autogen, elixir-format
 msgid "Addresses outside this application need the sender's scope."
-msgstr "Rakendusevälised aadressid vajavad saatja õiguste konteksti."
+msgstr "Rakendusevälised aadressid vajavad saatja õigusi."
 
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:337
 #, elixir-autogen, elixir-format
@@ -157,7 +157,7 @@ msgstr "Manused pole praegu saadaval. Proovi uuesti."
 #: lib/phoenix_kit_inbox/errors.ex:47
 #, elixir-autogen, elixir-format
 msgid "Attachments need the sender's scope."
-msgstr "Manused vajavad saatja õiguste konteksti."
+msgstr "Manused vajavad saatja õigusi."
 
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:157
 #, elixir-autogen, elixir-format
@@ -211,7 +211,7 @@ msgstr "Sulge"
 msgid "Common sender for personal mailboxes"
 msgstr "Isiklike meilikastide ühine saatja"
 
-#: lib/phoenix_kit_inbox.ex:206
+#: lib/phoenix_kit_inbox.ex:208
 #, elixir-autogen, elixir-format
 msgid "Compose"
 msgstr "Kirjuta"
@@ -328,7 +328,8 @@ msgstr "Saatja"
 msgid "Grant access"
 msgstr "Anna juurdepääs"
 
-#: lib/phoenix_kit_inbox.ex:177
+#: lib/phoenix_kit_inbox.ex:144
+#: lib/phoenix_kit_inbox.ex:179
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:73
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:924
 #, elixir-autogen, elixir-format
@@ -355,7 +356,7 @@ msgstr "Selle meiliühendus puudub, on katkestatud või ei kõlba enam. Paranda 
 msgid "Larger than the upload limit."
 msgstr "Ületab üleslaadimise piiri."
 
-#: lib/phoenix_kit_inbox.ex:263
+#: lib/phoenix_kit_inbox.ex:265
 #, elixir-autogen, elixir-format
 msgid "Mail"
 msgstr "Post"
@@ -365,7 +366,7 @@ msgstr "Post"
 msgid "Mail connection (its login is the From address)"
 msgstr "Meiliühendus (selle kasutajanimi on saatja aadress)"
 
-#: lib/phoenix_kit_inbox.ex:275
+#: lib/phoenix_kit_inbox.ex:277
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:38
 #, elixir-autogen, elixir-format
 msgid "Mail settings"
@@ -391,7 +392,7 @@ msgstr "Meilikasti ei leitud."
 msgid "Mailbox “%{name}” created."
 msgstr "Meilikast „%{name}“ loodud."
 
-#: lib/phoenix_kit_inbox.ex:219
+#: lib/phoenix_kit_inbox.ex:221
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:500
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:38
 #, elixir-autogen, elixir-format
@@ -438,7 +439,7 @@ msgstr "Sõnum saadetud."
 msgid "Message sent. The email to external addresses is on its way."
 msgstr "Sõnum saadetud. Kiri välisaadressidele on teel."
 
-#: lib/phoenix_kit_inbox.ex:192
+#: lib/phoenix_kit_inbox.ex:194
 #, elixir-autogen, elixir-format
 msgid "Messages"
 msgstr "Sõnumid"
@@ -472,7 +473,7 @@ msgstr "Saajatele näidatav nimi"
 msgid "New message"
 msgstr "Uus sõnum"
 
-#: lib/phoenix_kit_inbox/notify.ex:290
+#: lib/phoenix_kit_inbox/notify.ex:292
 #, elixir-autogen, elixir-format
 msgid "New message: %{subject}"
 msgstr "Uus sõnum: %{subject}"
@@ -572,7 +573,7 @@ msgstr "Isiklikke meilikaste ei saa arhiveerida."
 msgid "Read"
 msgstr "Lugemine"
 
-#: lib/phoenix_kit_inbox/notify.ex:280
+#: lib/phoenix_kit_inbox/notify.ex:282
 #, elixir-autogen, elixir-format
 msgid "Read it: %{url}"
 msgstr "Loe seda siit: %{url}"
@@ -687,7 +688,7 @@ msgstr "Rakendusevälistele aadressidele saatmine on välja lülitatud."
 msgid "Sent"
 msgstr "Saadetud"
 
-#: lib/phoenix_kit_inbox.ex:231
+#: lib/phoenix_kit_inbox.ex:233
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Seaded"
@@ -773,7 +774,7 @@ msgstr "Märgi tärniga"
 msgid "Subject"
 msgstr "Teema"
 
-#: lib/phoenix_kit_inbox/notify.ex:279
+#: lib/phoenix_kit_inbox/notify.ex:281
 #, elixir-autogen, elixir-format
 msgid "Subject: %{subject}"
 msgstr "Teema: %{subject}"
@@ -886,7 +887,7 @@ msgstr "Neid manuseid ei saa nendele saajatele saata."
 #: lib/phoenix_kit_inbox/errors.ex:44
 #, elixir-autogen, elixir-format
 msgid "These options need the sender's scope."
-msgstr "Need valikud vajavad saatja õiguste konteksti."
+msgstr "Need valikud vajavad saatja õigusi."
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:890
 #, elixir-autogen, elixir-format
@@ -1114,3 +1115,28 @@ msgstr "okt"
 msgctxt "month, abbreviated"
 msgid "Sep"
 msgstr "sept"
+
+#: lib/phoenix_kit_inbox.ex:158
+#, elixir-autogen, elixir-format
+msgid "Create shared mailboxes and set their addresses"
+msgstr "Loo jagatud meilikaste ja määra nende aadressid"
+
+#: lib/phoenix_kit_inbox.ex:146
+#, elixir-autogen, elixir-format
+msgid "Internal mailboxes — send and receive messages between users"
+msgstr "Sisemised meilikastid — sõnumite saatmine ja vastuvõtmine kasutajate vahel"
+
+#: lib/phoenix_kit_inbox.ex:157
+#, elixir-autogen, elixir-format
+msgid "Manage shared mailboxes"
+msgstr "Halda jagatud meilikaste"
+
+#: lib/phoenix_kit_inbox.ex:152
+#, elixir-autogen, elixir-format
+msgid "Send to external addresses"
+msgstr "Saada välisaadressidele"
+
+#: lib/phoenix_kit_inbox.ex:153
+#, elixir-autogen, elixir-format
+msgid "Write to email addresses outside this application"
+msgstr "Kirjuta rakendusevälistele e-posti aadressidele"

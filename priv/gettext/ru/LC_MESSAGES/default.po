@@ -16,15 +16,15 @@ msgstr ""
 msgid "%{filename} is larger than the upload limit."
 msgstr "Файл %{filename} больше допустимого размера."
 
-#: lib/phoenix_kit_inbox/notify.ex:278
+#: lib/phoenix_kit_inbox/notify.ex:280
 #, elixir-autogen, elixir-format
 msgid "%{sender} sent you a message."
 msgstr "%{sender} отправил(а) вам сообщение."
 
-#: lib/phoenix_kit_inbox.ex:473
+#: lib/phoenix_kit_inbox.ex:475
 #: lib/phoenix_kit_inbox/notify.ex:166
 #: lib/phoenix_kit_inbox/notify.ex:167
-#: lib/phoenix_kit_inbox/notify.ex:273
+#: lib/phoenix_kit_inbox/notify.ex:275
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:628
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:706
 #, elixir-autogen, elixir-format
@@ -54,7 +54,7 @@ msgstr "В записанном письме получатели указаны
 #: lib/phoenix_kit_inbox/errors.ex:80
 #, elixir-autogen, elixir-format
 msgid "A sending identity and a Reply-To need the sender's scope."
-msgstr "Для отправителя и Reply-To нужен контекст прав отправителя."
+msgstr "Для отправителя и Reply-To нужны права отправителя."
 
 #: lib/phoenix_kit_inbox/web/settings_live.ex:115
 #, elixir-autogen, elixir-format
@@ -110,7 +110,7 @@ msgstr "Адрес"
 #: lib/phoenix_kit_inbox/errors.ex:113
 #, elixir-autogen, elixir-format
 msgid "Addresses outside this application need the sender's scope."
-msgstr "Для адресов вне приложения нужен контекст прав отправителя."
+msgstr "Для адресов вне приложения нужны права отправителя."
 
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:337
 #, elixir-autogen, elixir-format
@@ -157,7 +157,7 @@ msgstr "Вложения сейчас недоступны. Попробуйте
 #: lib/phoenix_kit_inbox/errors.ex:47
 #, elixir-autogen, elixir-format
 msgid "Attachments need the sender's scope."
-msgstr "Для вложений нужен контекст прав отправителя."
+msgstr "Для вложений нужны права отправителя."
 
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:157
 #, elixir-autogen, elixir-format
@@ -211,7 +211,7 @@ msgstr "Закрыть"
 msgid "Common sender for personal mailboxes"
 msgstr "Общий отправитель для личных ящиков"
 
-#: lib/phoenix_kit_inbox.ex:206
+#: lib/phoenix_kit_inbox.ex:208
 #, elixir-autogen, elixir-format
 msgid "Compose"
 msgstr "Написать"
@@ -328,7 +328,8 @@ msgstr "Отправитель"
 msgid "Grant access"
 msgstr "Дать доступ"
 
-#: lib/phoenix_kit_inbox.ex:177
+#: lib/phoenix_kit_inbox.ex:144
+#: lib/phoenix_kit_inbox.ex:179
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:73
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:924
 #, elixir-autogen, elixir-format
@@ -355,7 +356,7 @@ msgstr "Его почтовое подключение отсутствует, �
 msgid "Larger than the upload limit."
 msgstr "Больше допустимого размера."
 
-#: lib/phoenix_kit_inbox.ex:263
+#: lib/phoenix_kit_inbox.ex:265
 #, elixir-autogen, elixir-format
 msgid "Mail"
 msgstr "Почта"
@@ -365,7 +366,7 @@ msgstr "Почта"
 msgid "Mail connection (its login is the From address)"
 msgstr "Почтовое подключение (его логин — адрес отправителя)"
 
-#: lib/phoenix_kit_inbox.ex:275
+#: lib/phoenix_kit_inbox.ex:277
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:38
 #, elixir-autogen, elixir-format
 msgid "Mail settings"
@@ -391,7 +392,7 @@ msgstr "Ящик не найден."
 msgid "Mailbox “%{name}” created."
 msgstr "Ящик «%{name}» создан."
 
-#: lib/phoenix_kit_inbox.ex:219
+#: lib/phoenix_kit_inbox.ex:221
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:500
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:38
 #, elixir-autogen, elixir-format
@@ -438,7 +439,7 @@ msgstr "Сообщение отправлено."
 msgid "Message sent. The email to external addresses is on its way."
 msgstr "Сообщение отправлено. Письмо на внешние адреса уже уходит."
 
-#: lib/phoenix_kit_inbox.ex:192
+#: lib/phoenix_kit_inbox.ex:194
 #, elixir-autogen, elixir-format
 msgid "Messages"
 msgstr "Сообщения"
@@ -472,7 +473,7 @@ msgstr "Имя, которое видят получатели"
 msgid "New message"
 msgstr "Новое сообщение"
 
-#: lib/phoenix_kit_inbox/notify.ex:290
+#: lib/phoenix_kit_inbox/notify.ex:292
 #, elixir-autogen, elixir-format
 msgid "New message: %{subject}"
 msgstr "Новое сообщение: %{subject}"
@@ -572,7 +573,7 @@ msgstr "Личные ящики нельзя архивировать."
 msgid "Read"
 msgstr "Чтение"
 
-#: lib/phoenix_kit_inbox/notify.ex:280
+#: lib/phoenix_kit_inbox/notify.ex:282
 #, elixir-autogen, elixir-format
 msgid "Read it: %{url}"
 msgstr "Прочитать: %{url}"
@@ -687,7 +688,7 @@ msgstr "Отправка на адреса вне приложения откл�
 msgid "Sent"
 msgstr "Отправленные"
 
-#: lib/phoenix_kit_inbox.ex:231
+#: lib/phoenix_kit_inbox.ex:233
 #, elixir-autogen, elixir-format
 msgid "Settings"
 msgstr "Настройки"
@@ -773,7 +774,7 @@ msgstr "Отметить звёздочкой"
 msgid "Subject"
 msgstr "Тема"
 
-#: lib/phoenix_kit_inbox/notify.ex:279
+#: lib/phoenix_kit_inbox/notify.ex:281
 #, elixir-autogen, elixir-format
 msgid "Subject: %{subject}"
 msgstr "Тема: %{subject}"
@@ -886,7 +887,7 @@ msgstr "Эти вложения нельзя отправить этим пол�
 #: lib/phoenix_kit_inbox/errors.ex:44
 #, elixir-autogen, elixir-format
 msgid "These options need the sender's scope."
-msgstr "Для этих параметров нужен контекст прав отправителя."
+msgstr "Для этих параметров нужны права отправителя."
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:890
 #, elixir-autogen, elixir-format
@@ -1114,3 +1115,28 @@ msgstr "окт"
 msgctxt "month, abbreviated"
 msgid "Sep"
 msgstr "сен"
+
+#: lib/phoenix_kit_inbox.ex:158
+#, elixir-autogen, elixir-format
+msgid "Create shared mailboxes and set their addresses"
+msgstr "Создание общих ящиков и настройка их адресов"
+
+#: lib/phoenix_kit_inbox.ex:146
+#, elixir-autogen, elixir-format
+msgid "Internal mailboxes — send and receive messages between users"
+msgstr "Внутренняя почта — отправка и получение сообщений между пользователями"
+
+#: lib/phoenix_kit_inbox.ex:157
+#, elixir-autogen, elixir-format
+msgid "Manage shared mailboxes"
+msgstr "Управление общими ящиками"
+
+#: lib/phoenix_kit_inbox.ex:152
+#, elixir-autogen, elixir-format
+msgid "Send to external addresses"
+msgstr "Отправка на внешние адреса"
+
+#: lib/phoenix_kit_inbox.ex:153
+#, elixir-autogen, elixir-format
+msgid "Write to email addresses outside this application"
+msgstr "Письма на адреса email вне приложения"

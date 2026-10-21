@@ -44,11 +44,23 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
   end
 
   test "a backend with no locale of its own reads the process-wide one" do
+    # async test: the locale lives in this test's own process, which ends with it
     Gettext.put_locale("ru")
-    on_exit(fn -> Gettext.put_locale("en") end)
 
     assert Errors.message({:too_many_attachments, 3}) ==
              "К сообщению можно прикрепить не более 3 файлов."
+  end
+
+  test "the permission labels are localized by the module's backend" do
+    meta = PhoenixKitInbox.permission_metadata()
+    assert meta.gettext_backend == Backend
+
+    Gettext.with_locale(Backend, "ru", fn ->
+      assert Gettext.gettext(Backend, meta.label) == "Входящие"
+      [external, shared] = meta.sub_permissions
+      assert Gettext.gettext(Backend, external.label) == "Отправка на внешние адреса"
+      assert Gettext.gettext(Backend, shared.label) == "Управление общими ящиками"
+    end)
   end
 
   test "the sidebar tabs are localized by the module's backend" do

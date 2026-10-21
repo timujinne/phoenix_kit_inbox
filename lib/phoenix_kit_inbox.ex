@@ -141,19 +141,21 @@ defmodule PhoenixKitInbox do
   def permission_metadata do
     %{
       key: module_key(),
-      label: "Inbox",
+      label: gettext_noop("Inbox"),
       icon: "hero-inbox-arrow-down",
-      description: "Internal mailboxes — send and receive messages between users",
+      description: gettext_noop("Internal mailboxes — send and receive messages between users"),
+      gettext_backend: PhoenixKitInbox.Gettext,
+      gettext_domain: "default",
       sub_permissions: [
         %{
           key: "send_external",
-          label: "Send to external addresses",
-          description: "Write to email addresses outside this application"
+          label: gettext_noop("Send to external addresses"),
+          description: gettext_noop("Write to email addresses outside this application")
         },
         %{
           key: "manage_shared",
-          label: "Manage shared mailboxes",
-          description: "Create shared mailboxes and set their addresses"
+          label: gettext_noop("Manage shared mailboxes"),
+          description: gettext_noop("Create shared mailboxes and set their addresses")
         }
       ]
     }
