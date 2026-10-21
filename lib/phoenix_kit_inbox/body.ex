@@ -85,18 +85,18 @@ defmodule PhoenixKitInbox.Body do
   # `<img src="…" alt="…" …>` with attribute-escaped values — so the values
   # can be reused as they are. Anything that is not an http(s) image becomes
   # its alt text alone.
-  defp images_as_links(html) do
-    Regex.replace(@img, html, fn tag ->
-      src = attribute(tag, "src")
-      alt = attribute(tag, "alt")
+  defp images_as_links(html), do: Regex.replace(@img, html, &image_link/1)
 
-      if is_binary(src) and Regex.match?(~r/\Ahttps?:\/\//i, src) do
-        label = if alt in [nil, ""], do: src, else: alt
-        ~s(<a href="#{src}">#{label}</a>)
-      else
-        alt || ""
-      end
-    end)
+  defp image_link(tag) do
+    src = attribute(tag, "src")
+    alt = attribute(tag, "alt")
+
+    if is_binary(src) and Regex.match?(~r/\Ahttps?:\/\//i, src) do
+      label = if alt in [nil, ""], do: src, else: alt
+      ~s(<a href="#{src}">#{label}</a>)
+    else
+      alt || ""
+    end
   end
 
   defp attribute(tag, name) do

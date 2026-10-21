@@ -108,18 +108,20 @@ defmodule PhoenixKitInbox.Identities do
 
       from(i in Identity, where: ^usable, order_by: [asc: i.label, asc: i.uuid])
       |> repo().all()
-      |> Enum.flat_map(fn identity ->
-        case checked(identity) do
-          {:ok, identity, from_address} -> [describe(identity, from_address, user)]
-          {:error, _identity, _problem} -> []
-        end
-      end)
+      |> Enum.flat_map(&usable_entry(&1, user))
     else
       _ -> []
     end
   end
 
   def list_usable(_), do: []
+
+  defp usable_entry(identity, user) do
+    case checked(identity) do
+      {:ok, identity, from_address} -> [describe(identity, from_address, user)]
+      {:error, _identity, _problem} -> []
+    end
+  end
 
   # Active mailboxes the user owns or holds a write/admin grant on.
   defp writable_mailbox_uuids(user_uuid) do
@@ -197,20 +199,24 @@ defmodule PhoenixKitInbox.Identities do
   """
   @spec mail_integrations(Scope.t(), :shared | :personal) :: [map()]
   def mail_integrations(%Scope{} = scope, kind) do
-    with {:ok, owner} <- integration_owner_for(scope, kind) do
-      Providers.with_capability(:email_send)
-      |> Enum.map(& &1.key)
-      |> Integrations.load_all_connections(owner: owner)
-      |> Enum.flat_map(fn {_provider, connections} -> connections end)
-      |> Enum.flat_map(fn %{uuid: uuid, name: name} ->
-        case check_integration(uuid, owner) do
-          {:ok, from_address} -> [%{uuid: uuid, name: name, from_address: from_address}]
-          {:error, _} -> []
-        end
-      end)
-      |> Enum.sort_by(&String.downcase(&1.name))
-    else
-      _ -> []
+    case integration_owner_for(scope, kind) do
+      {:ok, owner} ->
+        Providers.with_capability(:email_send)
+        |> Enum.map(& &1.key)
+        |> Integrations.load_all_connections(owner: owner)
+        |> Enum.flat_map(fn {_provider, connections} -> connections end)
+        |> Enum.flat_map(&integration_choice(&1, owner))
+        |> Enum.sort_by(&String.downcase(&1.name))
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp integration_choice(%{uuid: uuid, name: name}, owner) do
+    case check_integration(uuid, owner) do
+      {:ok, from_address} -> [%{uuid: uuid, name: name, from_address: from_address}]
+      {:error, _} -> []
     end
   end
 

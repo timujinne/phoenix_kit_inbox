@@ -26,7 +26,6 @@ defmodule PhoenixKitInbox.Signatures do
 
   import Ecto.Query
 
-  alias Ecto.Multi
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Schemas.Mailbox
@@ -141,26 +140,19 @@ defmodule PhoenixKitInbox.Signatures do
   # A new default clears the mailbox's others in the same transaction; the
   # partial unique index backs it.
   defp save(changeset, action) do
-    Multi.new()
-    |> Multi.run(:clear_default, fn repo, _ ->
+    repo().transaction(fn ->
       if Ecto.Changeset.get_change(changeset, :is_default) == true do
         mailbox_uuid = Ecto.Changeset.get_field(changeset, :mailbox_uuid)
 
-        {count, _} =
-          from(s in Signature, where: s.mailbox_uuid == ^mailbox_uuid and s.is_default)
-          |> repo.update_all(set: [is_default: false])
+        from(s in Signature, where: s.mailbox_uuid == ^mailbox_uuid and s.is_default)
+        |> repo().update_all(set: [is_default: false])
+      end
 
-        {:ok, count}
-      else
-        {:ok, 0}
+      case apply(repo(), action, [changeset]) do
+        {:ok, signature} -> signature
+        {:error, changeset} -> repo().rollback(changeset)
       end
     end)
-    |> Multi.run(:signature, fn repo, _ -> apply(repo, action, [changeset]) end)
-    |> repo().transaction()
-    |> case do
-      {:ok, %{signature: signature}} -> {:ok, signature}
-      {:error, _step, reason, _changes} -> {:error, reason}
-    end
   end
 
   # ── the compose form ────────────────────────────────────────────────────────
