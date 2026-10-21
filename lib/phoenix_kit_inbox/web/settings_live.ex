@@ -1,7 +1,7 @@
 defmodule PhoenixKitInbox.Web.SettingsLive do
   @moduledoc """
   "Shared mail" — Inbox settings for holders of `inbox.manage_shared`
-  (`/admin/inbox/settings`):
+  (`/admin/settings/inbox`, a page of core's Settings section):
 
     * **Shared mail** — identities on system mail integrations that people
       send *as* (nobody reads them here): added, changed and deleted here,
@@ -35,7 +35,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext("Shared mail"))
+      |> assign(:page_title, gettext("Mail"))
       |> assign(:scope, scope)
       |> assign(:module_access, module_access)
       |> assign(:can_manage_shared, manage)

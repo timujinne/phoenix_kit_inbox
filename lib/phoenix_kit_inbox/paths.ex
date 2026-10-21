@@ -79,9 +79,12 @@ defmodule PhoenixKitInbox.Paths do
   @spec mailboxes() :: String.t()
   def mailboxes, do: Routes.path(@base <> "/mailboxes")
 
-  @doc "The admin settings view: shared senders and shared-mailbox signatures."
+  @doc """
+  The mail page of core's Settings section: shared senders and
+  shared-mailbox signatures.
+  """
   @spec settings() :: String.t()
-  def settings, do: Routes.path(@base <> "/settings")
+  def settings, do: Routes.path("/admin/settings/inbox")
 
   @doc """
   The user's own mail settings — a user-menu page (`user_dashboard_tabs/0`),

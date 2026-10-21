@@ -11,7 +11,7 @@ Four admin pages:
 - **Inbox** (`Web.InboxLive`) — three-pane webmail: folder sidebar, message list, reading pane
 - **Compose** (`Web.ComposeLive`) — new / reply / forward / drafts (hidden tab, reached from the New message button)
 - **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them; the Access panel picks colleagues from `Mailboxes.search_users/3` (members, not the viewer) and lists grants by name (`list_grant_holders/1`)
-- **Settings** (`Web.SettingsLive`, "Shared mail") — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields) and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
+- **Settings** (`Web.SettingsLive`, "Mail" in core's Settings section, `/admin/settings/inbox`, from `settings_tabs/0`) — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields) and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
 
 And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLive`, `/dashboard/inbox-settings`) — the user's signatures, default Reply-To and personal senders. It is a `user_dashboard_tabs/0` entry with a `live_view`, so core generates its route in the authenticated session; the page checks access itself and draws its own layout (`LayoutWrapper.app_layout`). A second entry, **Mail**, is an absolute path (`/admin/inbox`) with no `live_view` — core leaves absolute paths as they are and generates no route for it. Both are in the avatar menu (`user_menu: &PhoenixKitInbox.user_menu?/1` — the `"inbox"` permission).
 
@@ -174,7 +174,7 @@ lib/phoenix_kit_inbox/
 ## Critical Conventions
 
 - **Module key** `"inbox"` — consistent across `module_key/0`, `permission_metadata/0`, tab `:permission`, notification type key, and settings prefix
-- **Tab IDs** prefixed `:admin_inbox`; the sidebar reads "Mail" › "Inbox" (`:admin_inbox_messages`), "Mailboxes", "Shared mail" (`:admin_inbox_settings`). msgid "Inbox" is shared with the folder and the page title, so its translation stays as it is
+- **Tab IDs** prefixed `:admin_inbox`; the sidebar reads "Mail" › "Inbox" (`:admin_inbox_messages`), "Mailboxes"; the settings tab is `:admin_settings_inbox` (parent `:admin_settings`, permission `inbox.manage_shared`). msgid "Inbox" is shared with the folder and the page title, so its translation stays as it is
 - **URL paths** use hyphens, never underscores
 - **Navigation** always via `PhoenixKitInbox.Paths`, never a relative or hardcoded path. Notification links are the exception: store the **raw** path (`Paths.raw_message_path/2`) because core prefixes stored links itself — a pre-prefixed one double-prefixes.
 - **`enabled?/0`** rescues and returns `false`; it runs before the DB is guaranteed up

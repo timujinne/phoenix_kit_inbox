@@ -79,19 +79,25 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
 
   test "the sidebar tabs are localized by the module's backend" do
     for {locale, labels} <- [
-          {"ru", {"Почта", "Входящие", "Общая почта"}},
-          {"et", {"Post", "Saabunud", "Ühine post"}},
-          {"en", {"Mail", "Inbox", "Shared mail"}}
+          {"ru", {"Почта", "Входящие", "Почта"}},
+          {"et", {"Post", "Saabunud", "Post"}},
+          {"en", {"Mail", "Inbox", "Mail"}}
         ] do
       Gettext.with_locale(Backend, locale, fn ->
-        tabs = Map.new(PhoenixKitInbox.admin_tabs(), &{&1.id, Tab.localized_label(&1)})
+        tabs =
+          Map.new(
+            PhoenixKitInbox.admin_tabs() ++ PhoenixKitInbox.settings_tabs(),
+            &{&1.id, Tab.localized_label(&1)}
+          )
 
-        assert {tabs[:admin_inbox], tabs[:admin_inbox_messages], tabs[:admin_inbox_settings]} ==
+        assert {tabs[:admin_inbox], tabs[:admin_inbox_messages], tabs[:admin_settings_inbox]} ==
                  labels
       end)
     end
 
-    for tab <- PhoenixKitInbox.admin_tabs() ++ PhoenixKitInbox.user_dashboard_tabs() do
+    for tab <-
+          PhoenixKitInbox.admin_tabs() ++
+            PhoenixKitInbox.settings_tabs() ++ PhoenixKitInbox.user_dashboard_tabs() do
       assert tab.gettext_backend == Backend
     end
   end

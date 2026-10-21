@@ -21,7 +21,7 @@ msgstr ""
 msgid "%{sender} sent you a message."
 msgstr ""
 
-#: lib/phoenix_kit_inbox.ex:476
+#: lib/phoenix_kit_inbox.ex:482
 #: lib/phoenix_kit_inbox/notify.ex:171
 #: lib/phoenix_kit_inbox/notify.ex:172
 #: lib/phoenix_kit_inbox/notify.ex:294
@@ -338,7 +338,9 @@ msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:144
 #: lib/phoenix_kit_inbox.ex:180
-#: lib/phoenix_kit_inbox.ex:266
+#: lib/phoenix_kit_inbox.ex:240
+#: lib/phoenix_kit_inbox.ex:272
+#: lib/phoenix_kit_inbox/web/settings_live.ex:38
 #, elixir-autogen, elixir-format
 msgid "Mail"
 msgstr ""
@@ -348,7 +350,7 @@ msgstr ""
 msgid "Mail connection (its login is the From address)"
 msgstr ""
 
-#: lib/phoenix_kit_inbox.ex:278
+#: lib/phoenix_kit_inbox.ex:284
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:40
 #, elixir-autogen, elixir-format
 msgid "Mail settings"
@@ -1130,8 +1132,6 @@ msgstr ""
 msgid "Roles: %{roles}"
 msgstr ""
 
-#: lib/phoenix_kit_inbox.ex:234
-#: lib/phoenix_kit_inbox/web/settings_live.ex:38
 #: lib/phoenix_kit_inbox/web/settings_live.ex:118
 #, elixir-autogen, elixir-format
 msgid "Shared mail"

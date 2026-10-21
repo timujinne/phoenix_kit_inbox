@@ -11,7 +11,7 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
   alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Test.Repo
 
-  @path "/en/admin/inbox/settings"
+  @path "/en/admin/settings/inbox"
   @manage ["inbox", "inbox.manage_shared"]
 
   setup %{conn: conn} do

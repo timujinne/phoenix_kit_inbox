@@ -53,7 +53,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLiveTest do
     refute has_element?(view, "#manage-shared-mail")
 
     {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox", "inbox.manage_shared"]), @path)
-    assert has_element?(view, "#manage-shared-mail[href*='/admin/inbox/settings']")
+    assert has_element?(view, "#manage-shared-mail[href*='/admin/settings/inbox']")
   end
 
   describe "signatures" do
