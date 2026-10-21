@@ -45,6 +45,7 @@ defmodule PhoenixKitInbox.Web.ComposeLiveTest do
 
     assert [%{message: message}] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
     assert message.subject == "Hi Bob"
+    assert message.body_format == "markdown"
   end
 
   test "an unknown recipient re-renders the form with an error", ctx do

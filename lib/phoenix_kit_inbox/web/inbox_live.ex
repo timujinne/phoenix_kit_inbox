@@ -32,6 +32,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Format
   alias PhoenixKitInbox.Attachments
+  alias PhoenixKitInbox.Body
   alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
@@ -554,7 +555,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
                 {entry.message.subject || gettext_str("(no subject)")}
               </div>
               <div class="truncate text-xs text-base-content/60">
-                {preview(entry.message.body)}
+                {Body.preview(entry.message)}
               </div>
             </div>
 
@@ -650,9 +651,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
         <div class="divider my-0"></div>
 
-        <div class="prose max-w-none whitespace-pre-wrap text-sm">
-          {@selected.message.body || ""}
-        </div>
+        <.message_body message={@selected.message} />
 
         <%!-- Plain links, not LiveView navigation: each is a download from
               the module's controller, which checks the reader again. --%>
@@ -680,6 +679,21 @@ defmodule PhoenixKitInbox.Web.InboxLive do
           folder={@folder}
         />
       </div>
+    </div>
+    """
+  end
+
+  attr(:message, :any, required: true)
+
+  # A Markdown body is sanitized HTML (`PhoenixKitInbox.Body`); any other is
+  # shown as typed, escaped.
+  defp message_body(assigns) do
+    assigns = assign(assigns, :html, Body.html(assigns.message))
+
+    ~H"""
+    <div :if={@html} id="message-body" class="prose prose-sm max-w-none">{@html}</div>
+    <div :if={!@html} id="message-body" class="prose max-w-none whitespace-pre-wrap text-sm">
+      {@message.body || ""}
     </div>
     """
   end
@@ -783,15 +797,6 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   defp folder_label(other), do: other
 
   defp unseen_count(counts, folder), do: Map.get(counts, folder, 0)
-
-  defp preview(nil), do: ""
-
-  defp preview(body) do
-    body
-    |> String.replace(~r/\s+/, " ")
-    |> String.trim()
-    |> String.slice(0, 120)
-  end
 
   defp short_time(nil), do: ""
 

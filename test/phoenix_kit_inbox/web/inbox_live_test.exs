@@ -73,6 +73,55 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
     assert delivery.seen_at
   end
 
+  describe "a Markdown body" do
+    setup %{alice: alice, bob: bob, bob_mb: bob_mb} do
+      {:ok, message} =
+        Messages.send_message(bob_mb, bob.uuid, %{
+          "to" => alice.email,
+          "subject" => "Formatted",
+          "body_format" => "markdown",
+          "body" =>
+            "**Bold** {{name}}\n\n![pixel](http://tracker.example/p.png) " <>
+              "[bad](javascript:alert(1)) <img src=x onerror=alert(1)>"
+        })
+
+      %{message: message}
+    end
+
+    test "is shown formatted, with images as links and nothing executable", ctx do
+      {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox?message=#{ctx.message.uuid}")
+
+      assert has_element?(view, "#message-body strong", "Bold")
+      assert has_element?(view, "#message-body a[href='http://tracker.example/p.png']", "pixel")
+      refute has_element?(view, "#message-body img")
+      refute has_element?(view, "#message-body [onerror]")
+      refute has_element?(view, "#message-body a[href^='javascript']")
+      assert view |> element("#message-body") |> render() =~ "{{name}}"
+    end
+
+    test "is previewed in the list as text", ctx do
+      {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox")
+
+      assert view |> element("li[phx-value-uuid='#{ctx.message.uuid}']") |> render() =~
+               "Bold {{name}}"
+    end
+  end
+
+  test "a text body is shown as typed, markup and all", ctx do
+    {:ok, message} =
+      Messages.send_message(ctx.bob_mb, ctx.bob.uuid, %{
+        "to" => ctx.alice.email,
+        "subject" => "Plain",
+        "body" => "<b>not bold</b> **not bold either**"
+      })
+
+    {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox?message=#{message.uuid}")
+
+    refute has_element?(view, "#message-body b")
+    refute has_element?(view, "#message-body strong")
+    assert view |> element("#message-body") |> render() =~ "&lt;b&gt;not bold&lt;/b&gt;"
+  end
+
   test "switching folders patches the URL", %{conn: conn, alice_mb: alice_mb} do
     {:ok, view, _html} = live(conn, "/en/admin/inbox")
 
