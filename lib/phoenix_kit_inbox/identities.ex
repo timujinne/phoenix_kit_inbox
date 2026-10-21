@@ -595,9 +595,10 @@ defmodule PhoenixKitInbox.Identities do
   The Reply-To addresses the scope's user may put on a message sent from
   `mailbox`, as `[%{address, label, default}]`: their own email, then the
   `address` of each active shared mailbox they own or hold `"write"` or
-  `"admin"` on. Exactly one is the default — the sending shared mailbox's
-  address, else the user's saved choice (`set_default_reply_to/2`) while it
-  is still allowed, else their email.
+  `"admin"` on. At most one is the default: from a shared mailbox its own
+  address (none when it has no address — a reply then goes to the mailbox);
+  from the personal mailbox the user's saved choice
+  (`set_default_reply_to/2`) while it is still allowed, else their email.
 
   Empty without `"inbox"` or without `"write"` on `mailbox`.
   """
@@ -676,9 +677,10 @@ defmodule PhoenixKitInbox.Identities do
     Enum.uniq_by(own ++ shared, &String.downcase(&1.address))
   end
 
-  defp default_for(%Mailbox{kind: "shared", address: address}, _user, options)
-       when is_binary(address) do
-    if Enum.any?(options, &(&1.address == address)), do: address, else: first_address(options)
+  # A shared mailbox's default is its own address; without one there is none,
+  # so a reply still goes to the mailbox rather than to whoever wrote.
+  defp default_for(%Mailbox{kind: "shared", address: address}, _user, options) do
+    if is_binary(address) and Enum.any?(options, &(&1.address == address)), do: address
   end
 
   defp default_for(%Mailbox{kind: "user"} = mailbox, user, options) do
@@ -687,14 +689,9 @@ defmodule PhoenixKitInbox.Identities do
     cond do
       is_binary(saved) and Enum.any?(options, &(&1.address == saved)) -> saved
       Enum.any?(options, &(&1.address == user.email)) -> user.email
-      true -> first_address(options)
+      true -> nil
     end
   end
-
-  defp default_for(_mailbox, _user, options), do: first_address(options)
-
-  defp first_address([%{address: address} | _]), do: address
-  defp first_address([]), do: nil
 
   # ── helpers ─────────────────────────────────────────────────────────────────
 

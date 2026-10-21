@@ -178,6 +178,21 @@ defmodule PhoenixKitInbox.Web.ComposeSenderTest do
       assert Messages.list_folder(ctx.bob_mb.uuid, "inbox") == []
     end
 
+    test "from a shared mailbox without an address, no Reply-To is set", ctx do
+      notes = shared_mailbox_fixture(ctx.bob, %{name: "Notes"})
+      grant_fixture(notes, ctx.alice, "write")
+
+      {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox/compose?mailbox=#{notes.uuid}")
+
+      {:error, {:live_redirect, _}} =
+        view
+        |> form("#compose-form", %{"to" => "@" <> ctx.bob.username, "subject" => "Hi"})
+        |> render_submit()
+
+      assert [%{message: message}] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
+      refute Map.has_key?(message.metadata, "reply_to")
+    end
+
     test "a reply goes to the message's Reply-To", ctx do
       {:ok, desk_message} =
         Messages.send_message(scope_for(ctx.bob), ctx.bob_mb, %{

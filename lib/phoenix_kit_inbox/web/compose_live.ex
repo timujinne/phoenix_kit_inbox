@@ -664,7 +664,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
               id="compose-reply-to"
               name="reply_to"
               value={@form.params["reply_to"]}
-              options={Enum.map(@reply_to_options, &{&1.label, &1.address})}
+              options={reply_to_choices(@reply_to_options)}
               class="select-sm"
             />
           </div>
@@ -800,6 +800,16 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       </p>
     </div>
     """
+  end
+
+  # Without a default (a shared mailbox with no address) the first choice is
+  # "none": replies then go to the sending mailbox.
+  defp reply_to_choices(options) do
+    choices = Enum.map(options, &{&1.label, &1.address})
+
+    if Identities.default_reply_to(options),
+      do: choices,
+      else: [{gettext_str("No Reply-To — replies go to this mailbox"), ""} | choices]
   end
 
   defp upload_error_text(:too_large), do: gettext_str("Larger than the upload limit.")

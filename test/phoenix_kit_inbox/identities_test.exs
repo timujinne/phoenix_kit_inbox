@@ -555,6 +555,16 @@ defmodule PhoenixKitInbox.IdentitiesTest do
       assert Identities.default_reply_to(options) == "desk@company.test"
     end
 
+    test "a shared mailbox without an address has no default", ctx do
+      notes = shared_mailbox_fixture(ctx.admin, %{name: "Notes"})
+      grant_fixture(notes, ctx.alice, "write")
+
+      options = Identities.reply_to_options(scope_for(ctx.alice), notes)
+
+      assert Enum.map(options, & &1.address) == [ctx.alice.email]
+      assert Identities.default_reply_to(options) == nil
+    end
+
     test "nothing without inbox or without write on the mailbox", ctx do
       {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(ctx.alice)
       grant_fixture(ctx.desk, ctx.bob, "read")
