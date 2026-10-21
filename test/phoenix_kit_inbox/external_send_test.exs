@@ -321,6 +321,30 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       assert_received {:outbound, _, _, _}
     end
 
+    test "the task checks inbox.send_external again, where resolve/3 alone would let it go",
+         ctx do
+      {message, uuids} =
+        pending_send(
+          ctx,
+          %{
+            "to" => "client@example.com",
+            "cc" => "",
+            "bcc" => "",
+            "reply_to" => "",
+            "identity_uuid" => ctx.bound.uuid
+          },
+          mailbox: ctx.desk
+        )
+
+      assert {:ok, _} = Identities.resolve(scope_for(ctx.alice), ctx.bound.uuid, ctx.desk)
+
+      External.deliver_now(message, uuids, scope_for(ctx.alice), ctx.desk)
+
+      assert [%{status: "failed", error: error}] = rows(message)
+      assert error =~ "forbidden"
+      refute_received {:outbound, _, _, _}
+    end
+
     test "a retry by another writer is logged as theirs", ctx do
       carol = user_fixture()
       grant_fixture(ctx.desk, carol, "write")
