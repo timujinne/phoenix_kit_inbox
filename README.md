@@ -35,7 +35,7 @@ Neighbouring modules, so you pick the right one:
 - **Signatures** — per mailbox, Markdown, one default; put at the end of a message after a `-- ` line and swapped while untouched
 - **Sending identities and Reply-To** — who a message may go out *as* (a mail integration whose login is the From address) and which addresses replies may go to, both checked on every send
 - **External recipients** — email addresses in To/Cc/Bcc next to internal ones: one email through the sender's integration after the message is committed, real attachments up to a size limit, a status per address, a retry that never sends twice
-- **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; an admin page for shared senders and signatures
+- **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; an admin page, "Shared mail", for the shared senders (added, changed, opened to roles) and signatures
 - **Notifications** — new messages raise an activity event, which core turns into an in-app notification with a deep link
 - **Module-owned migrations** — tables ship and version here, not in core
 - **Auto-discovery** — implements `PhoenixKit.Module`; PhoenixKit finds it at startup with zero config
@@ -343,7 +343,7 @@ All navigation goes through `PhoenixKitInbox.Paths`, never a hardcoded string �
 | `/admin/inbox?folder=sent&message=<uuid>` | same LiveView, patched |
 | `/admin/inbox/compose` | `Web.ComposeLive` (also `?reply_to=`, `?forward=`, `?draft=`) |
 | `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants |
-| `/admin/inbox/settings` | `Web.SettingsLive` — shared senders, shared-mailbox signatures (`inbox.manage_shared`) |
+| `/admin/inbox/settings` | `Web.SettingsLive` — "Shared mail": shared senders with their roles (add, edit, check, delete), shared-mailbox signatures (`inbox.manage_shared`) |
 | `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
 | `/admin/inbox/files/<attachment uuid>` | `Web.AttachmentController` — an attachment download (no locale segment) |
 

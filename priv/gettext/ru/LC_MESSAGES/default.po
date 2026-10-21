@@ -51,11 +51,6 @@ msgstr "В записанном письме получатели указаны
 msgid "A sending identity and a Reply-To need the sender's scope."
 msgstr "Для отправителя и Reply-To нужны права отправителя."
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:115
-#, elixir-autogen, elixir-format
-msgid "A system mail connection to send from. Bound to a shared mailbox, everyone who writes to it may use it; bound to none, it is the common sender for personal mailboxes, for those allowed to write to external addresses."
-msgstr "Системное почтовое подключение для отправки. Если оно привязано к общему ящику, им может пользоваться каждый, кто пишет из этого ящика; если ни к чему не привязано, это общий отправитель для личных ящиков у тех, кому разрешено писать на внешние адреса."
-
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:273
 #, elixir-autogen, elixir-format
 msgid "Access"
@@ -81,7 +76,7 @@ msgstr "Действия"
 msgid "Add at least one recipient."
 msgstr "Добавьте хотя бы одного получателя."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:235
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:365
 #, elixir-autogen, elixir-format
 msgid "Add sender"
 msgstr "Добавить отправителя"
@@ -164,13 +159,13 @@ msgstr "Назад к ящику"
 msgid "Bcc"
 msgstr "Скрытая копия"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:174
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:241
 #, elixir-autogen, elixir-format
 msgid "Broken"
 msgstr "Не работает"
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:762
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:227
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:344
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
 #, elixir-autogen, elixir-format
 msgid "Cancel"
@@ -186,7 +181,7 @@ msgstr "Отменить загрузку"
 msgid "Cc"
 msgstr "Копия"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:185
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:259
 #, elixir-autogen, elixir-format
 msgid "Check"
 msgstr "Проверить"
@@ -200,11 +195,6 @@ msgstr "Чтобы писать на адреса вне приложения, �
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr "Закрыть"
-
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:243
-#, elixir-autogen, elixir-format
-msgid "Common sender for personal mailboxes"
-msgstr "Общий отправитель для личных ящиков"
 
 #: lib/phoenix_kit_inbox.ex:208
 #, elixir-autogen, elixir-format
@@ -231,7 +221,7 @@ msgstr "Создайте ящик выше, чтобы команда польз
 msgid "Default"
 msgstr "По умолчанию"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:194
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:268
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:154
 #, elixir-autogen, elixir-format
 msgid "Delete"
@@ -247,7 +237,7 @@ msgstr "Удалить навсегда"
 msgid "Delete this message from your mailbox permanently?"
 msgstr "Удалить это сообщение из вашего ящика навсегда?"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:192
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:266
 #, elixir-autogen, elixir-format
 msgid "Delete this sender?"
 msgstr "Удалить этого отправителя?"
@@ -297,6 +287,7 @@ msgstr "Черновик сохранён."
 msgid "Drafts"
 msgstr "Черновики"
 
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:251
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:145
 #, elixir-autogen, elixir-format
 msgid "Edit"
@@ -331,17 +322,12 @@ msgstr "Дать доступ"
 msgid "Inbox"
 msgstr "Входящие"
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:35
-#, elixir-autogen, elixir-format
-msgid "Inbox settings"
-msgstr "Настройки входящих"
-
 #: lib/phoenix_kit_inbox/web/compose_live.ex:886
 #, elixir-autogen, elixir-format
 msgid "Inside the application only"
 msgstr "Только внутри приложения"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:251
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:393
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr "Его почтовое подключение отсутствует, отключено или больше не работает. Исправьте его и проверьте снова."
@@ -356,7 +342,7 @@ msgstr "Больше допустимого размера."
 msgid "Mail"
 msgstr "Почта"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:213
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:298
 #, elixir-autogen, elixir-format
 msgid "Mail connection (its login is the From address)"
 msgstr "Почтовое подключение (его логин — адрес отправителя)"
@@ -367,7 +353,7 @@ msgstr "Почтовое подключение (его логин — адре�
 msgid "Mail settings"
 msgstr "Настройки почты"
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:145
+#: lib/phoenix_kit_inbox/web/settings_live.ex:152
 #, elixir-autogen, elixir-format
 msgid "Mailbox"
 msgstr "Ящик"
@@ -449,7 +435,7 @@ msgstr "Сообщения между пользователями этого п
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:205
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:290
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:191
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:248
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:170
@@ -457,7 +443,7 @@ msgstr "Подходит несколько получателей: %{recipients
 msgid "Name"
 msgstr "Название"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:209
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:294
 #, elixir-autogen, elixir-format
 msgid "Name shown to recipients"
 msgstr "Имя, которое видят получатели"
@@ -488,7 +474,7 @@ msgstr "Без Reply-To — ответы придут в этот ящик"
 msgid "No recipient matches: %{recipients}. Use @username, an email address, or a shared mailbox name."
 msgstr "Получатель не найден: %{recipients}. Укажите @имя_пользователя, адрес email или название общего ящика."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:157
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:221
 #, elixir-autogen, elixir-format
 msgid "No senders yet."
 msgstr "Отправителей пока нет."
@@ -507,11 +493,6 @@ msgstr "Без подписи"
 #, elixir-autogen, elixir-format
 msgid "No signatures yet."
 msgstr "Подписей пока нет."
-
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:221
-#, elixir-autogen, elixir-format
-msgid "None — the common sender for personal mailboxes"
-msgstr "Нет — общий отправитель для личных ящиков"
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:476
 #, elixir-autogen, elixir-format
@@ -616,7 +597,7 @@ msgstr "Повторить"
 msgid "Revoke"
 msgstr "Отозвать"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:229
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:346
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:172
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:181
 #, elixir-autogen, elixir-format
@@ -653,12 +634,12 @@ msgstr "Отправить как"
 msgid "Send from your own mail connection. The From address is the connection's login."
 msgstr "Отправка через ваше собственное почтовое подключение. Адрес отправителя — логин подключения."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:132
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:174
 #, elixir-autogen, elixir-format
 msgid "Sender deleted."
 msgstr "Отправитель удалён."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:95
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:136
 #, elixir-autogen, elixir-format
 msgid "Sender saved."
 msgstr "Отправитель сохранён."
@@ -688,11 +669,6 @@ msgstr "Отправленные"
 msgid "Settings"
 msgstr "Настройки"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:219
-#, elixir-autogen, elixir-format
-msgid "Shared mailbox"
-msgstr "Общий ящик"
-
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:229
 #, elixir-autogen, elixir-format
 msgid "Shared mailboxes"
@@ -708,12 +684,7 @@ msgstr "Общие ящики и кто может ими пользоватьс
 msgid "Shared mailboxes you are given access to appear here."
 msgstr "Здесь появятся общие ящики, к которым вам дали доступ."
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:113
-#, elixir-autogen, elixir-format
-msgid "Shared senders"
-msgstr "Общие отправители"
-
-#: lib/phoenix_kit_inbox/web/settings_live.ex:106
+#: lib/phoenix_kit_inbox/web/settings_live.ex:111
 #, elixir-autogen, elixir-format
 msgid "Shared senders and signatures are managed by holders of “Manage shared mailboxes”."
 msgstr "Общими отправителями и подписями управляют те, у кого есть право «Управление общими ящиками»."
@@ -743,7 +714,7 @@ msgstr "Подпись сохранена."
 msgid "Signatures"
 msgstr "Подписи"
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:133
+#: lib/phoenix_kit_inbox/web/settings_live.ex:140
 #, elixir-autogen, elixir-format
 msgid "Signatures of shared mailboxes"
 msgstr "Подписи общих ящиков"
@@ -859,7 +830,7 @@ msgstr "Подпись в сообщении была изменена, поэт
 msgid "The upload failed."
 msgstr "Не удалось загрузить файл."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:62
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:74
 #, elixir-autogen, elixir-format
 msgid "There is no mail connection with a login address to send from yet."
 msgstr "Пока нет почтового подключения с адресом для входа, с которого можно отправлять."
@@ -975,7 +946,7 @@ msgstr "Вы не можете отправлять от имени этого �
 msgid "You can't use that Reply-To address."
 msgstr "Этот адрес Reply-To использовать нельзя."
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:136
+#: lib/phoenix_kit_inbox/web/settings_live.ex:143
 #, elixir-autogen, elixir-format
 msgid "You don't administer any shared mailbox."
 msgstr "Вы не управляете ни одним общим ящиком."
@@ -999,7 +970,7 @@ msgstr "У вас нет прав на это действие."
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:469
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:151
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:123
-#: lib/phoenix_kit_inbox/web/settings_live.ex:100
+#: lib/phoenix_kit_inbox/web/settings_live.ex:105
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to use Inbox."
 msgstr "У вас нет прав на работу с входящими."
@@ -1009,7 +980,7 @@ msgstr "У вас нет прав на работу с входящими."
 msgid "Your access"
 msgstr "Ваш доступ"
 
-#: lib/phoenix_kit_inbox/web/settings_live.ex:108
+#: lib/phoenix_kit_inbox/web/settings_live.ex:113
 #, elixir-autogen, elixir-format
 msgid "Your mail settings"
 msgstr "Ваши настройки почты"
@@ -1153,3 +1124,64 @@ msgstr "Пользователь %{id}"
 #, elixir-autogen, elixir-format
 msgid "No mail is open to you for writing to addresses outside this application."
 msgstr "Вам не доступна ни одна почта для отправки на внешние адреса."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex:120
+#, elixir-autogen, elixir-format
+msgid "A system mail connection people send from, in their own name and the mail's, from their personal mailbox. Each one is open to the roles ticked; the Owner always."
+msgstr "Системное почтовое подключение, от имени которого отправляют письма — со своим именем и именем почты, из личного ящика. Каждая почта доступна отмеченным ролям; владельцу (Owner) — всегда."
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:357
+#, elixir-autogen, elixir-format
+msgid "Add shared mail"
+msgstr "Добавить общую почту"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:384
+#, elixir-autogen, elixir-format
+msgid "Owner only: no role is ticked"
+msgstr "Только Owner: ни одна роль не отмечена"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:314
+#, elixir-autogen, elixir-format
+msgid "Owner — always"
+msgstr "Owner — всегда"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:387
+#, elixir-autogen, elixir-format
+msgid "Roles: %{roles}"
+msgstr "Доступна ролям: %{roles}"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:337
+#, elixir-autogen, elixir-format
+msgid "Sending also needs the “Send to external addresses” permission. Nobody else can read this mail here."
+msgstr "Для отправки нужно ещё право «Отправка на внешние адреса». Читать эту почту здесь не может никто."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex:38
+#: lib/phoenix_kit_inbox/web/settings_live.ex:118
+#, elixir-autogen, elixir-format
+msgid "Shared mail"
+msgstr "Общая почта"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:237
+#, elixir-autogen, elixir-format
+msgid "Shown as “%{name}”"
+msgstr "Получатели видят «%{name}»"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
+#, elixir-autogen, elixir-format
+msgid "Through the shared mailbox “%{name}”"
+msgstr "По ящику «%{name}»"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:302
+#, elixir-autogen, elixir-format
+msgid "Used through the shared mailbox “%{name}” by everyone who writes to it."
+msgstr "Ею пользуются через общий ящик «%{name}» все, кто может в него писать."
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:311
+#, elixir-autogen, elixir-format
+msgid "Who may send from it"
+msgstr "Кто может отправлять от её имени"
+
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:331
+#, elixir-autogen, elixir-format
+msgid "the role has no “Send to external addresses” permission — grant it in the roles matrix"
+msgstr "у роли нет права «Отправка на внешние адреса» — выдать в матрице ролей"

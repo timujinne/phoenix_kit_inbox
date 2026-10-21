@@ -1,11 +1,14 @@
 defmodule PhoenixKitInbox.Web.SettingsLive do
   @moduledoc """
-  Inbox settings for holders of `inbox.manage_shared` (`/admin/inbox/settings`):
+  "Shared mail" — Inbox settings for holders of `inbox.manage_shared`
+  (`/admin/inbox/settings`):
 
-    * **Shared senders** — identities on system mail integrations, each bound
-      to a shared mailbox or to none (the common sender for personal
-      mailboxes), with their From address and a "Broken" mark when the
-      integration no longer works (`Web.IdentityEditor`)
+    * **Shared mail** — identities on system mail integrations that people
+      send *as* (nobody reads them here): added, changed and deleted here,
+      each open to the roles ticked (Owner always); one bound to a shared
+      mailbox through the API is listed by its mailbox. With their From
+      address and a "Broken" mark when the integration no longer works
+      (`Web.IdentityEditor`)
     * **Signatures of shared mailboxes** the viewer administers
       (`Web.SignatureEditor`)
 
@@ -32,7 +35,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext("Inbox settings"))
+      |> assign(:page_title, gettext("Shared mail"))
       |> assign(:scope, scope)
       |> assign(:module_access, module_access)
       |> assign(:can_manage_shared, manage)
@@ -55,7 +58,9 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
     |> assign(:identities, [])
     |> assign(:ident_integrations, [])
     |> assign(:ident_mailboxes, [])
+    |> assign(:ident_roles, [])
     |> assign(:ident_form, nil)
+    |> assign(:ident_editing, nil)
     |> assign(:ident_problems, %{})
     |> SignatureEditor.assign_editor(nil)
   end
@@ -110,10 +115,10 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
 
       <section :if={@can_manage_shared} class="card bg-base-100 shadow max-w-4xl">
         <div class="card-body gap-3">
-          <h2 class="card-title text-base">{gettext("Shared senders")}</h2>
+          <h2 class="card-title text-base">{gettext("Shared mail")}</h2>
           <p class="text-sm text-base-content/60">
             {gettext(
-              "A system mail connection to send from. Bound to a shared mailbox, everyone who writes to it may use it; bound to none, it is the common sender for personal mailboxes, for those allowed to write to external addresses."
+              "A system mail connection people send from, in their own name and the mail's, from their personal mailbox. Each one is open to the roles ticked; the Owner always."
             )}
           </p>
           <IdentityEditor.editor
@@ -122,6 +127,8 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
             identities={@identities}
             integrations={@ident_integrations}
             mailboxes={@ident_mailboxes}
+            roles={@ident_roles}
+            editing={@ident_editing}
             problems={@ident_problems}
             form={@ident_form}
           />
