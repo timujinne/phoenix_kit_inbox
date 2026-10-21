@@ -10,7 +10,7 @@ Four admin pages:
 
 - **Inbox** (`Web.InboxLive`) — three-pane webmail: folder sidebar, message list, reading pane
 - **Compose** (`Web.ComposeLive`) — new / reply / forward / drafts (hidden tab, reached from the New message button)
-- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them
+- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them; the Access panel picks colleagues from `Mailboxes.search_users/3` (members, not the viewer) and lists grants by name (`list_grant_holders/1`)
 - **Settings** (`Web.SettingsLive`, "Shared mail") — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields) and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
 
 And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLive`, `/dashboard/inbox-settings`) — the user's signatures, default Reply-To and personal senders. It is a `user_dashboard_tabs/0` entry with a `live_view`, so core generates its route in the authenticated session; the page checks access itself and draws its own layout (`LayoutWrapper.app_layout`). A second entry, **Mail**, is an absolute path (`/admin/inbox`) with no `live_view` — core leaves absolute paths as they are and generates no route for it. Both are in the avatar menu (`user_menu: &PhoenixKitInbox.user_menu?/1` — the `"inbox"` permission).

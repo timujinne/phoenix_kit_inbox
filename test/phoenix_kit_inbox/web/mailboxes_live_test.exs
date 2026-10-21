@@ -53,6 +53,65 @@ defmodule PhoenixKitInbox.Web.MailboxesLiveTest do
     assert mailbox.owner_uuid == ctx.alice.uuid
   end
 
+  describe "the access panel" do
+    setup ctx do
+      desk = shared_mailbox_fixture(ctx.alice, %{name: "Desk"})
+
+      colleague =
+        user_fixture(%{
+          first_name: "Cora",
+          last_name: "Lee",
+          username: "cora",
+          email: "cora@x.test"
+        })
+
+      other = user_fixture(%{first_name: "Otto", last_name: "Berg", username: "otto"})
+      outsider = user_fixture(%{first_name: "Out", last_name: "Sider", inbox_member: false})
+
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), "/en/admin/inbox/mailboxes")
+
+      view
+      |> element("button[phx-click='toggle_grants'][phx-value-uuid='#{desk.uuid}']")
+      |> render_click()
+
+      %{desk: desk, colleague: colleague, other: other, outsider: outsider, view: view}
+    end
+
+    test "offers colleagues by name to pick from, not a uuid to type", ctx do
+      refute has_element?(ctx.view, "#grant-form input[name='user_uuid']")
+
+      assert has_element?(
+               ctx.view,
+               "#grant-user option[value='#{ctx.colleague.uuid}']",
+               "Cora Lee"
+             )
+
+      refute has_element?(ctx.view, "#grant-user option[value='#{ctx.outsider.uuid}']")
+      refute has_element?(ctx.view, "#grant-user option[value='#{ctx.alice.uuid}']")
+
+      ctx.view |> element("#grant-form") |> render_change(%{"q" => "otto"})
+
+      assert has_element?(ctx.view, "#grant-user option[value='#{ctx.other.uuid}']")
+      refute has_element?(ctx.view, "#grant-user option[value='#{ctx.colleague.uuid}']")
+    end
+
+    test "a picked colleague gets access and is listed by name", ctx do
+      ctx.view
+      |> element("#grant-form")
+      |> render_submit(%{"user_uuid" => ctx.colleague.uuid, "access" => "write"})
+
+      assert Mailboxes.access_level(ctx.desk, ctx.colleague.uuid) == "write"
+      assert has_element?(ctx.view, "#grant-#{ctx.colleague.uuid}", "Cora Lee")
+      assert has_element?(ctx.view, "#grant-#{ctx.colleague.uuid}", "@cora")
+
+      ctx.view
+      |> element("#grant-#{ctx.colleague.uuid} button[phx-click='revoke']")
+      |> render_click()
+
+      assert Mailboxes.access_level(ctx.desk, ctx.colleague.uuid) == nil
+    end
+  end
+
   describe "forged admin events from a write grantee" do
     setup ctx do
       owner = user_fixture()

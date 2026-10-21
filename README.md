@@ -112,6 +112,8 @@ alias PhoenixKitInbox.Mailboxes
 })
 
 {:ok, _} = Mailboxes.grant_access(scope, support, teammate.uuid, "write")   # admin on support
+Mailboxes.search_users(me.uuid, "ann")                #=> [%{uuid, name, username}] — members, not me
+Mailboxes.list_grant_holders(support.uuid)            #=> [%{user_uuid, access, name, username}]
 
 Mailboxes.access_level(support, owner.uuid)           #=> "admin"  (ownership implies admin)
 Mailboxes.authorize(support, teammate.uuid, "write")  #=> :ok
@@ -342,7 +344,7 @@ All navigation goes through `PhoenixKitInbox.Paths`, never a hardcoded string �
 | `/admin/inbox` | `Web.InboxLive` — folders, list, reading pane |
 | `/admin/inbox?folder=sent&message=<uuid>` | same LiveView, patched |
 | `/admin/inbox/compose` | `Web.ComposeLive` (also `?reply_to=`, `?forward=`, `?draft=`) |
-| `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants |
+| `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants (colleagues picked by name) |
 | `/admin/inbox/settings` | `Web.SettingsLive` — "Shared mail": shared senders with their roles (add, edit, check, delete), shared-mailbox signatures (`inbox.manage_shared`) |
 | `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders, a link to "Shared mail" for `inbox.manage_shared`; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
 | `/admin/inbox/files/<attachment uuid>` | `Web.AttachmentController` — an attachment download (no locale segment) |
