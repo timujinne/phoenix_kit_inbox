@@ -194,7 +194,8 @@ defmodule PhoenixKitInbox.Messages do
   `list_recipients/2`. `nil` as the viewer drops every Bcc entry.
 
   Messages returned by `list_folder/3`, `fetch_for_mailbox/2` and
-  `list_thread/1` already carry their metadata filtered this way.
+  `list_thread/1` already carry their metadata filtered this way, and their
+  `metadata["identity"]` (the sending identity) only for the sending mailbox.
   """
   @spec recipient_snapshot(Message.t(), binary() | nil) :: [map()]
   def recipient_snapshot(%Message{metadata: metadata} = message, viewer_mailbox_uuid) do
@@ -213,8 +214,22 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
-  defp for_viewer(%Message{metadata: %{"recipients" => _} = metadata} = message, viewer) do
-    %{message | metadata: Map.put(metadata, "recipients", recipient_snapshot(message, viewer))}
+  # What a reader may see of the server-written metadata: the Bcc rule of
+  # `recipient_snapshot/2`, and the sending identity (an integration uuid is
+  # admin configuration) only for the sending mailbox. The Reply-To stays —
+  # recipients reply to it.
+  defp for_viewer(%Message{metadata: metadata} = message, viewer) when is_map(metadata) do
+    sender? = is_binary(viewer) and message.sender_mailbox_uuid == viewer
+
+    metadata =
+      metadata
+      |> then(&if sender?, do: &1, else: Map.delete(&1, "identity"))
+      |> then(fn
+        %{"recipients" => _} = m -> Map.put(m, "recipients", recipient_snapshot(message, viewer))
+        m -> m
+      end)
+
+    %{message | metadata: metadata}
   end
 
   defp for_viewer(message, _viewer), do: message

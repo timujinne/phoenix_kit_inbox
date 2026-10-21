@@ -72,6 +72,29 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
       assert uuid == message.uuid
     end
 
+    test "only the sending mailbox sees the identity; recipients keep the Reply-To", ctx do
+      {:ok, message} =
+        send(ctx, scope_for(ctx.alice, @external), ctx.alice_mb, %{
+          "identity_uuid" => ctx.common.uuid,
+          "reply_to" => ctx.alice.email
+        })
+
+      assert {:ok, %{message: sent}} = Messages.fetch_for_mailbox(ctx.alice_mb.uuid, message.uuid)
+      assert sent.metadata["identity"]["integration_uuid"] == ctx.system_smtp
+
+      assert {:ok, %{message: received}} =
+               Messages.fetch_for_mailbox(ctx.bob_mb.uuid, message.uuid)
+
+      refute Map.has_key?(received.metadata, "identity")
+      assert received.metadata["reply_to"] == ctx.alice.email
+
+      assert [%{message: listed}] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
+      refute Map.has_key?(listed.metadata, "identity")
+
+      assert [threaded] = Messages.list_thread(message.thread_uuid)
+      refute Map.has_key?(threaded.metadata, "identity")
+    end
+
     test "an identity the sender may not use refuses the send", ctx do
       assert {:error, {:identity_unusable, :forbidden}} =
                send(ctx, scope_for(ctx.alice), ctx.alice_mb, %{
