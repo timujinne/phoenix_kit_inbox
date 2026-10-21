@@ -17,7 +17,7 @@ And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLiv
 
 ## Scope boundary — read this before adding features
 
-Inbox is **internal**. Messages address mailboxes inside the app; nothing is fetched over IMAP, nothing is relayed out. This was an explicit product decision, not an oversight. Before adding transport, check whether the request actually belongs in a neighbour:
+Inbox is **internal** first. Messages address mailboxes inside the app; nothing is fetched over IMAP. Mail leaves the app only to the external recipients of a message, its retry and the email nudge — all through one seam, closed by default (below). Before adding any other transport, check whether the request actually belongs in a neighbour:
 
 | Concern | Module |
 |---|---|
@@ -26,19 +26,26 @@ Inbox is **internal**. Messages address mailboxes inside the app; nothing is fet
 | Delivery tracking, bounces, SES/SQS | `phoenix_kit_emails` |
 | Customer tickets, statuses, SLAs | `phoenix_kit_customer_support` |
 
-The one outward-facing thing here is the **email nudge** in `PhoenixKitInbox.Notify` — a "you have a new message" email to the recipient's real address. It is a **soft** integration and must stay one:
+### Outbound mail — one seam
 
-- `phoenix_kit_emails` is deliberately **not** in `mix.exs`
-- the call goes through `apply/3` behind `Code.ensure_loaded?/1` + `function_exported?/3` (a literal call is a `--warnings-as-errors` failure, and core uses the same idiom in `PhoenixKit.Mailer`)
-- it is off by default behind the `inbox_email_nudges_enabled` setting
-- it fires **after** the send transaction commits, and every failure is rescued and logged — a notification must never unsend a committed message
+**Every** email the module sends goes through `PhoenixKitInbox.Outbound.deliver/2`. Never call `PhoenixKit.Mailer` anywhere else.
+
+- **Closed by default**: the `inbox_external_enabled` setting (off) **and** `config :phoenix_kit_inbox, outbound_filter: {Mod, :fun}` (or explicit `:none`). Missing either → `{:error, :external_disabled}`.
+- The host filter gets `(%Swoosh.Email{}, context)`; only To/Cc/Bcc/Reply-To of its answer are taken. A raise, throw, exit or a non-`{:ok, %Swoosh.Email{}}`/`{:error, _}` answer refuses (`:filter_failed`) — an error must stop mail.
+- The call is `deliver_via_integration/3` with `skip_queue: true` **and** `queue: false` on every call: `phoenix_kit_emails`' queue re-sends through core's *default* integration, so a queued message would leave from the wrong connection. Tests assert both.
+- `deliver_via_integration/3` reads any connection by uuid: the caller resolves the identity first (`Identities.resolve/3` for a user's send, `resolve_system/1` for the nudge).
+- `config :phoenix_kit_inbox, :outbound` replaces only the transport (`Outbound.Mailer` by default), for tests — the checks and the filter still run.
+
+External recipients (`PhoenixKitInbox.External`): rows written `pending` in the send's transaction; the email goes after the commit in a task under `PhoenixKitInbox.TaskSupervisor` (`children/0`); the rows become `sent`/`failed` and `{:inbox_external_updated, uuid}` is broadcast on the sending mailbox's topic. A failure there must never touch the internal part. Retry only takes `failed` rows, in one `UPDATE … RETURNING`, so it can't send twice; it needs `phoenix_kit_emails` (its log decides whether anything went out — found by `message_tags.inbox_message_uuid`, `inbox_kind = "message"`) and is never offered for `record_sent` messages.
+
+The **email nudge** in `PhoenixKitInbox.Notify` goes the same way, from the shared identity named by `inbox_nudge_identity_uuid` — never core's default integration; no sender, no nudge. `phoenix_kit_emails` stays a **soft** dependency, **not** in `mix.exs`: `EmailLog` asks it `enabled?/0` through `apply/3` behind `Code.ensure_loaded?/1` + `function_exported?/3` (a literal call is a `--warnings-as-errors` failure). Nudges fire **after** the commit, in a task, and every failure is rescued and logged.
 
 ## Database & Migrations
 
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures. **Immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures; `V05` — external recipients with their status. **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
@@ -94,7 +101,7 @@ Consequences worth remembering before changing anything:
 - A mailbox listed in both To and Cc gets one copy at the stronger role (`dedupe_recipients/1`), because the unique index on `(message, mailbox, role)` would otherwise let the same person appear twice.
 - `upsert_delivery/5` is idempotent, which is what makes the fan-out safe to retry and what lets sending a draft *move* the author's existing `drafts` row to `sent` rather than creating a second one.
 - Sending a draft promotes the **same row** — same uuid, `status` flips to `"sent"`. Don't "copy and delete"; links to the draft uuid would break.
-- `"identity_uuid"` and `"reply_to"` (scope form only; the `/3` form refuses them with `:sender_options_need_scope`) are checked by `Identities.resolve/3` against the sending mailbox and by `Identities.allowed_reply_to/3`, and recorded as `metadata["identity"]` / `metadata["reply_to"]` — server-written, a caller's copy is dropped. **Nothing is sent outside the application by them**: external delivery is a later release. A draft keeps them as typed (`draft_sender/1`), unchecked until the send.
+- `"identity_uuid"` and `"reply_to"` (scope form only; the `/3` form refuses them with `:sender_options_need_scope`) are checked by `Identities.resolve/3` against the sending mailbox and by `Identities.allowed_reply_to/3`, and recorded as `metadata["identity"]` / `metadata["reply_to"]` — server-written, a caller's copy is dropped. The identity is also what external recipients are sent as (see "Outbound mail"). An email address that resolves to nobody is an external recipient when the scope may write externally (`inbox.send_external`, or a personal identity), else an unknown recipient; the `/3` form has no scope, so for it an address outside is always an unknown recipient. A draft keeps them as typed (`draft_sender/1`), unchecked until the send.
 - Bodies are `text`, `html` or `markdown`; compose writes `markdown`. The reading pane renders only `markdown` (`PhoenixKitInbox.Body`: core's `PhoenixKit.Email.Markdown` with no variables, so `{{x}}` stays as typed; typed line breaks kept; remote images turned into links, never loaded; links `target=_blank rel=noopener noreferrer nofollow`) and shows everything else escaped. Never render a body as raw HTML any other way.
 
 ## Identities and signatures
@@ -149,9 +156,12 @@ lib/phoenix_kit_inbox/
 ├── signatures.ex                         # mailbox signatures
 ├── body.ex                               # Markdown body -> safe HTML, previews
 ├── notify.ex                             # activity log + optional email nudge
+├── outbound.ex, outbound/mailer.ex       # THE way mail leaves: checks, filter, core call
+├── external.ex                           # external recipients: rows, task, status, retry
+├── email_log.ex                          # reads phoenix_kit_emails' log (soft dependency)
 ├── migrations.ex                         # version coordinator
-├── migrations/v01.ex … v04.ex            # immutable
-├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,signature}.ex
+├── migrations/v01.ex … v05.ex            # immutable
+├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,signature,external_recipient}.ex
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
     web/{signature_editor,identity_editor}.ex   # shared by the two settings pages
 ```
