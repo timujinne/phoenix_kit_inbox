@@ -6,11 +6,14 @@ This file provides guidance to AI agents when working with code in this reposito
 
 PhoenixKit module providing an **internal mailbox** — an in-app email client for messages between the users of the host application. Implements the `PhoenixKit.Module` behaviour for auto-discovery.
 
-Three admin pages:
+Four admin pages:
 
 - **Inbox** (`Web.InboxLive`) — three-pane webmail: folder sidebar, message list, reading pane
 - **Compose** (`Web.ComposeLive`) — new / reply / forward / drafts (hidden tab, reached from the New message button)
 - **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them
+- **Settings** (`Web.SettingsLive`) — shared senders and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
+
+And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLive`, `/dashboard/inbox-settings`) — the user's signatures, default Reply-To and personal senders. It is a `user_dashboard_tabs/0` entry with a `live_view`, so core generates its route in the authenticated session; the page checks access itself and draws its own layout (`LayoutWrapper.app_layout`). A second entry, **Mail**, is an absolute path (`/admin/inbox`) with no `live_view` — core leaves absolute paths as they are and generates no route for it. Both are in the avatar menu (`user_menu: &PhoenixKitInbox.user_menu?/1` — the `"inbox"` permission).
 
 ## Scope boundary — read this before adding features
 
@@ -35,7 +38,7 @@ The one outward-facing thing here is the **email nudge** in `PhoenixKitInbox.Not
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments. **Immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures. **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
@@ -66,6 +69,9 @@ phoenix_kit_inbox_mailboxes          kind: "user" (one per user) | "shared"
 phoenix_kit_inbox_messages           body stored ONCE; thread_uuid, parent_uuid, sender
  ├─ phoenix_kit_inbox_deliveries      one per recipient mailbox: folder, seen_at, starred
  └─ phoenix_kit_inbox_attachments     file_uuid → a snapshot in the module's hidden Storage library
+
+phoenix_kit_inbox_identities          kind: "shared" (system integration, mailbox or none) | "personal" (owner)
+phoenix_kit_inbox_signatures          per mailbox, Markdown, at most one is_default
 ```
 
 Consequences worth remembering before changing anything:
@@ -88,6 +94,18 @@ Consequences worth remembering before changing anything:
 - A mailbox listed in both To and Cc gets one copy at the stronger role (`dedupe_recipients/1`), because the unique index on `(message, mailbox, role)` would otherwise let the same person appear twice.
 - `upsert_delivery/5` is idempotent, which is what makes the fan-out safe to retry and what lets sending a draft *move* the author's existing `drafts` row to `sent` rather than creating a second one.
 - Sending a draft promotes the **same row** — same uuid, `status` flips to `"sent"`. Don't "copy and delete"; links to the draft uuid would break.
+- `"identity_uuid"` and `"reply_to"` (scope form only; the `/3` form refuses them with `:sender_options_need_scope`) are checked by `Identities.resolve/3` against the sending mailbox and by `Identities.allowed_reply_to/3`, and recorded as `metadata["identity"]` / `metadata["reply_to"]` — server-written, a caller's copy is dropped. **Nothing is sent outside the application by them**: external delivery is a later release. A draft keeps them as typed (`draft_sender/1`), unchecked until the send.
+- Bodies are `text`, `html` or `markdown`; compose writes `markdown`. The reading pane renders only `markdown` (`PhoenixKitInbox.Body`: core's `PhoenixKit.Email.Markdown` with no variables, so `{{x}}` stays as typed; typed line breaks kept; remote images turned into links, never loaded; links `target=_blank rel=noopener noreferrer nofollow`) and shows everything else escaped. Never render a body as raw HTML any other way.
+
+## Identities and signatures
+
+`PhoenixKitInbox.Identities` and `PhoenixKitInbox.Signatures`; every write takes the caller's `%Scope{}` and checks the **stored** row.
+
+- **The From address is never typed or stored**: it is the integration's login (SMTP `username`, an email). A mail integration without one is unusable (`:no_from_address`).
+- **Shared** identity = a `:system` integration, written by `inbox.manage_shared` holders. Bound to a shared mailbox → usable by `write` holders, from that mailbox only. Unbound → the common sender for personal mailboxes: `inbox.send_external`, from one's own personal mailbox, From name `"<user> | <from_name>"`. **Personal** identity = the owner's `{:user, uuid}` integration, owner only, personal mailbox only. A CHECK constraint keeps the shapes apart; both FKs cascade (an identity outliving its mailbox would become an unbound one).
+- `check/1` (exists, `:email_send` provider, credentials, owner, login) is stored in `status` (`broken` ↔ `active`) only by `resolve/2,3` (every send) and `recheck/2` (the settings pages' "Check"). `list_usable/1` checks without writing; the settings listings show the stored status and check nothing (one connections query for the From addresses); the "Add sender" choices are loaded when the button is pressed. **A send uses `resolve/3`** — `resolve/2` has no mailbox fit. Integrations are core's `phoenix_kit_settings` rows, so `integration_uuid` has no FK.
+- **Reply-To** options: the user's email + `address` of active shared mailboxes they own or hold `write`/`admin` on. Default: the sending shared mailbox's address (none without one — so an internal reply still goes to the mailbox), else the personal mailbox's `settings["reply_to"]` while allowed, else the email. A reply in compose goes to the message's `reply_to` when set.
+- **Signatures**: personal mailbox → owner; shared → `admin` on it **and** `inbox.manage_shared`. `Signatures.list/1` takes a mailbox uuid the caller has authorized (like `list_grants/1`). Compose inserts `Signatures.block/1` (`"\n\n-- \n" <> body`) and swaps it with `swap_block/3` only while the body still ends with what it inserted; a reopened draft is left as saved; only the sending mailbox's signatures can be chosen.
 
 ## Attachments
 
@@ -107,7 +125,7 @@ Consequences worth remembering before changing anything:
 
 Two gates, and they are different questions:
 
-1. **Module permission** — `Scope.has_module_access?(scope, "inbox")`. Can this user open Inbox at all? Checked in every LiveView's `mount/3` and re-checked in `handle_params/3`. Sub-permissions (`inbox.manage_shared`, `inbox.send_external`) are checked with `Scope.can?/2` **in the context function** that needs them, so those functions take the caller's `%Scope{}` (`create_shared_mailbox/2`, `update_mailbox/3`).
+1. **Module permission** — `Scope.has_module_access?(scope, "inbox")`. Can this user open Inbox at all? Checked in every LiveView's `mount/3` and re-checked in `handle_params/3`. Sub-permissions (`inbox.manage_shared`, `inbox.send_external`) are checked with `Scope.can?/2` **in the context function** that needs them, so those functions take the caller's `%Scope{}` (`create_shared_mailbox/2`, `update_mailbox/3`, everything in `Identities` and `Signatures`).
 2. **Mailbox grants** — `Mailboxes.authorize(mailbox, user_uuid, "write")`. Which mailboxes can they see once inside? Ownership short-circuits to `"admin"`, so an owner never has a grant row for their own mailbox.
 
 **Every function that changes data takes the caller's `%Scope{}` and checks both gates itself** through `Mailboxes.authorize_scope/3` (which re-reads the mailbox, so a stale or hand-built struct grants nothing): seen/star need `read`; drafts, move, purge and sending need `write`; grants, archive/restore and `update_mailbox/3` need `admin`. LiveViews pass `socket.assigns.scope` and only render the outcome. The one exception is `Messages.send_message/3` (mailbox + sender uuid), kept for hosts and checked against the grants. Sending refuses an archived mailbox. A `parent_uuid` (send or draft) is kept only if the sender can read that message — a mailbox they own or are granted holds a copy, or sent it; otherwise it is dropped and the message starts its own thread. A caller-supplied `thread_uuid` is never used.
@@ -126,11 +144,16 @@ lib/phoenix_kit_inbox/
 ├── mailboxes.ex                          # mailbox lifecycle + access control
 ├── members.ex                            # recipient circle (who is addressable)
 ├── messages.ex                           # compose, send, list, file
+├── attachments.ex                        # snapshots, policy, downloads
+├── identities.ex                         # sending identities + Reply-To choices
+├── signatures.ex                         # mailbox signatures
+├── body.ex                               # Markdown body -> safe HTML, previews
 ├── notify.ex                             # activity log + optional email nudge
 ├── migrations.ex                         # version coordinator
-├── migrations/v01.ex                      # immutable
-├── schemas/{mailbox,mailbox_grant,message,delivery}.ex
-└── web/{inbox_live,compose_live,mailboxes_live}.ex
+├── migrations/v01.ex … v04.ex            # immutable
+├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,signature}.ex
+└── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
+    web/{signature_editor,identity_editor}.ex   # shared by the two settings pages
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.
@@ -183,7 +206,7 @@ Test URLs are `/en/admin/inbox…` — `Routes.path/1` defaults to no prefix in 
 
 Not oversights — decided against for the first release:
 
-- **No user-dashboard tab.** `user_dashboard_tabs/0` exists on the behaviour, but core's `compile_module_admin_routes/0` only collects `:admin_tabs` and `:settings_tabs` — a `user_dashboard_tabs/0` entry gets **no route generated**. Adding one needs a core change first.
+- **No tab inside `/profile/settings`.** Core's profile settings tabs are a fixed list; the user's mail settings live on their own page, reached from the avatar menu.
 - **No threaded reading pane.** The data supports it (`thread_uuid`, `list_thread/1`); the UI shows one message at a time.
 - **No user-defined labels/folders.** Folders are a fixed six-value column.
 - **No full-text index.** Search is `ILIKE`. `pg_trgm` is already a core-required extension, so a trigram index is a cheap V02 when volume justifies it.

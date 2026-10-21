@@ -28,6 +28,20 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   reopened draft start with the attachments they carry. The checks that
   count are in `Messages.send_message/4`.
 
+  ## Signature and Reply-To
+
+  The sending mailbox's default signature is put at the end of a new
+  message, a reply or a forward (`Signatures.block/1`); choosing another
+  one, or another mailbox, swaps it while the block is as it was put there
+  and leaves it alone once the writer edited it (`Signatures.swap_block/3`).
+  A reopened draft keeps its body as saved. Only the signatures of the
+  sending mailbox can be chosen.
+
+  The Reply-To picker offers `Identities.reply_to_options/2` — the user's
+  email and the shared addresses they write to — with the mailbox's default
+  chosen; the send checks the choice again. A reply is addressed to the
+  message's Reply-To when it has one.
+
   ## Access
 
   Composing requires `"write"` on the sending mailbox — `"read"` grantees on a
@@ -43,10 +57,12 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   alias PhoenixKit.Utils.Format
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Errors
+  alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Message
+  alias PhoenixKitInbox.Signatures
 
   @impl true
   def mount(_params, _session, socket) do
@@ -67,6 +83,10 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       |> assign(:recipients, recipient_suggestions(user))
       |> assign(:form, to_form(blank_params()))
       |> assign(:attachments, [])
+      |> assign(:signatures, [])
+      |> assign(:signature_uuid, "")
+      |> assign(:signature_block, "")
+      |> assign(:reply_to_options, [])
       |> assign(:show_media_selector, false)
       |> allow_upload(:attachments,
         accept: :any,
@@ -105,7 +125,11 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   @impl true
   def handle_params(params, _uri, socket) do
     if socket.assigns.module_access do
-      {:noreply, socket |> assign_mailbox(params["mailbox"]) |> prefill(params)}
+      {:noreply,
+       socket
+       |> assign_mailbox(params["mailbox"])
+       |> prefill(params)
+       |> init_sender(Map.has_key?(params, "draft"))}
     else
       {:noreply, socket}
     end
@@ -119,7 +143,64 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         &(&1.uuid == uuid)
       )
 
-    assign(socket, :mailbox, mailbox)
+    socket
+    |> assign(:mailbox, mailbox)
+    |> assign(:signatures, mailbox_signatures(mailbox))
+    |> assign(:reply_to_options, reply_to_options(socket.assigns.scope, mailbox))
+  end
+
+  defp mailbox_signatures(nil), do: []
+  defp mailbox_signatures(mailbox), do: Signatures.list(mailbox.uuid)
+
+  defp reply_to_options(_scope, nil), do: []
+  defp reply_to_options(scope, mailbox), do: Identities.reply_to_options(scope, mailbox)
+
+  # After the prefill: a new message, reply or forward gets the mailbox's
+  # default signature; a reopened draft keeps its body and its Reply-To.
+  defp init_sender(%{assigns: %{mailbox: nil}} = socket, _draft?), do: socket
+
+  defp init_sender(socket, true) do
+    saved =
+      case socket.assigns.form.params["reply_to"] do
+        address when is_binary(address) and address != "" -> address
+        _ -> default_reply_to(socket)
+      end
+
+    put_form_params(socket, %{"reply_to" => saved})
+  end
+
+  defp init_sender(socket, false) do
+    socket
+    |> put_form_params(%{"reply_to" => default_reply_to(socket)})
+    |> switch_signature(default_signature(socket), socket.assigns.form.params["body"] || "")
+  end
+
+  defp default_signature(socket), do: Enum.find(socket.assigns.signatures, & &1.is_default)
+
+  defp default_reply_to(socket),
+    do: Identities.default_reply_to(socket.assigns.reply_to_options) || ""
+
+  # Swaps the signature block at the end of `body`; an edited block is kept.
+  defp switch_signature(socket, signature, body) do
+    case Signatures.swap_block(body, socket.assigns.signature_block, signature) do
+      {:ok, new_body} ->
+        socket
+        |> assign(:signature_uuid, (signature && signature.uuid) || "")
+        |> assign(:signature_block, Signatures.block(signature))
+        |> put_form_params(%{"body" => new_body})
+
+      :edited ->
+        socket
+        |> put_form_params(%{"body" => body})
+        |> put_flash(
+          :warning,
+          gettext_str("The signature in the message was edited, so it was left as it is.")
+        )
+    end
+  end
+
+  defp put_form_params(socket, params) do
+    assign(socket, :form, to_form(Map.merge(socket.assigns.form.params, params)))
   end
 
   # Three entry points share one form: a blank compose, a reply (recipient and
@@ -139,7 +220,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   defp prefill_reply(socket, uuid) do
     case Messages.fetch_for_mailbox(socket.assigns.mailbox.uuid, uuid) do
       {:ok, %{message: message}} ->
-        sender = sender_mailbox_handle(message)
+        sender = reply_address(message)
 
         socket
         |> assign(:parent_uuid, message.uuid)
@@ -190,6 +271,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     case Messages.fetch_for_mailbox(socket.assigns.mailbox.uuid, uuid) do
       {:ok, %{message: %Message{status: "draft"} = message}} ->
         recipients = Messages.draft_recipients(message)
+        sender = Messages.draft_sender(message)
 
         socket
         |> assign(:draft_uuid, message.uuid)
@@ -203,7 +285,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             "cc" => recipients["cc"],
             "bcc" => recipients["bcc"],
             "subject" => message.subject || "",
-            "body" => message.body || ""
+            "body" => message.body || "",
+            "reply_to" => sender["reply_to"]
           })
         )
 
@@ -272,8 +355,29 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     end
   end
 
-  def handle_event("select_mailbox", %{"mailbox" => uuid}, socket) do
-    {:noreply, assign_mailbox(socket, uuid)}
+  def handle_event("select_mailbox", %{"mailbox" => uuid} = params, socket) do
+    body = form_body(socket, params)
+
+    socket =
+      socket
+      |> put_form_params(strip_meta(params))
+      |> assign_mailbox(uuid)
+
+    {:noreply,
+     socket
+     |> put_form_params(%{"reply_to" => default_reply_to(socket)})
+     |> switch_signature(default_signature(socket), body)}
+  end
+
+  # Only the sending mailbox's signatures can be chosen: a uuid that is not
+  # one of them (forged, or another mailbox's) means "no signature".
+  def handle_event("select_signature", params, socket) do
+    signature = Enum.find(socket.assigns.signatures, &(&1.uuid == params["signature"]))
+
+    {:noreply,
+     socket
+     |> put_form_params(Map.drop(strip_meta(params), ["signature"]))
+     |> switch_signature(signature, form_body(socket, params))}
   end
 
   def handle_event("open_media_selector", _params, socket) do
@@ -421,7 +525,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     attrs =
       params
-      |> Map.take(~w(to cc bcc subject body))
+      |> Map.take(~w(to cc bcc subject body reply_to))
+      |> Map.put("body_format", "markdown")
       |> Map.put("uuid", socket.assigns.draft_uuid)
       |> Map.put("parent_uuid", socket.assigns.parent_uuid)
       |> Map.put("attachments", attachment_attrs(socket))
@@ -444,11 +549,14 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
   defp send_attrs(socket, params) do
     params
-    |> Map.take(~w(to cc bcc subject body))
+    |> Map.take(~w(to cc bcc subject body reply_to))
+    |> Map.put("body_format", "markdown")
     |> Map.put("uuid", socket.assigns.draft_uuid)
     |> Map.put("parent_uuid", socket.assigns.parent_uuid)
     |> Map.put("attachments", attachment_attrs(socket))
   end
+
+  defp form_body(socket, params), do: params["body"] || socket.assigns.form.params["body"] || ""
 
   # Phoenix injects "_target"/"_csrf_token" into form payloads; they'd end up in
   # the form assign and re-render as stray values.
@@ -483,6 +591,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         back={back_path(assigns)}
         attachments={@attachments}
         uploads={@uploads}
+        signatures={@signatures}
+        signature_uuid={@signature_uuid}
+        reply_to_options={@reply_to_options}
       />
 
       <%!-- Mounted only while open: the picker reports back by message
@@ -509,6 +620,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   attr(:back, :string, required: true)
   attr(:attachments, :list, required: true)
   attr(:uploads, :map, required: true)
+  attr(:signatures, :list, required: true)
+  attr(:signature_uuid, :string, required: true)
+  attr(:reply_to_options, :list, required: true)
 
   defp compose_form(assigns) do
     ~H"""
@@ -560,8 +674,34 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
               {recipient.label}
             </option>
           </datalist>
+          <div :if={length(@reply_to_options) > 1} class="flex items-center gap-2">
+            <span class="text-sm w-16 shrink-0">{gettext_str("Reply-To")}</span>
+            <.select
+              id="compose-reply-to"
+              name="reply_to"
+              value={@form.params["reply_to"]}
+              options={reply_to_choices(@reply_to_options)}
+              class="select-sm"
+            />
+          </div>
+
           <.input field={@form[:subject]} type="text" label={gettext_str("Subject")} />
           <.textarea field={@form[:body]} label={gettext_str("Message")} rows="14" />
+          <p class="text-xs text-base-content/60 -mt-2">
+            {gettext_str("Markdown: **bold**, _italic_, [link](https://…), - lists.")}
+          </p>
+
+          <div :if={@signatures != []} class="flex items-center gap-2">
+            <span class="text-sm w-16 shrink-0">{gettext_str("Signature")}</span>
+            <.select
+              id="compose-signature"
+              name="signature"
+              value={@signature_uuid}
+              options={[{gettext_str("No signature"), ""} | Enum.map(@signatures, &{&1.label, &1.uuid})]}
+              class="select-sm"
+              phx-change="select_signature"
+            />
+          </div>
 
           <.attachment_picker attachments={@attachments} upload={@uploads.attachments} />
 
@@ -678,6 +818,16 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     """
   end
 
+  # Without a default (a shared mailbox with no address) the first choice is
+  # "none": replies then go to the sending mailbox.
+  defp reply_to_choices(options) do
+    choices = Enum.map(options, &{&1.label, &1.address})
+
+    if Identities.default_reply_to(options),
+      do: choices,
+      else: [{gettext_str("No Reply-To — replies go to this mailbox"), ""} | choices]
+  end
+
   defp upload_error_text(:too_large), do: gettext_str("Larger than the upload limit.")
   defp upload_error_text(:too_many_files), do: gettext_str("Too many files.")
   defp upload_error_text(:not_accepted), do: gettext_str("This file type is not accepted.")
@@ -688,6 +838,14 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   defp blank_params do
     %{"to" => "", "cc" => "", "bcc" => "", "subject" => "", "body" => ""}
   end
+
+  # The message's Reply-To when it has one (the send checked it), else its
+  # sending mailbox.
+  defp reply_address(%Message{metadata: %{"reply_to" => address}})
+       when is_binary(address) and address != "",
+       do: address
+
+  defp reply_address(message), do: sender_mailbox_handle(message)
 
   defp sender_mailbox_handle(%Message{sender_mailbox_uuid: uuid}) do
     case Mailboxes.fetch_mailbox(uuid) do

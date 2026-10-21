@@ -258,6 +258,50 @@ defmodule PhoenixKitInbox.DataCase do
   end
 
   @doc """
+  A mail integration connection made through core's API, with fake
+  credentials — nothing ever connects to it. `owner` is `:system` or
+  `{:user, uuid}`.
+
+  Options: `provider:` (default `"smtp"`), `name:`, `username:` (the login,
+  which is the From address; default a fresh address), `setup: false` to
+  leave it without credentials (not connected).
+  """
+  def mail_integration_fixture(owner, opts \\ []) do
+    alias PhoenixKit.Integrations
+
+    provider = Keyword.get(opts, :provider, "smtp")
+    name = Keyword.get(opts, :name, "Mail #{System.unique_integer([:positive])}")
+
+    {:ok, %{uuid: uuid}} = Integrations.add_connection(provider, name, nil, owner: owner)
+
+    if Keyword.get(opts, :setup, true) do
+      username =
+        Keyword.get(opts, :username, "sender-#{System.unique_integer([:positive])}@example.com")
+
+      setup =
+        case provider do
+          "smtp" ->
+            %{
+              "host" => "smtp.invalid",
+              "port" => "587",
+              "username" => username,
+              "password" => "x"
+            }
+
+          "openrouter" ->
+            %{"api_key" => "not-a-key"}
+
+          "brevo_api" ->
+            %{"api_key" => "not-a-key"}
+        end
+
+      {:ok, _} = Integrations.save_setup(uuid, setup, nil, owner: owner)
+    end
+
+    uuid
+  end
+
+  @doc """
   Translates changeset errors into a `%{field => [message]}` map. Used
   by tests that assert on changeset error messages.
   """

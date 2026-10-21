@@ -53,7 +53,9 @@ defmodule PhoenixKitInbox.LiveCase do
           storage_setup: 1,
           stored_file_fixture: 2,
           stored_file_fixture: 3,
-          files_in_library: 1
+          files_in_library: 1,
+          mail_integration_fixture: 1,
+          mail_integration_fixture: 2
         ]
 
       import PhoenixKitInbox.LiveCase

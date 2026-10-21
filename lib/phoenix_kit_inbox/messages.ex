@@ -30,6 +30,7 @@ defmodule PhoenixKitInbox.Messages do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitInbox.Attachments
+  alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Notify
   alias PhoenixKitInbox.Schemas.Delivery
@@ -40,6 +41,10 @@ defmodule PhoenixKitInbox.Messages do
   @recipient_roles ~w(to cc bcc)
   # Where a draft keeps what was typed into To/Cc/Bcc — text, unresolved.
   @draft_recipients_key "draft_recipients"
+  # Where a draft keeps the chosen identity and Reply-To — unchecked until sent.
+  @draft_sender_key "draft_sender"
+  # Metadata only a send writes; a caller's copy of them is dropped.
+  @sent_only_keys ["identity", "reply_to"]
 
   @typedoc """
   A message as the UI consumes it: the delivery row (folder/seen/starred state
@@ -189,7 +194,8 @@ defmodule PhoenixKitInbox.Messages do
   `list_recipients/2`. `nil` as the viewer drops every Bcc entry.
 
   Messages returned by `list_folder/3`, `fetch_for_mailbox/2` and
-  `list_thread/1` already carry their metadata filtered this way.
+  `list_thread/1` already carry their metadata filtered this way, and their
+  `metadata["identity"]` (the sending identity) only for the sending mailbox.
   """
   @spec recipient_snapshot(Message.t(), binary() | nil) :: [map()]
   def recipient_snapshot(%Message{metadata: metadata} = message, viewer_mailbox_uuid) do
@@ -208,8 +214,22 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
-  defp for_viewer(%Message{metadata: %{"recipients" => _} = metadata} = message, viewer) do
-    %{message | metadata: Map.put(metadata, "recipients", recipient_snapshot(message, viewer))}
+  # What a reader may see of the server-written metadata: the Bcc rule of
+  # `recipient_snapshot/2`, and the sending identity (an integration uuid is
+  # admin configuration) only for the sending mailbox. The Reply-To stays —
+  # recipients reply to it.
+  defp for_viewer(%Message{metadata: metadata} = message, viewer) when is_map(metadata) do
+    sender? = is_binary(viewer) and message.sender_mailbox_uuid == viewer
+
+    metadata =
+      metadata
+      |> then(&if sender?, do: &1, else: Map.delete(&1, "identity"))
+      |> then(fn
+        %{"recipients" => _} = m -> Map.put(m, "recipients", recipient_snapshot(message, viewer))
+        m -> m
+      end)
+
+    %{message | metadata: metadata}
   end
 
   defp for_viewer(message, _viewer), do: message
@@ -320,6 +340,7 @@ defmodule PhoenixKitInbox.Messages do
       attrs
       |> caller_metadata(base)
       |> Map.put(@draft_recipients_key, typed_recipients(attrs))
+      |> Map.put(@draft_sender_key, typed_sender(attrs))
 
     changeset =
       Message.changeset(base, %{
@@ -377,6 +398,25 @@ defmodule PhoenixKitInbox.Messages do
   end
 
   def draft_recipients(%Message{}), do: Map.new(@recipient_roles, &{&1, ""})
+
+  @doc """
+  The identity and Reply-To chosen in a draft when it was last saved, as
+  `%{"identity_uuid" => text, "reply_to" => text}` — blank strings when none.
+  Unchecked: the send checks them.
+  """
+  @spec draft_sender(Message.t()) :: %{String.t() => String.t()}
+  def draft_sender(%Message{metadata: %{@draft_sender_key => saved}}) when is_map(saved) do
+    Map.new(~w(identity_uuid reply_to), &{&1, text_value(Map.get(saved, &1))})
+  end
+
+  def draft_sender(%Message{}), do: %{"identity_uuid" => "", "reply_to" => ""}
+
+  defp typed_sender(attrs) do
+    Map.new(~w(identity_uuid reply_to), &{&1, text_value(Map.get(attrs, &1))})
+  end
+
+  defp text_value(value) when is_binary(value), do: value
+  defp text_value(_), do: ""
 
   defp typed_recipients(attrs) do
     Map.new(@recipient_roles, fn role ->
@@ -457,7 +497,15 @@ defmodule PhoenixKitInbox.Messages do
     * `"to"` / `"cc"` / `"bcc"` — comma-separated recipient strings, or lists.
       Each entry is a `@username`, an email, or a shared mailbox's slug, name
       or address (see `Mailboxes.fetch_mailbox_by_recipient/1`).
-    * `"subject"`, `"body"`, `"body_format"`
+    * `"subject"`, `"body"`, `"body_format"` (`"text"`, `"html"` or
+      `"markdown"`)
+    * `"identity_uuid"` — the sending identity, checked with
+      `Identities.resolve/3` against the sending mailbox
+      (`{:error, {:identity_unusable, reason}}`) and recorded in the
+      message's `metadata["identity"]` (uuid, kind, integration, From name and
+      address). Nothing is sent outside the application by this.
+    * `"reply_to"` — one of `Identities.reply_to_options/2`
+      (`{:error, :reply_to_not_allowed}`), recorded in `metadata["reply_to"]`
     * `"uuid"` — promotes an existing draft instead of creating a new message
     * `"parent_uuid"` — set when replying; the thread is inherited from it
     * `"attachments"` — `[%{"file_uuid" => uuid}]`: a Storage file the sender
@@ -470,7 +518,11 @@ defmodule PhoenixKitInbox.Messages do
       the sender (user uuid, name, email, mailbox name) and of each recipient
       (role, mailbox uuid, mailbox name) at send time, so who wrote to whom
       stays readable after an account is deleted. The recipient snapshot
-      includes `bcc` rows — show it to the sender only.
+      includes `bcc` rows — show it to the sender only. `"identity"` and
+      `"reply_to"` are likewise only ever written by the send.
+
+  The three-argument form takes neither an identity nor a Reply-To
+  (`{:error, :sender_options_need_scope}`).
 
   `opts` — server-side only, never filled from a form:
 
@@ -526,6 +578,7 @@ defmodule PhoenixKitInbox.Messages do
     attrs = normalize_attrs(attrs)
 
     with :ok <- ensure_active(mailbox),
+         {:ok, sender_record} <- sender_options(scope, mailbox, attrs),
          {:ok, recipients} <- resolve_recipients(attrs),
          :ok <- ensure_any_recipient(recipients),
          existing = draft_from_attrs(mailbox, attrs),
@@ -535,13 +588,73 @@ defmodule PhoenixKitInbox.Messages do
          {:ok, items, created} <- Attachments.store_snapshots(items, sender_user_uuid),
          {:ok, message} <-
            mailbox
-           |> do_send(sender_user_uuid, attrs, recipients, existing, items)
+           |> do_send(sender_user_uuid, attrs, {recipients, sender_record}, existing, items)
            |> finish_attachments(created) do
       # Post-commit, deliberately: see the moduledoc.
       Notify.message_sent(message, mailbox, recipients)
       {:ok, message}
     end
   end
+
+  # The identity and Reply-To, checked for the scope and the sending mailbox,
+  # as the metadata the message records. The three-argument form has no scope
+  # to check them with.
+  defp sender_options(scope, mailbox, attrs) do
+    identity = present(Map.get(attrs, "identity_uuid"))
+    reply_to = present(Map.get(attrs, "reply_to"))
+
+    cond do
+      is_nil(identity) and is_nil(reply_to) ->
+        {:ok, %{}}
+
+      is_nil(scope) ->
+        {:error, :sender_options_need_scope}
+
+      true ->
+        with {:ok, identity_record} <- identity_record(scope, mailbox, identity),
+             {:ok, reply_to_record} <- reply_to_record(scope, mailbox, reply_to) do
+          {:ok, Map.merge(identity_record, reply_to_record)}
+        end
+    end
+  end
+
+  defp identity_record(_scope, _mailbox, nil), do: {:ok, %{}}
+
+  defp identity_record(scope, mailbox, identity_uuid) do
+    case Identities.resolve(scope, identity_uuid, mailbox) do
+      {:ok, resolved} ->
+        {:ok,
+         %{
+           "identity" => %{
+             "uuid" => resolved.identity_uuid,
+             "kind" => resolved.kind,
+             "integration_uuid" => resolved.integration_uuid,
+             "from_address" => resolved.from_address,
+             "from_name" => resolved.from_name
+           }
+         }}
+
+      {:error, reason} ->
+        {:error, {:identity_unusable, reason}}
+    end
+  end
+
+  defp reply_to_record(_scope, _mailbox, nil), do: {:ok, %{}}
+
+  defp reply_to_record(scope, mailbox, address) do
+    with {:ok, allowed} <- Identities.allowed_reply_to(scope, mailbox, address) do
+      {:ok, %{"reply_to" => allowed}}
+    end
+  end
+
+  defp present(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp present(_), do: nil
 
   # The three-argument form has no scope to check files against: it sends no
   # attachments, and promotes no draft that has some.
@@ -595,7 +708,7 @@ defmodule PhoenixKitInbox.Messages do
 
   defp thread_for(%Message{uuid: uuid}, nil), do: uuid
 
-  defp do_send(mailbox, sender_user_uuid, attrs, recipients, existing, items) do
+  defp do_send(mailbox, sender_user_uuid, attrs, {recipients, sender_record}, existing, items) do
     base = existing || %Message{}
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -615,8 +728,9 @@ defmodule PhoenixKitInbox.Messages do
         "metadata" =>
           attrs
           |> caller_metadata(base)
-          |> Map.delete(@draft_recipients_key)
+          |> Map.drop([@draft_recipients_key, @draft_sender_key | @sent_only_keys])
           |> Map.merge(send_record(mailbox, sender_user_uuid, recipients))
+          |> Map.merge(sender_record)
       })
 
     Multi.new()

@@ -35,7 +35,7 @@ defmodule PhoenixKitInbox.Schemas.Message do
   @foreign_key_type UUIDv7
 
   @statuses ~w(draft sent deleted)
-  @body_formats ~w(text html)
+  @body_formats ~w(text html markdown)
 
   @type t :: %__MODULE__{}
 

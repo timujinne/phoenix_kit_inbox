@@ -69,6 +69,41 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(:uploads_in_progress), do: gettext("Wait for the uploads to finish.")
 
+  def message(:not_found), do: gettext("Not found.")
+
+  def message(:reply_to_not_allowed),
+    do: gettext("You can't use that Reply-To address.")
+
+  def message(:sender_options_need_scope),
+    do: gettext("A sending identity and a Reply-To need the sender's scope.")
+
+  def message({:identity_unusable, :broken}),
+    do:
+      gettext("That sender can't send right now: its mail connection is missing or disconnected.")
+
+  def message({:identity_unusable, :not_found}), do: gettext("That sender no longer exists.")
+
+  def message({:identity_unusable, :identity_not_for_mailbox}),
+    do: gettext("That sender can't be used from this mailbox.")
+
+  def message({:identity_unusable, _reason}),
+    do: gettext("You can't send as that sender.")
+
+  def message({:integration_unusable, :integration_missing}),
+    do: gettext("That mail connection doesn't exist.")
+
+  def message({:integration_unusable, :not_mail_provider}),
+    do: gettext("That connection can't send email.")
+
+  def message({:integration_unusable, :not_connected}),
+    do: gettext("That mail connection isn't connected.")
+
+  def message({:integration_unusable, :owner_mismatch}),
+    do: gettext("That mail connection isn't available for this sender.")
+
+  def message({:integration_unusable, :no_from_address}),
+    do: gettext("That mail connection has no login email address to send from.")
+
   def message({:library_unavailable, _reason}),
     do: gettext("Attachments are unavailable right now. Try again.")
 

@@ -31,6 +31,10 @@ Neighbouring modules, so you pick the right one:
 - **Search** — case-insensitive over subject and body
 - **Threading** — replies carry their root's `thread_uuid`; `list_thread/1` returns a conversation in one indexed query
 - **Attachments** — uploads, existing Storage files and forwards, each kept as a snapshot in the module's own hidden Storage library and downloaded only by the people on the message
+- **Markdown bodies** — written in Markdown, shown through core's email renderer: sanitized, `http(s)`/`mailto` links only, remote images shown as links and never loaded, `{{x}}` left as typed
+- **Signatures** — per mailbox, Markdown, one default; put at the end of a message after a `-- ` line and swapped while untouched
+- **Sending identities and Reply-To** — who a message may go out *as* (a mail integration whose login is the From address) and which addresses replies may go to, both checked on every send. Stored and resolved here; sending outside the application is not part of this release
+- **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; an admin page for shared senders and signatures
 - **Notifications** — new messages raise an activity event, which core turns into an in-app notification with a deep link
 - **Module-owned migrations** — tables ship and version here, not in core
 - **Auto-discovery** — implements `PhoenixKit.Module`; PhoenixKit finds it at startup with zero config
@@ -54,7 +58,7 @@ Then enable **Inbox** on the admin Modules page (or call `PhoenixKitInbox.enable
 
 ## Data model
 
-Five tables. The split that matters is **message vs. delivery**: a message body is stored once, and each recipient mailbox gets its own delivery row carrying that mailbox's folder/seen/starred state. It's how every webmail works, and it's why "mark as read" doesn't leak across recipients.
+Seven tables. The split that matters is **message vs. delivery**: a message body is stored once, and each recipient mailbox gets its own delivery row carrying that mailbox's folder/seen/starred state. It's how every webmail works, and it's why "mark as read" doesn't leak across recipients.
 
 ```
 phoenix_kit_inbox_mailboxes          one per user (kind: "user") + shared ones (kind: "shared")
@@ -63,6 +67,9 @@ phoenix_kit_inbox_mailboxes          one per user (kind: "user") + shared ones (
 phoenix_kit_inbox_messages           subject, body, thread_uuid, parent_uuid, sender  (stored ONCE)
  ├─ phoenix_kit_inbox_deliveries     one row per recipient mailbox: folder, seen_at, starred
  └─ phoenix_kit_inbox_attachments    one row per attached file: a reference, not the bytes
+
+phoenix_kit_inbox_identities         sending identities: an email integration + the name shown
+phoenix_kit_inbox_signatures         a mailbox's signatures (Markdown), at most one default
 ```
 
 All primary keys are UUIDv7 and every schema carries `use PhoenixKit.SchemaPrefix`, so named-schema (`--prefix`) installs work.
@@ -72,7 +79,7 @@ All primary keys are UUIDv7 and every schema carries `use PhoenixKit.SchemaPrefi
 Older PhoenixKit modules shipped their DDL inside core's versioned chain (the V90+ scheme). Inbox follows the newer pattern already used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`:
 
 - `PhoenixKitInbox.Migrations` is the coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` creates the tables; `V02` makes a user's deletion keep their mailboxes and every message (owner `ON DELETE SET NULL`, mailbox references `RESTRICT`) and makes shared addresses unique regardless of case; `V03` adds message attachments. Shipped versions are immutable
+- `PhoenixKitInbox.Migrations.V01` creates the tables; `V02` makes a user's deletion keep their mailboxes and every message (owner `ON DELETE SET NULL`, mailbox references `RESTRICT`) and makes shared addresses unique regardless of case; `V03` adds message attachments; `V04` adds sending identities and mailbox signatures. Shipped versions are immutable
 - Version is tracked in a `COMMENT ON TABLE` on `phoenix_kit_inbox_mailboxes`, so the coordinator can tell "not installed" from "installed at V1"
 - `mix phoenix_kit.update` discovers the coordinator, compares versions, and generates the host migration
 
@@ -133,6 +140,44 @@ config :phoenix_kit_inbox, recipient_filter: {MyApp.Inbox, :addressable?}  # (us
 ```
 
 Each send records a snapshot of the sender and recipients in the message's `metadata` and one permanent `inbox.message_sent` activity (counts only).
+
+A message may name a sending identity and a Reply-To; both are checked against the sender's scope and the sending mailbox, and recorded in `metadata["identity"]` / `metadata["reply_to"]` (a caller's `metadata` can't set them). Nothing leaves the application because of them yet:
+
+```elixir
+Messages.send_message(scope, from_mailbox, %{
+  "to" => "@bob", "subject" => "Hi", "body" => "**Hello**", "body_format" => "markdown",
+  "identity_uuid" => identity_uuid,     # {:error, {:identity_unusable, :forbidden | :broken | …}}
+  "reply_to" => "support@example.com"   # {:error, :reply_to_not_allowed} unless offered below
+})
+```
+
+### Sending identities
+
+```elixir
+alias PhoenixKitInbox.Identities
+
+Identities.list_usable(scope)              #=> [%{identity_uuid, label, kind, from_address, from_name, …}]
+Identities.resolve(scope, identity_uuid)   #=> {:ok, %{integration_uuid, from_address, from_name, kind, …}}
+                                           #   | {:error, :forbidden | :broken | :not_found}
+Identities.resolve(scope, identity_uuid, from_mailbox)  # also {:error, :identity_not_for_mailbox}
+Identities.reply_to_options(scope, mailbox) #=> [%{address, label, default}]
+```
+
+The From **address** is never typed: it is the login (SMTP username) of the integration, which must be a mail provider (`:email_send` capability) with credentials. A **shared** identity uses a system integration and is managed by holders of `inbox.manage_shared`; bound to a shared mailbox, everyone with `write` on it uses it from there; bound to none, it is the common sender for personal mailboxes, for holders of `inbox.send_external`, and sends as `"<user name> | <from_name>"`. A **personal** identity uses the owner's own integration and only their personal mailbox. Every resolve (use `resolve/3` for a send) checks the integration again; one that is gone, disconnected, not a mail provider, owned by someone else or has no login address marks the identity `broken` and is refused, until it works again. The settings pages show the stored status and check on demand (`Identities.recheck/2`).
+
+Reply-To choices are the user's own email and the address of every shared mailbox they can write to; the default is the sending shared mailbox's address (none if it has no address), or for the personal mailbox the user's saved choice (`Identities.set_default_reply_to/2`), else their email.
+
+### Signatures
+
+```elixir
+alias PhoenixKitInbox.Signatures
+
+Signatures.list(mailbox_uuid)                       # default first
+{:ok, sig} = Signatures.create_signature(scope, mailbox, %{"label" => "Work", "body" => "**Ann**", "is_default" => true})
+Signatures.swap_block(body, previously_inserted_block, new_signature)  #=> {:ok, body} | :edited
+```
+
+A personal mailbox's signatures are its owner's; a shared mailbox's need `admin` on it and `inbox.manage_shared`.
 
 ### Reading and filing
 
@@ -214,7 +259,7 @@ PhoenixKitInbox.Notify.email_nudges_available?()  #=> is phoenix_kit_emails actu
 
 The module key is `"inbox"`. Two levels:
 
-1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module. Two sub-permissions add capabilities, checked by the context functions with `Scope.can?/2`: `inbox.manage_shared` (create shared mailboxes, set addresses) and `inbox.send_external` (reserved for sending to outside addresses).
+1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module. Two sub-permissions add capabilities, checked by the context functions with `Scope.can?/2`: `inbox.manage_shared` (create shared mailboxes, set addresses, manage shared senders and shared-mailbox signatures) and `inbox.send_external` (use the common sender for personal mailboxes; sending itself is a later release).
 2. **Mailbox grants** — decide which mailboxes a user sees once inside, and what they may do there (every function that changes something takes the caller's scope and checks both gates itself). Owning a mailbox implies `"admin"` on it; everything else needs a row in `phoenix_kit_inbox_mailbox_grants`.
 
 Levels are ordered `read < write < admin`:
@@ -235,6 +280,8 @@ All navigation goes through `PhoenixKitInbox.Paths`, never a hardcoded string �
 | `/admin/inbox?folder=sent&message=<uuid>` | same LiveView, patched |
 | `/admin/inbox/compose` | `Web.ComposeLive` (also `?reply_to=`, `?forward=`, `?draft=`) |
 | `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants |
+| `/admin/inbox/settings` | `Web.SettingsLive` — shared senders, shared-mailbox signatures (`inbox.manage_shared`) |
+| `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
 | `/admin/inbox/files/<attachment uuid>` | `Web.AttachmentController` — an attachment download (no locale segment) |
 
 Folder, message, search, and page are query params, not path segments, so the whole mailbox stays one LiveView: switching folders is a `push_patch`, not a remount.

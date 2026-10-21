@@ -47,6 +47,21 @@ defmodule PhoenixKitInbox.Test.Router do
         live("/", InboxLive, :index)
         live("/compose", ComposeLive, :new)
         live("/mailboxes", MailboxesLive, :index)
+        live("/settings", SettingsLive, :index)
+      end
+    end
+  end
+
+  # The user-menu page core generates from `user_dashboard_tabs/0`, outside
+  # the admin area. It draws core's layout itself, so no test layout here.
+  live_session :inbox_user_test,
+    layout: false,
+    on_mount: {PhoenixKitInbox.Test.Hooks, :assign_scope} do
+    for base <- ["/en/dashboard", "/dashboard"] do
+      scope base, PhoenixKitInbox.Web do
+        pipe_through(:browser)
+
+        live("/inbox-settings", MySettingsLive, :index)
       end
     end
   end

@@ -12,6 +12,7 @@ defmodule PhoenixKitInbox.Paths do
   alias PhoenixKit.Utils.Routes
 
   @base "/admin/inbox"
+  @my_settings "/dashboard/inbox-settings"
 
   @doc """
   The mailbox view.
@@ -77,6 +78,21 @@ defmodule PhoenixKitInbox.Paths do
   @doc "The shared-mailbox management view."
   @spec mailboxes() :: String.t()
   def mailboxes, do: Routes.path(@base <> "/mailboxes")
+
+  @doc "The admin settings view: shared senders and shared-mailbox signatures."
+  @spec settings() :: String.t()
+  def settings, do: Routes.path(@base <> "/settings")
+
+  @doc """
+  The user's own mail settings — a user-menu page (`user_dashboard_tabs/0`),
+  outside the admin area: signatures, default Reply-To, personal senders.
+  """
+  @spec my_settings() :: String.t()
+  def my_settings, do: Routes.path(@my_settings)
+
+  @doc "Where core's personal integrations page lives (a personal sender's connection)."
+  @spec my_integrations() :: String.t()
+  def my_integrations, do: Routes.path("/profile/settings/integrations")
 
   @doc """
   The download of an attachment (`PhoenixKitInbox.Web.AttachmentController`).

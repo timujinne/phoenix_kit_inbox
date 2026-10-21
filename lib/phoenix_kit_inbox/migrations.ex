@@ -30,6 +30,7 @@ defmodule PhoenixKitInbox.Migrations do
     * `2` — a user's deletion keeps their mailboxes and correspondence;
       shared-mailbox addresses unique (case-insensitive)
     * `3` — message attachments
+    * `4` — sending identities and mailbox signatures
 
   ## Adding a version
 
@@ -46,9 +47,10 @@ defmodule PhoenixKitInbox.Migrations do
   alias PhoenixKitInbox.Migrations.V01
   alias PhoenixKitInbox.Migrations.V02
   alias PhoenixKitInbox.Migrations.V03
+  alias PhoenixKitInbox.Migrations.V04
 
   @initial_version 1
-  @current_version 3
+  @current_version 4
   @default_prefix "public"
   @version_table "phoenix_kit_inbox_mailboxes"
 
@@ -131,6 +133,8 @@ defmodule PhoenixKitInbox.Migrations do
   defp apply_step(:down, 2, prefix), do: V02.down(%{prefix: prefix})
   defp apply_step(:up, 3, prefix), do: V03.up(%{prefix: prefix})
   defp apply_step(:down, 3, prefix), do: V03.down(%{prefix: prefix})
+  defp apply_step(:up, 4, prefix), do: V04.up(%{prefix: prefix})
+  defp apply_step(:down, 4, prefix), do: V04.down(%{prefix: prefix})
 
   # Version 0 means "nothing installed" — there is no table left to comment on.
   defp record_version(_opts, 0), do: :ok
