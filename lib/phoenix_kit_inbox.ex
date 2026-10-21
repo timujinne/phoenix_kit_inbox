@@ -219,6 +219,13 @@ defmodule PhoenixKitInbox do
 
   @impl PhoenixKit.Module
   @doc """
+  Non-LiveView routes: the attachment download
+  (`PhoenixKitInbox.Web.Routes`).
+  """
+  def route_module, do: PhoenixKitInbox.Web.Routes
+
+  @impl PhoenixKit.Module
+  @doc """
   Called by core before a user is deleted: archives their personal mailbox
   and hands each shared mailbox they own to its oldest active admin grantee
   (or archives it). The mail itself is kept by the foreign keys either way — see

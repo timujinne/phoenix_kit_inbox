@@ -30,6 +30,8 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   require Logger
 
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKit.Utils.Format
+  alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
@@ -73,6 +75,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
       |> assign(:unseen_counts, %{})
       |> assign(:selected, nil)
       |> assign(:recipients, [])
+      |> assign(:attachments, [])
 
     {:ok, load_mailboxes(socket)}
   end
@@ -203,6 +206,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
           :recipients,
           Messages.list_recipients(message_uuid, socket.assigns.mailbox.uuid)
         )
+        |> assign(:attachments, Attachments.list_for_message(entry.message.uuid))
         |> assign(:unseen_counts, Mailboxes.unseen_counts(socket.assigns.mailbox.uuid))
 
       {:error, reason} ->
@@ -372,6 +376,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
             <.reading_pane
               selected={@selected}
               recipients={@recipients}
+              attachments={@attachments}
               mailbox={@mailbox}
               access={@access}
               folder={@folder}
@@ -598,6 +603,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
   attr(:selected, :any, required: true)
   attr(:recipients, :list, required: true)
+  attr(:attachments, :list, default: [])
   attr(:mailbox, :any, required: true)
   attr(:access, :any, required: true)
   attr(:folder, :string, required: true)
@@ -646,6 +652,23 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
         <div class="prose max-w-none whitespace-pre-wrap text-sm">
           {@selected.message.body || ""}
+        </div>
+
+        <%!-- Plain links, not LiveView navigation: each is a download from
+              the module's controller, which checks the reader again. --%>
+        <div :if={@attachments != []} id="message-attachments" class="flex flex-wrap gap-2">
+          <a
+            :for={attachment <- @attachments}
+            id={"message-attachment-#{attachment.uuid}"}
+            href={Paths.attachment(attachment.uuid)}
+            class="btn btn-sm btn-outline gap-2 max-w-full normal-case"
+            title={gettext_str("Download")}
+            download
+          >
+            <.icon name="hero-paper-clip" class="w-4 h-4 shrink-0" />
+            <span class="truncate">{attachment.filename}</span>
+            <span class="text-xs opacity-60 shrink-0">{Format.bytes(attachment.size_bytes)}</span>
+          </a>
         </div>
 
         <.message_actions

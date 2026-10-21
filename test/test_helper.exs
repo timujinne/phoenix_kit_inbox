@@ -24,6 +24,7 @@ support_dir = Path.expand("support", __DIR__)
   "test_repo.ex",
   "test_layouts.ex",
   "hooks.ex",
+  "inbox_routes.ex",
   "test_router.ex",
   "test_endpoint.ex",
   "test_migration.ex",

@@ -34,6 +34,7 @@ defmodule PhoenixKitInbox.DataCase do
   end
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Role
   alias PhoenixKit.Users.RoleAssignment
@@ -175,6 +176,84 @@ defmodule PhoenixKitInbox.DataCase do
     |> TestRepo.insert!(
       on_conflict: {:replace, [:access, :updated_at]},
       conflict_target: [:mailbox_uuid, :user_uuid]
+    )
+  end
+
+  @doc """
+  Real Storage for a test: a local-disk bucket in a temp directory (the only
+  enabled one) and a manual-mode Oban (Storage queues a variant job per stored file). Use as a
+  `setup` callback in an `async: false` case — the bucket cache is global.
+  """
+  def storage_setup(_context \\ %{}) do
+    :persistent_term.erase(:phoenix_kit_buckets_cache)
+    n = System.unique_integer([:positive])
+    root = Path.join(System.tmp_dir!(), "inbox_storage_#{n}")
+
+    {:ok, bucket} =
+      Storage.create_bucket(%{
+        name: "inbox-test-#{n}",
+        provider: "local",
+        endpoint: root,
+        enabled: true,
+        priority: 0
+      })
+
+    # Core seeds a "Local Storage" bucket at priv/media; switched off for the
+    # test (the sandbox rolls this back) so no bytes land in the checkout.
+    TestRepo.query!(
+      "UPDATE phoenix_kit_buckets SET enabled = false WHERE uuid <> $1",
+      [Ecto.UUID.dump!(bucket.uuid)]
+    )
+
+    ExUnit.Callbacks.start_supervised!(
+      {Oban, name: Oban, repo: TestRepo, testing: :manual, queues: [], plugins: []}
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      :persistent_term.erase(:phoenix_kit_buckets_cache)
+      File.rm_rf(root)
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Stores `content` as a file uploaded by `user` — into Media unless
+  `library_uuid:` names a library. `filename:` and `mime_type:` default to a
+  text file.
+  """
+  def stored_file_fixture(user, content, opts \\ []) do
+    filename = Keyword.get(opts, :filename, "note-#{System.unique_integer([:positive])}.txt")
+    mime = Keyword.get(opts, :mime_type, "text/plain")
+    source = Path.join(System.tmp_dir!(), "inbox_src_#{System.unique_integer([:positive])}")
+    File.write!(source, content)
+    hash = :sha256 |> :crypto.hash(content) |> Base.encode16(case: :lower)
+
+    store_opts =
+      [mime_type: mime] ++
+        if(opts[:library_uuid], do: [library_uuid: opts[:library_uuid]], else: [])
+
+    {:ok, file} =
+      Storage.store_file_in_buckets(
+        source,
+        "document",
+        user.uuid,
+        hash,
+        filename |> Path.extname() |> String.trim_leading("."),
+        filename,
+        store_opts
+      )
+
+    File.rm(source)
+    file
+  end
+
+  @doc "Every Storage file row in `library_uuid`."
+  def files_in_library(library_uuid) do
+    import Ecto.Query
+
+    TestRepo.all(
+      from(f in Storage.File, where: f.library_uuid == ^library_uuid, order_by: f.inserted_at)
     )
   end
 

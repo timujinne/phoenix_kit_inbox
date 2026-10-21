@@ -79,6 +79,17 @@ defmodule PhoenixKitInbox.Paths do
   def mailboxes, do: Routes.path(@base <> "/mailboxes")
 
   @doc """
+  The download of an attachment (`PhoenixKitInbox.Web.AttachmentController`).
+  A controller route, so it carries no locale segment.
+
+      iex> PhoenixKitInbox.Paths.attachment("0190…")
+      "/admin/inbox/files/0190…"
+  """
+  @spec attachment(binary()) :: String.t()
+  def attachment(attachment_uuid),
+    do: Routes.path(@base <> "/files/" <> attachment_uuid, locale: :none)
+
+  @doc """
   The **raw** (unprefixed) path to a message, for embedding in notification
   links.
 

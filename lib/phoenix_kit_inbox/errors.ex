@@ -41,6 +41,37 @@ defmodule PhoenixKitInbox.Errors do
   def message(:opts_need_scope),
     do: gettext("These options need the sender's scope.")
 
+  def message(:attachments_need_scope),
+    do: gettext("Attachments need the sender's scope.")
+
+  def message(:invalid_attachments), do: gettext("The attachments could not be read.")
+
+  def message({:attachment_forbidden, _file_uuid}),
+    do: gettext("You can't attach a file you don't have access to.")
+
+  def message({:attachment_unavailable, _file_uuid}),
+    do: gettext("A file can't be attached: it is in the trash or no longer available.")
+
+  def message({:too_many_attachments, max}),
+    do: gettext("A message can carry at most %{max} files.", max: max)
+
+  def message({:attachment_too_large, filename}),
+    do: gettext("%{filename} is larger than the upload limit.", filename: filename)
+
+  def message({:attachment_refused, _reason}),
+    do: gettext("These attachments can't be sent to these recipients.")
+
+  def message({:attachment_store_failed, _reason}),
+    do: gettext("An attachment could not be stored. Try again.")
+
+  def message(:storage_unsupported),
+    do: gettext("Attachments are not supported by this installation's file storage.")
+
+  def message(:uploads_in_progress), do: gettext("Wait for the uploads to finish.")
+
+  def message({:library_unavailable, _reason}),
+    do: gettext("Attachments are unavailable right now. Try again.")
+
   # Names the accepted forms. The bare "No mailbox matches: fotkin" left the
   # sender guessing whether the name was wrong, the person had no account, or
   # some other spelling was expected — and a username was in fact the one form

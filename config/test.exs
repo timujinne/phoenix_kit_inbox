@@ -25,6 +25,9 @@ config :phoenix_kit_inbox, PhoenixKitInbox.Test.Endpoint,
   live_view: [signing_salt: "inbox-test-salt"],
   server: false,
   url: [host: "localhost"],
+  # LiveView upload tests join the upload channel through the endpoint's
+  # PubSub; core's internal one is started by test_helper.exs.
+  pubsub_server: :phoenix_kit_internal_pubsub,
   render_errors: [formats: [html: PhoenixKitInbox.Test.Layouts]]
 
 config :phoenix, :json_library, Jason

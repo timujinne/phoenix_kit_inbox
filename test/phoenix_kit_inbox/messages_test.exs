@@ -275,6 +275,39 @@ defmodule PhoenixKitInbox.MessagesTest do
                [root.uuid, reply.uuid, reply_to_reply.uuid]
     end
 
+    test "a thread keeps its order when messages share an inserted_at second", ctx do
+      {:ok, root} =
+        Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+          "to" => ctx.bob.email,
+          "subject" => "1"
+        })
+
+      {:ok, reply} =
+        Messages.send_message(ctx.bob_scope, ctx.bob_mb, %{
+          "to" => ctx.alice.email,
+          "subject" => "2",
+          "parent_uuid" => root.uuid
+        })
+
+      {:ok, last} =
+        Messages.send_message(ctx.alice_scope, ctx.alice_mb, %{
+          "to" => ctx.bob.email,
+          "subject" => "3",
+          "parent_uuid" => reply.uuid
+        })
+
+      # Same second for all three (inserted_at has second precision), rows
+      # rewritten out of order so their physical order is not the thread's.
+      same = ~U[2026-01-01 00:00:00Z]
+
+      for message <- [reply, root, last] do
+        message |> Ecto.Changeset.change(inserted_at: same) |> Repo.update!()
+      end
+
+      assert root.thread_uuid |> Messages.list_thread() |> Enum.map(& &1.uuid) ==
+               [root.uuid, reply.uuid, last.uuid]
+    end
+
     test "a caller-supplied thread_uuid doesn't put a draft in someone else's thread", ctx do
       {:ok, private} =
         Messages.send_message(ctx.bob_mb, ctx.bob.uuid, %{

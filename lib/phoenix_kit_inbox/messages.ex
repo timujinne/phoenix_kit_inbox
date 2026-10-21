@@ -29,6 +29,7 @@ defmodule PhoenixKitInbox.Messages do
   alias Ecto.Multi
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Notify
   alias PhoenixKitInbox.Schemas.Delivery
@@ -173,7 +174,9 @@ defmodule PhoenixKitInbox.Messages do
     from(m in Message,
       where: m.thread_uuid == ^thread_uuid,
       where: m.status == "sent",
-      order_by: [asc: m.inserted_at]
+      # `inserted_at` has second precision; the UUIDv7 key breaks a tie in
+      # creation order instead of whatever order the rows come back in.
+      order_by: [asc: m.inserted_at, asc: m.uuid]
     )
     |> repo().all()
     |> Enum.map(&for_viewer(&1, nil))
@@ -279,21 +282,35 @@ defmodule PhoenixKitInbox.Messages do
   draft's author is the scope's user. A `"parent_uuid"` is kept only when the
   user can read that message (see `send_message/4`); otherwise the draft
   starts its own thread.
+
+  Attachments (`"attachments"` and the server-side `opts`) are admitted and
+  stored exactly as `send_message/4` does, so a draft holds its snapshots.
+  Without an `"attachments"` key the draft keeps the ones it has; with one,
+  that list replaces them, and a snapshot no longer named by any message is
+  deleted. The host's `attachment_policy` is asked here about the readers
+  of a shared mailbox (a personal draft has none but its author), and again
+  at send, when the recipients are known.
   """
-  @spec save_draft(Scope.t(), Mailbox.t(), map()) ::
-          {:ok, Message.t()} | {:error, Ecto.Changeset.t() | atom()}
-  def save_draft(%Scope{} = scope, %Mailbox{} = mailbox, attrs) when is_map(attrs) do
+  @spec save_draft(Scope.t(), Mailbox.t(), map(), keyword()) ::
+          {:ok, Message.t()} | {:error, Ecto.Changeset.t() | term()}
+  def save_draft(%Scope{} = scope, %Mailbox{} = mailbox, attrs, opts \\ []) when is_map(attrs) do
     attrs = normalize_attrs(attrs)
 
     with {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope),
          {:ok, fresh} <- Mailboxes.authorize_scope(scope, mailbox, "write") do
-      do_save_draft(fresh, user_uuid, attrs)
+      existing = draft_from_attrs(fresh, attrs)
+
+      with {:ok, items} <- Attachments.plan(scope, user_uuid, existing, attrs, opts),
+           :ok <- Attachments.check_policy(scope, [fresh], items),
+           {:ok, items, created} <- Attachments.store_snapshots(items, user_uuid) do
+        fresh
+        |> do_save_draft(user_uuid, attrs, existing, items)
+        |> finish_attachments(created)
+      end
     end
   end
 
-  defp do_save_draft(mailbox, sender_user_uuid, attrs) do
-    existing = draft_from_attrs(mailbox, attrs)
-
+  defp do_save_draft(mailbox, sender_user_uuid, attrs, existing, items) do
     base = existing || %Message{}
 
     parent_uuid =
@@ -327,11 +344,26 @@ defmodule PhoenixKitInbox.Messages do
     |> Multi.run(:delivery, fn repo, %{thread: message} ->
       upsert_delivery(repo, message.uuid, mailbox.uuid, "from", "drafts")
     end)
+    |> Multi.run(:attachments, fn repo, %{thread: message} ->
+      Attachments.write_rows(repo, message.uuid, items)
+    end)
     |> repo().transaction()
     |> case do
-      {:ok, %{thread: message}} -> {:ok, message}
+      {:ok, %{thread: message, attachments: dropped}} -> {:ok, message, dropped}
       {:error, _step, reason, _changes} -> {:error, reason}
     end
+  end
+
+  # After the transaction: snapshots made for a write that rolled back are
+  # deleted; snapshots of rows the write dropped go if nothing else names them.
+  defp finish_attachments({:ok, message, dropped}, _created) do
+    Attachments.release(dropped)
+    {:ok, message}
+  end
+
+  defp finish_attachments({:error, reason}, created) do
+    Attachments.discard_snapshots(created)
+    {:error, reason}
   end
 
   @doc """
@@ -377,7 +409,8 @@ defmodule PhoenixKitInbox.Messages do
 
   @doc """
   Discards a draft and its delivery row. Only the mailbox's own drafts; needs
-  `"write"` on the mailbox.
+  `"write"` on the mailbox. The draft's attachment snapshots are deleted with
+  it unless another message still names them (a forward shares its file).
   """
   @spec delete_draft(Scope.t(), Mailbox.t(), binary()) ::
           :ok | {:error, :message_not_found | :forbidden | :mailbox_access_denied | term()}
@@ -390,8 +423,10 @@ defmodule PhoenixKitInbox.Messages do
              sender_mailbox_uuid: fresh.uuid,
              status: "draft"
            ),
-         # Deliveries cascade via the FK's on_delete: :delete_all.
+         files = Enum.map(Attachments.list_for_message(draft.uuid), &to_string(&1.file_uuid)),
+         # Deliveries and attachment rows cascade via their FKs.
          {:ok, _} <- repo().delete(draft) do
+      Attachments.release(files)
       :ok
     else
       nil -> {:error, :message_not_found}
@@ -409,8 +444,13 @@ defmodule PhoenixKitInbox.Messages do
   (`{:error, :mailbox_access_denied}`) — the context is the boundary, not the
   compose form. The scope form also requires the `"inbox"` permission
   (`{:error, :forbidden}`). Recipients are internal only: a term that names no
-  member or shared mailbox is an unknown recipient. `opts` is reserved for
-  server-side options and currently unused.
+  member or shared mailbox is an unknown recipient.
+
+  Attachments need the scope form; the three-argument form refuses them with
+  `{:error, :attachments_need_scope}` (also when promoting a draft that has
+  some). See `PhoenixKitInbox.Attachments` for how each file is checked and
+  snapshotted; the host's `attachment_policy` is asked before anything is
+  stored.
 
   `attrs` keys:
 
@@ -420,12 +460,28 @@ defmodule PhoenixKitInbox.Messages do
     * `"subject"`, `"body"`, `"body_format"`
     * `"uuid"` — promotes an existing draft instead of creating a new message
     * `"parent_uuid"` — set when replying; the thread is inherited from it
+    * `"attachments"` — `[%{"file_uuid" => uuid}]`: a Storage file the sender
+      may read, a file of the module's library the sender stored (a saved
+      draft's), or a file attached to a message the sender sent or holds a
+      copy of (a forward). Uploads come in as `attachments_data:`.
+      When promoting a draft, leaving the key out keeps the draft's own.
     * `"metadata"` — a map stored on the message. Its `"sender"` and
       `"recipients"` keys are always written by the send itself: a snapshot of
       the sender (user uuid, name, email, mailbox name) and of each recipient
       (role, mailbox uuid, mailbox name) at send time, so who wrote to whom
       stays readable after an account is deleted. The recipient snapshot
       includes `bcc` rows — show it to the sender only.
+
+  `opts` — server-side only, never filled from a form:
+
+    * `attachments_authorized: [file_uuid]` — files the host checked itself;
+      copied without the read check (trashed or system-managed ones are
+      still refused)
+    * `attachment_flags: %{file_uuid => map}` — `flags` for the row made
+      from that file
+    * `attachments_data: [%{binary: bytes} | %{path: path}]` with
+      `filename:`, `content_type:` and `flags:` — bytes the host made,
+      stored as they are
 
   Returns `{:error, {:unknown_recipients, ["typo@example.com"]}}` when an
   address doesn't resolve — the whole send is refused so the sender finds out
@@ -436,10 +492,10 @@ defmodule PhoenixKitInbox.Messages do
           {:ok, Message.t()} | {:error, term()}
   def send_message(sender, mailbox_or_user, attrs, opts \\ [])
 
-  def send_message(%Scope{} = scope, %Mailbox{} = mailbox, attrs, _opts) when is_map(attrs) do
+  def send_message(%Scope{} = scope, %Mailbox{} = mailbox, attrs, opts) when is_map(attrs) do
     with {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope),
          {:ok, fresh} <- Mailboxes.authorize_scope(scope, mailbox, "write") do
-      deliver(fresh, user_uuid, attrs)
+      deliver(fresh, user_uuid, attrs, scope, opts)
     end
   end
 
@@ -451,25 +507,52 @@ defmodule PhoenixKitInbox.Messages do
   # The mailbox is re-read so its stored status and owner decide, not the
   # struct the caller handed in (the scope form re-reads in authorize_scope/3).
   def send_message(%Mailbox{} = mailbox, sender_user_uuid, attrs, []) when is_map(attrs) do
-    with {:ok, fresh} <- Mailboxes.fetch_mailbox(mailbox.uuid),
+    with :ok <- refuse_attachments(normalize_attrs(attrs)),
+         {:ok, fresh} <- Mailboxes.fetch_mailbox(mailbox.uuid),
          :ok <- Mailboxes.authorize(fresh, sender_user_uuid, "write") do
-      deliver(fresh, sender_user_uuid, attrs)
+      deliver(fresh, sender_user_uuid, attrs, nil, [])
     end
   end
 
-  # `mailbox` is the stored row, already authorized for `sender_user_uuid`.
-  defp deliver(mailbox, sender_user_uuid, attrs) do
+  defp refuse_attachments(attrs) do
+    if Map.get(attrs, "attachments") in [nil, [], %{}],
+      do: :ok,
+      else: {:error, :attachments_need_scope}
+  end
+
+  # `mailbox` is the stored row, already authorized for `sender_user_uuid`;
+  # `scope` is nil for the three-argument form.
+  defp deliver(mailbox, sender_user_uuid, attrs, scope, opts) do
     attrs = normalize_attrs(attrs)
 
     with :ok <- ensure_active(mailbox),
          {:ok, recipients} <- resolve_recipients(attrs),
          :ok <- ensure_any_recipient(recipients),
-         {:ok, message} <- do_send(mailbox, sender_user_uuid, attrs, recipients) do
+         existing = draft_from_attrs(mailbox, attrs),
+         {:ok, items} <- plan_attachments(scope, sender_user_uuid, existing, attrs, opts),
+         :ok <-
+           Attachments.check_policy(scope, [mailbox | Enum.map(recipients, & &1.mailbox)], items),
+         {:ok, items, created} <- Attachments.store_snapshots(items, sender_user_uuid),
+         {:ok, message} <-
+           mailbox
+           |> do_send(sender_user_uuid, attrs, recipients, existing, items)
+           |> finish_attachments(created) do
       # Post-commit, deliberately: see the moduledoc.
       Notify.message_sent(message, mailbox, recipients)
       {:ok, message}
     end
   end
+
+  # The three-argument form has no scope to check files against: it sends no
+  # attachments, and promotes no draft that has some.
+  defp plan_attachments(nil, _user_uuid, existing, _attrs, _opts) do
+    if existing && Attachments.list_for_message(existing.uuid) != [],
+      do: {:error, :attachments_need_scope},
+      else: {:ok, []}
+  end
+
+  defp plan_attachments(scope, user_uuid, existing, attrs, opts),
+    do: Attachments.plan(scope, user_uuid, existing, attrs, opts)
 
   defp ensure_active(%Mailbox{status: "active"}), do: :ok
   defp ensure_active(_), do: {:error, :mailbox_archived}
@@ -512,8 +595,7 @@ defmodule PhoenixKitInbox.Messages do
 
   defp thread_for(%Message{uuid: uuid}, nil), do: uuid
 
-  defp do_send(mailbox, sender_user_uuid, attrs, recipients) do
-    existing = draft_from_attrs(mailbox, attrs)
+  defp do_send(mailbox, sender_user_uuid, attrs, recipients, existing, items) do
     base = existing || %Message{}
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -552,9 +634,12 @@ defmodule PhoenixKitInbox.Messages do
     |> Multi.run(:deliveries, fn repo, %{thread: message} ->
       fan_out(repo, message, recipients)
     end)
+    |> Multi.run(:attachments, fn repo, %{thread: message} ->
+      Attachments.write_rows(repo, message.uuid, items)
+    end)
     |> repo().transaction()
     |> case do
-      {:ok, %{thread: message}} -> {:ok, message}
+      {:ok, %{thread: message, attachments: dropped}} -> {:ok, message, dropped}
       {:error, _step, reason, _changes} -> {:error, reason}
     end
   end

@@ -54,7 +54,7 @@ defmodule PhoenixKitInboxTest do
 
   test "migration_module points at this module's own coordinator" do
     assert PhoenixKitInbox.migration_module() == PhoenixKitInbox.Migrations
-    assert PhoenixKitInbox.Migrations.current_version() == 2
+    assert PhoenixKitInbox.Migrations.current_version() == 3
   end
 
   describe "admin_tabs/0" do

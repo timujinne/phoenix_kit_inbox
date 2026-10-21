@@ -35,7 +35,7 @@ The one outward-facing thing here is the **email nudge** in `PhoenixKitInbox.Not
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses. **Immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments. **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
@@ -64,7 +64,8 @@ phoenix_kit_inbox_mailboxes          kind: "user" (one per user) | "shared"
  └─ phoenix_kit_inbox_mailbox_grants  read / write / admin for non-owners
 
 phoenix_kit_inbox_messages           body stored ONCE; thread_uuid, parent_uuid, sender
- └─ phoenix_kit_inbox_deliveries      one per recipient mailbox: folder, seen_at, starred
+ ├─ phoenix_kit_inbox_deliveries      one per recipient mailbox: folder, seen_at, starred
+ └─ phoenix_kit_inbox_attachments     file_uuid → a snapshot in the module's hidden Storage library
 ```
 
 Consequences worth remembering before changing anything:
@@ -87,6 +88,20 @@ Consequences worth remembering before changing anything:
 - A mailbox listed in both To and Cc gets one copy at the stronger role (`dedupe_recipients/1`), because the unique index on `(message, mailbox, role)` would otherwise let the same person appear twice.
 - `upsert_delivery/5` is idempotent, which is what makes the fan-out safe to retry and what lets sending a draft *move* the author's existing `drafts` row to `sent` rather than creating a second one.
 - Sending a draft promotes the **same row** — same uuid, `status` flips to `"sent"`. Don't "copy and delete"; links to the draft uuid would break.
+
+## Attachments
+
+`PhoenixKitInbox.Attachments` owns them; `Messages` calls it on every send and draft save.
+
+- **Every attachment is a snapshot** in the module's hidden Storage library (slug `"phoenix-kit-inbox"`, `Attachments.ensure_library/0`, made on first use). Never attach a Storage file by reference to where it lives: a later edit or deletion there would change what was sent.
+- **Six ways in**, each checked in the context: an upload (kept in the LiveView's temp upload until the draft is saved or the message sent, then handed over as `attachments_data:` — nothing reaches Storage before, so there are no orphan uploads; taking one off cancels the entry), the sender's own Inbox-library file (a saved draft's snapshot, attached again without a copy), a Storage file the sender may read (`Libraries.can?/3`), `attachments_authorized:` (the host vouched; trash/system-managed still refused), `attachments_data:` (host bytes), and a forward (a file on a sent message the sender sent or still holds a delivery of — same `file_uuid`, flags copied). Server-side options are never read from attrs; `flags` are never cast from a form.
+- **Core requirement**: hidden system libraries (core #949: `create_system_library/2` `hidden: true`, `get_hidden_library_by_slug/1`) and `store_file_in_buckets/7` `dedup: false` — the first PhoenixKit release after 2.63.0. On an older core attachments are refused with `{:error, :storage_unsupported}` and a log line; `mix.exs` can't name the version until it is released.
+- **The media picker** is core's `UserMediaSelectorModal` (the user's own files); only a system role gets the full `MediaSelectorModal` — without `user_uuid` it lists every user's files, names and thumbnails. A file uploaded inside the picker lands in Media first (core's picker behaviour) and is snapshotted at send like any picked file. A refused pick is named only when `Libraries.can?/3` lets the user read it.
+- **Snapshots are stored before the transaction** with `dedup: false` (without it Storage returns the uploader's existing file in its own library — no snapshot) and are deleted if the transaction rolls back. `store_file_in_buckets` takes a directory lock; don't move it inside the `Multi`.
+- **Deleting a snapshot goes through `Attachments.release/1`**: only an Inbox-library file no attachment row names. Sent messages are permanent, so their snapshots are never deleted; a discarded draft or a dropped draft attachment releases its own.
+- **The host's `attachment_policy`** (`{Mod, :fun}`, `(scope, users, rows)`) must see everyone who can read the files: at send/forward (before anything is stored) the readers of the recipient mailboxes **and of the sending mailbox**; at a draft save, its mailbox's readers; at download, the viewer alone — that covers grants given later. The only exemption is the **snapshot's creator** (`files.user_uuid`, whoever's upload or copy it is): the scope user is left out of a send/draft check only when every file is a snapshot they created, and a download skips the policy only for the creator. Never exempt by "sender of the message" — a forward or a draft would launder someone else's file. Anything but `:ok` refuses. A new way to reach an attachment must ask it too.
+- **Known leaks, not swept yet**: snapshots stored before a transaction whose process dies before the commit, and every snapshot after a rollback to before V03 (the rows go, the files stay — hidden libraries are outside Storage's orphan cleanup).
+- **Downloads only through `Web.AttachmentController`** (`route_module/0` → `Web.Routes`), streamed with `Content-Disposition: attachment`; never hand out a Storage URL. Access is `Attachments.fetch_for_download/2`: module on, `"inbox"`, sender or holder of a non-deleted delivery in a readable mailbox.
 
 ## Access control
 
@@ -157,7 +172,7 @@ PHOENIX_KIT_PATH=../phoenix_kit mix test
 
 ## Testing
 
-- `test/support/data_case.ex` — sandbox + `user_fixture/1`. Inbox's tables have FKs to `phoenix_kit_users`, so a fabricated uuid fails on insert; every mailbox needs a real owner row.
+- `test/support/data_case.ex` — sandbox + `user_fixture/1`. Inbox's tables have FKs to `phoenix_kit_users`, so a fabricated uuid fails on insert; every mailbox needs a real owner row. `storage_setup/1` gives a test real Storage (a temp-dir local bucket, the only enabled one, and a manual Oban) — use it in `async: false` cases; `stored_file_fixture/3` stores a file as a user.
 - `test/support/live_case.ex` — `fake_scope/1` + `put_test_scope/2` for permission-gated LiveView tests
 - `test/support/test_migration.ex` — wraps `PhoenixKitInbox.Migrations` so `Ecto.Migrator` can run it. The suite applies **the real coordinator**, so it can't pass against a schema that differs from what installs get.
 - `test/test_helper.exs` — runs `PhoenixKit.Migration.ensure_current/2` (core's tables, incl. `phoenix_kit_users`) **then** this module's migration. Order matters: our FKs reference core's tables.
@@ -169,7 +184,6 @@ Test URLs are `/en/admin/inbox…` — `Routes.path/1` defaults to no prefix in 
 Not oversights — decided against for the first release:
 
 - **No user-dashboard tab.** `user_dashboard_tabs/0` exists on the behaviour, but core's `compile_module_admin_routes/0` only collects `:admin_tabs` and `:settings_tabs` — a `user_dashboard_tabs/0` entry gets **no route generated**. Adding one needs a core change first.
-- **No attachments.** Needs a storage backend and MIME handling; a V02 table plus upload plumbing.
 - **No threaded reading pane.** The data supports it (`thread_uuid`, `list_thread/1`); the UI shows one message at a time.
 - **No user-defined labels/folders.** Folders are a fixed six-value column.
 - **No full-text index.** Search is `ILIKE`. `pg_trgm` is already a core-required extension, so a trigram index is a cheap V02 when volume justifies it.

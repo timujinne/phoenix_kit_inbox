@@ -14,6 +14,10 @@ defmodule PhoenixKitInbox.Test.Router do
 
   import Phoenix.LiveView.Router
 
+  alias PhoenixKitInbox.Test.InboxRoutes
+
+  require InboxRoutes
+
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
@@ -21,6 +25,14 @@ defmodule PhoenixKitInbox.Test.Router do
     plug(:put_root_layout, {PhoenixKitInbox.Test.Layouts, :root})
     plug(:protect_from_forgery)
   end
+
+  # Stands in for core's admin pipeline: the scope comes from the test
+  # session (`LiveCase.put_test_scope/2`).
+  pipeline :phoenix_kit_admin_only do
+    plug(:assign_test_scope)
+  end
+
+  InboxRoutes.routes()
 
   live_session :inbox_test,
     layout: {PhoenixKitInbox.Test.Layouts, :app},
@@ -36,6 +48,14 @@ defmodule PhoenixKitInbox.Test.Router do
         live("/compose", ComposeLive, :new)
         live("/mailboxes", MailboxesLive, :index)
       end
+    end
+  end
+
+  @doc false
+  def assign_test_scope(conn, _opts) do
+    case get_session(conn, "phoenix_kit_test_scope") do
+      nil -> conn
+      scope -> assign(conn, :phoenix_kit_current_scope, scope)
     end
   end
 end
