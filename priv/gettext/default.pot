@@ -326,7 +326,7 @@ msgstr ""
 msgid "Inside the application only"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:409
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:408
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr ""
@@ -1115,7 +1115,7 @@ msgstr ""
 msgid "Add shared mail"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:400
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:399
 #, elixir-autogen, elixir-format
 msgid "Owner only: no role is ticked"
 msgstr ""
@@ -1125,7 +1125,7 @@ msgstr ""
 msgid "Owner — always"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:403
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:402
 #, elixir-autogen, elixir-format
 msgid "Roles: %{roles}"
 msgstr ""
@@ -1142,7 +1142,7 @@ msgstr ""
 msgid "Shown as “%{name}”"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:398
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:397
 #, elixir-autogen, elixir-format
 msgid "Through the shared mailbox “%{name}”"
 msgstr ""
@@ -1192,7 +1192,7 @@ msgstr ""
 msgid "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:385
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
 #, elixir-autogen, elixir-format
 msgid "Keep the current connection (it does not work now)"
 msgstr ""

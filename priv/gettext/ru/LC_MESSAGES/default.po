@@ -326,7 +326,7 @@ msgstr "Входящие"
 msgid "Inside the application only"
 msgstr "Только внутри приложения"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:409
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:408
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr "Его почтовое подключение отсутствует, отключено или больше не работает. Исправьте его и проверьте снова."
@@ -1116,7 +1116,7 @@ msgstr "Вам не доступна ни одна почта для отпра�
 msgid "Add shared mail"
 msgstr "Добавить общую почту"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:400
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:399
 #, elixir-autogen, elixir-format
 msgid "Owner only: no role is ticked"
 msgstr "Только Owner: ни одна роль не отмечена"
@@ -1126,7 +1126,7 @@ msgstr "Только Owner: ни одна роль не отмечена"
 msgid "Owner — always"
 msgstr "Owner — всегда"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:403
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:402
 #, elixir-autogen, elixir-format
 msgid "Roles: %{roles}"
 msgstr "Доступна ролям: %{roles}"
@@ -1143,7 +1143,7 @@ msgstr "Общая почта"
 msgid "Shown as “%{name}”"
 msgstr "Получатели видят «%{name}»"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:398
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:397
 #, elixir-autogen, elixir-format
 msgid "Through the shared mailbox “%{name}”"
 msgstr "По ящику «%{name}»"
@@ -1193,7 +1193,7 @@ msgstr "Никого не найдено"
 msgid "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
 msgstr "Системное почтовое подключение, от имени которого отправляют из личного ящика как «своё имя | имя почты». Каждая почта доступна отмеченным ролям; владельцу (Owner) — всегда."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:385
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
 #, elixir-autogen, elixir-format
 msgid "Keep the current connection (it does not work now)"
 msgstr "Оставить текущее подключение (сейчас не работает)"

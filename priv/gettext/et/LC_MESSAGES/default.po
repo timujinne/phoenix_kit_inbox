@@ -326,7 +326,7 @@ msgstr "Saabunud"
 msgid "Inside the application only"
 msgstr "Ainult rakenduse sees"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:409
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:408
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr "Selle meiliühendus puudub, on katkestatud või ei kõlba enam. Paranda see ja kontrolli uuesti."
@@ -1115,7 +1115,7 @@ msgstr "Ükski post pole sulle rakendusevälistele aadressidele kirjutamiseks av
 msgid "Add shared mail"
 msgstr "Lisa ühine post"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:400
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:399
 #, elixir-autogen, elixir-format
 msgid "Owner only: no role is ticked"
 msgstr "Ainult Owner: ükski roll pole märgitud"
@@ -1125,7 +1125,7 @@ msgstr "Ainult Owner: ükski roll pole märgitud"
 msgid "Owner — always"
 msgstr "Owner — alati"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:403
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:402
 #, elixir-autogen, elixir-format
 msgid "Roles: %{roles}"
 msgstr "Rollid: %{roles}"
@@ -1142,7 +1142,7 @@ msgstr "Ühine post"
 msgid "Shown as “%{name}”"
 msgstr "Saajad näevad „%{name}“"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:398
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:397
 #, elixir-autogen, elixir-format
 msgid "Through the shared mailbox “%{name}”"
 msgstr "Jagatud postkasti „%{name}“ kaudu"
@@ -1192,7 +1192,7 @@ msgstr "Kedagi ei leitud"
 msgid "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
 msgstr "Süsteemne meiliühendus, mille nimel saadetakse isiklikust postkastist kujul „oma nimi | posti nimi“. Iga post on avatud märgitud rollidele; omanikule (Owner) alati."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:385
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
 #, elixir-autogen, elixir-format
 msgid "Keep the current connection (it does not work now)"
 msgstr "Jäta praegune ühendus (see ei tööta praegu)"
