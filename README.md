@@ -55,7 +55,7 @@ mix deps.get
 mix phoenix_kit.update   # generates + runs the host migration for this module
 ```
 
-Then enable **Inbox** on the admin Modules page (or call `PhoenixKitInbox.enable_system/0`). The tab appears in the sidebar; routes are generated at compile time from `admin_tabs/0`.
+Then enable **Inbox** on the admin Modules page (or call `PhoenixKitInbox.enable_system/0`). The tab appears in the sidebar as **Mail** (with "Inbox", "Mailboxes" and — for `inbox.manage_shared` — "Shared mail" under it); routes are generated at compile time from `admin_tabs/0`.
 
 ## Data model
 
@@ -344,7 +344,7 @@ All navigation goes through `PhoenixKitInbox.Paths`, never a hardcoded string �
 | `/admin/inbox/compose` | `Web.ComposeLive` (also `?reply_to=`, `?forward=`, `?draft=`) |
 | `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants |
 | `/admin/inbox/settings` | `Web.SettingsLive` — "Shared mail": shared senders with their roles (add, edit, check, delete), shared-mailbox signatures (`inbox.manage_shared`) |
-| `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
+| `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders, a link to "Shared mail" for `inbox.manage_shared`; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
 | `/admin/inbox/files/<attachment uuid>` | `Web.AttachmentController` — an attachment download (no locale segment) |
 
 Folder, message, search, and page are query params, not path segments, so the whole mailbox stays one LiveView: switching folders is a `push_patch`, not a remount.

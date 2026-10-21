@@ -161,8 +161,8 @@ lib/phoenix_kit_inbox/
 ├── external.ex                           # external recipients: rows, task, status, retry
 ├── email_log.ex                          # reads phoenix_kit_emails' log (soft dependency)
 ├── migrations.ex                         # version coordinator
-├── migrations/v01.ex … v05.ex            # immutable
-├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,signature,external_recipient}.ex
+├── migrations/v01.ex … v06.ex            # immutable
+├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,identity_role,signature,external_recipient}.ex
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
     web/{signature_editor,identity_editor}.ex   # shared by the two settings pages
 ```
@@ -174,7 +174,7 @@ lib/phoenix_kit_inbox/
 ## Critical Conventions
 
 - **Module key** `"inbox"` — consistent across `module_key/0`, `permission_metadata/0`, tab `:permission`, notification type key, and settings prefix
-- **Tab IDs** prefixed `:admin_inbox`
+- **Tab IDs** prefixed `:admin_inbox`; the sidebar reads "Mail" › "Inbox" (`:admin_inbox_messages`), "Mailboxes", "Shared mail" (`:admin_inbox_settings`). msgid "Inbox" is shared with the folder and the page title, so its translation stays as it is
 - **URL paths** use hyphens, never underscores
 - **Navigation** always via `PhoenixKitInbox.Paths`, never a relative or hardcoded path. Notification links are the exception: store the **raw** path (`Paths.raw_message_path/2`) because core prefixes stored links itself — a pre-prefixed one double-prefixes.
 - **`enabled?/0`** rescues and returns `false`; it runs before the DB is guaranteed up

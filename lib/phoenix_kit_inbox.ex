@@ -141,7 +141,7 @@ defmodule PhoenixKitInbox do
   def permission_metadata do
     %{
       key: module_key(),
-      label: gettext_noop("Inbox"),
+      label: gettext_noop("Mail"),
       icon: "hero-inbox-arrow-down",
       description: gettext_noop("Internal mailboxes — send and receive messages between users"),
       gettext_backend: PhoenixKitInbox.Gettext,
@@ -165,9 +165,10 @@ defmodule PhoenixKitInbox do
   @doc """
   Admin sidebar tabs.
 
-  Four visible pages plus one hidden route for the compose view. Settings
-  (shared senders, shared-mailbox signatures) is shown only to holders of
-  `inbox.manage_shared`; the page checks it again. Folder
+  "Mail", with four visible pages ("Inbox" — the messages, "Mailboxes",
+  "Shared mail") plus one hidden route for the compose view. "Shared mail"
+  (the settings: shared senders, shared-mailbox signatures) is shown only to
+  holders of `inbox.manage_shared`; the page checks it again. Folder
   navigation is **not** a tab per folder — the mailbox is a single LiveView and
   folders are query params, so switching folders is a `push_patch` rather than
   a remount (see `PhoenixKitInbox.Paths.inbox/1`).
@@ -176,7 +177,7 @@ defmodule PhoenixKitInbox do
     [
       %Tab{
         id: :admin_inbox,
-        label: gettext_noop("Inbox"),
+        label: gettext_noop("Mail"),
         gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-inbox-arrow-down",
         path: "inbox",
@@ -191,7 +192,7 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_messages,
-        label: gettext_noop("Messages"),
+        label: gettext_noop("Inbox"),
         gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-envelope",
         path: "inbox",
@@ -230,7 +231,7 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_settings,
-        label: gettext_noop("Settings"),
+        label: gettext_noop("Shared mail"),
         gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-cog-6-tooth",
         path: "inbox/settings",
