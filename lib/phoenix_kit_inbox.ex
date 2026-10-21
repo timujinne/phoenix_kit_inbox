@@ -54,6 +54,7 @@ defmodule PhoenixKitInbox do
 
   alias PhoenixKit.Dashboard.Tab
   alias PhoenixKit.Settings
+  alias PhoenixKit.Users.Auth.Scope
 
   @settings_key "inbox_enabled"
   @nudges_settings_key "inbox_email_nudges_enabled"
@@ -157,7 +158,9 @@ defmodule PhoenixKitInbox do
   @doc """
   Admin sidebar tabs.
 
-  Three visible pages plus one hidden route for the compose view. Folder
+  Four visible pages plus one hidden route for the compose view. Settings
+  (shared senders, shared-mailbox signatures) is shown only to holders of
+  `inbox.manage_shared`; the page checks it again. Folder
   navigation is **not** a tab per folder — the mailbox is a single LiveView and
   folders are query params, so switching folders is a `push_patch` rather than
   a remount (see `PhoenixKitInbox.Paths.inbox/1`).
@@ -213,9 +216,69 @@ defmodule PhoenixKitInbox do
         permission: module_key(),
         parent: :admin_inbox,
         live_view: {PhoenixKitInbox.Web.MailboxesLive, :index}
+      },
+      %Tab{
+        id: :admin_inbox_settings,
+        label: "Settings",
+        icon: "hero-cog-6-tooth",
+        path: "inbox/settings",
+        priority: 649,
+        level: :admin,
+        permission: module_key(),
+        parent: :admin_inbox,
+        visible: &PhoenixKitInbox.Mailboxes.can_manage_shared?/1,
+        live_view: {PhoenixKitInbox.Web.SettingsLive, :index}
       }
     ]
   end
+
+  @impl PhoenixKit.Module
+  @doc """
+  Entries of the avatar menu (core's `:user_menu` tab option), shown on every
+  page to users who can use Inbox (`user_menu?/1`):
+
+    * **Mail** — the inbox itself. An absolute path, which core leaves as it
+      is, so the entry opens `/admin/inbox`; it has no `live_view`, so core
+      generates no route for it.
+    * **Mail settings** — the user's own settings (`Web.MySettingsLive`,
+      `/dashboard/inbox-settings`, a route core generates): signatures,
+      default Reply-To, personal senders. `personal: true` — it shows the
+      viewer their own data.
+  """
+  def user_dashboard_tabs do
+    [
+      Tab.new!(
+        id: :inbox_user_mail,
+        label: "Mail",
+        icon: "hero-envelope",
+        path: "/admin/inbox",
+        priority: 640,
+        match: :prefix,
+        group: :main,
+        permission: module_key(),
+        user_menu: &__MODULE__.user_menu?/1
+      ),
+      Tab.new!(
+        id: :inbox_user_settings,
+        label: "Mail settings",
+        icon: "hero-cog-6-tooth",
+        path: "inbox-settings",
+        priority: 641,
+        match: :prefix,
+        group: :account,
+        personal: true,
+        live_view: {PhoenixKitInbox.Web.MySettingsLive, :index},
+        user_menu: &__MODULE__.user_menu?/1
+      )
+    ]
+  end
+
+  @doc """
+  Whether the avatar menu offers the Inbox entries to `scope`: the `"inbox"`
+  permission, while the module is enabled.
+  """
+  @spec user_menu?(Scope.t() | nil) :: boolean()
+  def user_menu?(scope), do: Scope.can?(scope, module_key())
 
   @impl PhoenixKit.Module
   @doc """

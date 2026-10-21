@@ -137,12 +137,18 @@ defmodule PhoenixKitInbox.Identities do
     |> repo().all()
   end
 
+  @typedoc "An identity with the outcome of its check, for the settings pages."
+  @type listed :: %{
+          identity: Identity.t(),
+          check: :ok | {:error, problem()},
+          from_address: String.t() | nil
+        }
+
   @doc """
-  The scope user's personal identities, broken ones included, each with the
-  outcome of its check — `[{identity, :ok | {:error, problem}}]`. For the
-  settings page.
+  The scope user's personal identities, broken ones included, each checked
+  (`t:listed/0`). For the settings page.
   """
-  @spec list_personal(Scope.t()) :: [{Identity.t(), :ok | {:error, problem()}}]
+  @spec list_personal(Scope.t()) :: [listed()]
   def list_personal(%Scope{} = scope) do
     with {:ok, user} <- scope_user(scope), true <- Scope.can?(scope, "inbox") do
       from(i in Identity,
@@ -157,10 +163,10 @@ defmodule PhoenixKitInbox.Identities do
   end
 
   @doc """
-  Every shared identity, broken ones included, each with the outcome of its
-  check. Empty without `inbox.manage_shared`. For the admin settings page.
+  Every shared identity, broken ones included, each checked (`t:listed/0`).
+  Empty without `inbox.manage_shared`. For the admin settings page.
   """
-  @spec list_shared(Scope.t()) :: [{Identity.t(), :ok | {:error, problem()}}]
+  @spec list_shared(Scope.t()) :: [listed()]
   def list_shared(%Scope{} = scope) do
     if Scope.can?(scope, @manage_shared) do
       from(i in Identity, where: i.kind == "shared", order_by: [asc: i.label, asc: i.uuid])
@@ -175,8 +181,11 @@ defmodule PhoenixKitInbox.Identities do
 
   defp with_check(identity) do
     case checked(identity) do
-      {:ok, identity, _from} -> {identity, :ok}
-      {:error, identity, problem} -> {identity, {:error, problem}}
+      {:ok, identity, from} ->
+        %{identity: identity, check: :ok, from_address: from}
+
+      {:error, identity, problem} ->
+        %{identity: identity, check: {:error, problem}, from_address: nil}
     end
   end
 

@@ -29,16 +29,21 @@ defmodule PhoenixKitInbox.Body do
 
   @doc "A Markdown body as safe HTML; `nil` for any other format or no body."
   @spec html(Message.t()) :: Phoenix.HTML.safe() | nil
-  def html(%Message{body_format: "markdown", body: body}) when is_binary(body) do
-    body
+  def html(%Message{body_format: "markdown", body: body}) when is_binary(body),
+    do: markdown_html(body)
+
+  def html(_message), do: nil
+
+  @doc "Markdown text (a body, a signature) as safe HTML, by the rules above."
+  @spec markdown_html(String.t()) :: Phoenix.HTML.safe()
+  def markdown_html(markdown) when is_binary(markdown) do
+    markdown
     |> hard_breaks()
     |> Markdown.to_html(%{})
     |> images_as_links()
     |> String.replace("<a href=", "<a #{@link_rel} href=")
     |> Phoenix.HTML.raw()
   end
-
-  def html(_message), do: nil
 
   @doc """
   The body as one line of plain text, at most #{@preview_length} characters —

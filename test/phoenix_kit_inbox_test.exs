@@ -63,7 +63,7 @@ defmodule PhoenixKitInboxTest do
     end
 
     test "every tab is a Tab struct with a live_view and our permission", %{tabs: tabs} do
-      assert length(tabs) == 4
+      assert length(tabs) == 5
 
       for tab <- tabs do
         assert %Tab{} = tab
@@ -95,8 +95,15 @@ defmodule PhoenixKitInboxTest do
     test "subtabs hang off the parent tab", %{tabs: tabs} do
       subtabs = Enum.filter(tabs, &(&1.parent != nil))
 
-      assert length(subtabs) == 3
+      assert length(subtabs) == 4
       assert Enum.all?(subtabs, &(&1.parent == :admin_inbox))
+    end
+
+    test "the settings tab is the admin settings page", %{tabs: tabs} do
+      settings = Enum.find(tabs, &(&1.id == :admin_inbox_settings))
+
+      assert settings.path == "inbox/settings"
+      assert settings.live_view == {PhoenixKitInbox.Web.SettingsLive, :index}
     end
   end
 
