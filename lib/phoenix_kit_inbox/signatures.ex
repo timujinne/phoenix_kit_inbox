@@ -15,7 +15,8 @@ defmodule PhoenixKitInbox.Signatures do
       `inbox.manage_shared`
 
   Reading (`list/1`, `default/1`) takes a mailbox uuid the caller has
-  already authorized, like `Mailboxes.list_grants/1`.
+  already authorized, like `Mailboxes.list_grants/1`; `list/2` checks a
+  scope itself.
 
   ## In the compose form
 
@@ -55,6 +56,19 @@ defmodule PhoenixKitInbox.Signatures do
   end
 
   def list(_), do: []
+
+  @doc """
+  `list/1` for a caller's scope: needs the `"inbox"` permission and at least
+  `"read"` on `mailbox`, judged on the stored row.
+  """
+  @spec list(Scope.t(), Mailbox.t()) ::
+          {:ok, [Signature.t()]}
+          | {:error, :forbidden | :mailbox_access_denied | :mailbox_not_found}
+  def list(%Scope{} = scope, %Mailbox{} = mailbox) do
+    with {:ok, fresh} <- Mailboxes.authorize_scope(scope, mailbox, "read") do
+      {:ok, list(fresh.uuid)}
+    end
+  end
 
   @doc "A mailbox's default signature, or `nil`."
   @spec default(binary()) :: Signature.t() | nil

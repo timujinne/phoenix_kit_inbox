@@ -103,6 +103,19 @@ defmodule PhoenixKitInbox.SignaturesTest do
     end
   end
 
+  describe "list/2" do
+    test "lists for readers of the mailbox and refuses everyone else", ctx do
+      {:ok, _} =
+        Signatures.create_signature(scope_for(ctx.admin, @manage), ctx.desk, %{"label" => "Desk"})
+
+      grant_fixture(ctx.desk, ctx.alice, "read")
+
+      assert {:ok, [%Signature{label: "Desk"}]} = Signatures.list(scope_for(ctx.alice), ctx.desk)
+      assert {:error, :mailbox_access_denied} = Signatures.list(scope_for(ctx.bob), ctx.desk)
+      assert {:error, :forbidden} = Signatures.list(scope_for(ctx.alice, []), ctx.desk)
+    end
+  end
+
   describe "defaults" do
     test "making one the default clears the others of that mailbox only", ctx do
       scope = scope_for(ctx.alice)
