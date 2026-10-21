@@ -31,6 +31,7 @@ defmodule PhoenixKitInbox.Migrations do
       shared-mailbox addresses unique (case-insensitive)
     * `3` — message attachments
     * `4` — sending identities and mailbox signatures
+    * `5` — external recipients of a message, with their delivery status
 
   ## Adding a version
 
@@ -48,9 +49,10 @@ defmodule PhoenixKitInbox.Migrations do
   alias PhoenixKitInbox.Migrations.V02
   alias PhoenixKitInbox.Migrations.V03
   alias PhoenixKitInbox.Migrations.V04
+  alias PhoenixKitInbox.Migrations.V05
 
   @initial_version 1
-  @current_version 4
+  @current_version 5
   @default_prefix "public"
   @version_table "phoenix_kit_inbox_mailboxes"
 
@@ -135,6 +137,8 @@ defmodule PhoenixKitInbox.Migrations do
   defp apply_step(:down, 3, prefix), do: V03.down(%{prefix: prefix})
   defp apply_step(:up, 4, prefix), do: V04.up(%{prefix: prefix})
   defp apply_step(:down, 4, prefix), do: V04.down(%{prefix: prefix})
+  defp apply_step(:up, 5, prefix), do: V05.up(%{prefix: prefix})
+  defp apply_step(:down, 5, prefix), do: V05.down(%{prefix: prefix})
 
   # Version 0 means "nothing installed" — there is no table left to comment on.
   defp record_version(_opts, 0), do: :ok

@@ -1,6 +1,6 @@
 defmodule PhoenixKitInbox.MigrationsTest do
   @moduledoc """
-  V02, V03 and V04 against a real database: the suite's own schema (migrated by
+  V02–V05 against a real database: the suite's own schema (migrated by
   `test_helper.exs` through the coordinator) and a scratch named schema, so
   the prefix-anchored changes are exercised outside `public`.
   """
@@ -42,13 +42,49 @@ defmodule PhoenixKitInbox.MigrationsTest do
     def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 3)
   end
 
-  test "the coordinator expects version 4" do
-    assert PhoenixKitInbox.Migrations.current_version() == 4
+  defmodule ProbeToV5 do
+    @moduledoc false
+    use Ecto.Migration
+    def up, do: PhoenixKitInbox.Migrations.up(prefix: "inbox_v02_probe", version: 5)
+    def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 4)
+  end
+
+  test "the coordinator expects version 5" do
+    assert PhoenixKitInbox.Migrations.current_version() == 5
   end
 
   describe "the suite's schema (public)" do
-    test "is recorded at version 4" do
-      assert version_comment("public") == "4"
+    test "is recorded at version 5" do
+      assert version_comment("public") == "5"
+    end
+
+    test "external recipients go with their message and keep role and status in range" do
+      table = "phoenix_kit_inbox_external_recipients"
+      assert fk_delete_rule("public", table, "message_uuid") == "c"
+      refute column_nullable?("public", table, "address")
+      refute column_nullable?("public", table, "status")
+      assert column_nullable?("public", table, "email_log_message_id")
+      assert index_exists?("public", "phoenix_kit_inbox_external_recipients_message_uuid_index")
+
+      owner = user_fixture()
+      mailbox = insert_mailbox!("public", owner.uuid, "user", "u-ext-#{owner.uuid}", nil)
+      message = insert_message!("public", mailbox)
+
+      insert_external!("public", message, "bcc", "sent")
+
+      for {role, status} <- [{"from", "sent"}, {"to", "queued"}] do
+        assert_raise Postgrex.Error, ~r/phoenix_kit_inbox_external_recipients_.*_check/, fn ->
+          TestRepo.transaction(fn -> insert_external!("public", message, role, status) end)
+        end
+      end
+
+      %{rows: [[status]]} =
+        TestRepo.query!(
+          "SELECT status FROM phoenix_kit_inbox_external_recipients WHERE message_uuid = $1",
+          [dump(message)]
+        )
+
+      assert status == "sent"
     end
 
     test "identities go with their mailbox or owner and name no integration by FK" do
@@ -263,6 +299,28 @@ defmodule PhoenixKitInbox.MigrationsTest do
       assert table_exists?("public", "phoenix_kit_inbox_identities")
     end
 
+    test "V05 adds external recipients to the prefixed schema" do
+      Ecto.Migrator.up(TestRepo, 5, ProbeToV5, @migrator_opts)
+
+      table = "phoenix_kit_inbox_external_recipients"
+      assert version_comment(@probe) == "5"
+      assert table_exists?(@probe, table)
+      assert fk_delete_rule(@probe, table, "message_uuid") == "c"
+      assert index_exists?(@probe, "phoenix_kit_inbox_external_recipients_message_uuid_index")
+      assert check_exists?(@probe, table, "phoenix_kit_inbox_external_recipients_role_check")
+      assert check_exists?(@probe, table, "phoenix_kit_inbox_external_recipients_status_check")
+    end
+
+    test "down to V04 drops external recipients and nothing else" do
+      Ecto.Migrator.up(TestRepo, 5, ProbeToV5, @migrator_opts)
+      Ecto.Migrator.down(TestRepo, 5, ProbeToV5, @migrator_opts)
+
+      assert version_comment(@probe) == "4"
+      refute table_exists?(@probe, "phoenix_kit_inbox_external_recipients")
+      assert table_exists?(@probe, "phoenix_kit_inbox_identities")
+      assert table_exists?("public", "phoenix_kit_inbox_external_recipients")
+    end
+
     test "down refuses while a mailbox has lost its owner" do
       Ecto.Migrator.up(TestRepo, 2, ProbeToV2, @migrator_opts)
       insert_mailbox!(@probe, nil, "user", "u-orphan", nil)
@@ -383,6 +441,49 @@ defmodule PhoenixKitInbox.MigrationsTest do
       VALUES ($1, $2, 'Sig', 'Body', $3, now(), now())
       """,
       [dump(Ecto.UUID.generate()), dump(mailbox_uuid), default?]
+    )
+  end
+
+  defp check_exists?(schema, table, name) do
+    %{rows: [[exists]]} =
+      TestRepo.query!(
+        """
+        SELECT EXISTS (
+          SELECT 1 FROM pg_constraint c
+          JOIN pg_class t ON t.oid = c.conrelid
+          JOIN pg_namespace n ON n.oid = t.relnamespace
+          WHERE c.contype = 'c' AND n.nspname = $1 AND t.relname = $2 AND c.conname = $3
+        )
+        """,
+        [schema, table, name]
+      )
+
+    exists
+  end
+
+  defp insert_message!(schema, mailbox_uuid) do
+    uuid = Ecto.UUID.generate()
+
+    TestRepo.query!(
+      """
+      INSERT INTO #{schema}.phoenix_kit_inbox_messages
+        (uuid, thread_uuid, sender_mailbox_uuid, status, inserted_at, updated_at)
+      VALUES ($1, $1, $2, 'sent', now(), now())
+      """,
+      [dump(uuid), dump(mailbox_uuid)]
+    )
+
+    uuid
+  end
+
+  defp insert_external!(schema, message_uuid, role, status) do
+    TestRepo.query!(
+      """
+      INSERT INTO #{schema}.phoenix_kit_inbox_external_recipients
+        (uuid, message_uuid, role, address, status, inserted_at)
+      VALUES ($1, $2, $3, 'someone@example.com', $4, now())
+      """,
+      [dump(Ecto.UUID.generate()), dump(message_uuid), role, status]
     )
   end
 
