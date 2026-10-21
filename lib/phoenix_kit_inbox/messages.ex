@@ -10,12 +10,14 @@ defmodule PhoenixKitInbox.Messages do
        send — silently dropping a recipient is worse than refusing)
     2. insert or update the message with `status: "sent"` and a `sent_at` stamp
     3. fan out one `Delivery` per recipient into their `"inbox"`, plus the
-       sender's own copy into `"sent"`
+       sender's own copy into `"sent"`, and one `"pending"` row per external
+       recipient (`PhoenixKitInbox.External`)
 
   Notifications are fired *after* the transaction commits, by
-  `PhoenixKitInbox.Notify` — a notification for a message that got rolled back
-  would be a lie, and an outbound-email failure must never roll back a
-  successfully delivered internal message.
+  `PhoenixKitInbox.Notify`, and so is the email to external recipients — a
+  notification for a message that got rolled back would be a lie, and an
+  outbound-email failure must never roll back a successfully delivered
+  internal message.
 
   ## Reads
 
@@ -30,10 +32,13 @@ defmodule PhoenixKitInbox.Messages do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitInbox.Attachments
+  alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Notify
+  alias PhoenixKitInbox.Outbound
   alias PhoenixKitInbox.Schemas.Delivery
+  alias PhoenixKitInbox.Schemas.ExternalRecipient
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
 
@@ -483,8 +488,16 @@ defmodule PhoenixKitInbox.Messages do
   Both forms check that the sender holds at least `"write"` on `mailbox`
   (`{:error, :mailbox_access_denied}`) — the context is the boundary, not the
   compose form. The scope form also requires the `"inbox"` permission
-  (`{:error, :forbidden}`). Recipients are internal only: a term that names no
-  member or shared mailbox is an unknown recipient.
+  (`{:error, :forbidden}`). A term that names no member or shared mailbox is
+  an unknown recipient — unless it is an email address and the scope may
+  write externally (`inbox.send_external`, or a personal identity): then it
+  is an **external recipient**, which needs an `"identity_uuid"`
+  (`{:error, :external_needs_identity}`) and external sending open
+  (`{:error, :external_disabled}`, see `PhoenixKitInbox.Outbound`), and whose
+  attachments must fit `PhoenixKitInbox.external_max_bytes/0`
+  (`{:error, {:external_too_large, max}}`). The email to them goes after the
+  commit; the returned message's `external_status` is `:pending`, else
+  `:none`. See `PhoenixKitInbox.External`.
 
   Attachments need the scope form; the three-argument form refuses them with
   `{:error, :attachments_need_scope}` (also when promoting a draft that has
@@ -503,7 +516,7 @@ defmodule PhoenixKitInbox.Messages do
       `Identities.resolve/3` against the sending mailbox
       (`{:error, {:identity_unusable, reason}}`) and recorded in the
       message's `metadata["identity"]` (uuid, kind, integration, From name and
-      address). Nothing is sent outside the application by this.
+      address) — what external recipients are sent as.
     * `"reply_to"` — one of `Identities.reply_to_options/2`
       (`{:error, :reply_to_not_allowed}`), recorded in `metadata["reply_to"]`
     * `"uuid"` — promotes an existing draft instead of creating a new message
@@ -522,7 +535,8 @@ defmodule PhoenixKitInbox.Messages do
       `"reply_to"` are likewise only ever written by the send.
 
   The three-argument form takes neither an identity nor a Reply-To
-  (`{:error, :sender_options_need_scope}`).
+  (`{:error, :sender_options_need_scope}`), nor an address outside the
+  application (`{:error, :external_needs_scope}`).
 
   `opts` — server-side only, never filled from a form:
 
@@ -579,21 +593,69 @@ defmodule PhoenixKitInbox.Messages do
 
     with :ok <- ensure_active(mailbox),
          {:ok, sender_record} <- sender_options(scope, mailbox, attrs),
-         {:ok, recipients} <- resolve_recipients(attrs),
-         :ok <- ensure_any_recipient(recipients),
+         {:ok, recipients, externals} <- resolve_recipients(attrs),
+         {:ok, externals} <- admit_externals(scope, sender_record, externals),
+         :ok <- ensure_any_recipient(recipients ++ externals),
          existing = draft_from_attrs(mailbox, attrs),
          {:ok, items} <- plan_attachments(scope, sender_user_uuid, existing, attrs, opts),
+         :ok <- check_external_size(externals, items),
          :ok <-
            Attachments.check_policy(scope, [mailbox | Enum.map(recipients, & &1.mailbox)], items),
          {:ok, items, created} <- Attachments.store_snapshots(items, sender_user_uuid),
-         {:ok, message} <-
+         {:ok, {message, external_rows}} <-
            mailbox
-           |> do_send(sender_user_uuid, attrs, {recipients, sender_record}, existing, items)
+           |> do_send(
+             sender_user_uuid,
+             attrs,
+             {recipients, externals, sender_record},
+             existing,
+             items
+           )
            |> finish_attachments(created) do
       # Post-commit, deliberately: see the moduledoc.
-      Notify.message_sent(message, mailbox, recipients)
-      {:ok, message}
+      Notify.message_sent(message, mailbox, recipients, %{
+        external: length(externals),
+        attachments: length(items)
+      })
+
+      {:ok, start_external(message, external_rows, scope, mailbox)}
     end
+  end
+
+  # External addresses need a scope (the three-argument form has none), the
+  # right to write externally — without it they are unknown recipients, as
+  # before there was external mail — a sending identity to go out as, and
+  # external sending open.
+  defp admit_externals(_scope, _sender_record, []), do: {:ok, []}
+  defp admit_externals(nil, _sender_record, _externals), do: {:error, :external_needs_scope}
+
+  defp admit_externals(scope, sender_record, externals) do
+    identity = Map.get(sender_record, "identity")
+
+    cond do
+      not External.allowed?(scope, identity) ->
+        {:error, {:unknown_recipients, Enum.map(externals, & &1.address)}}
+
+      is_nil(identity) ->
+        {:error, :external_needs_identity}
+
+      true ->
+        with :ok <- Outbound.check_open(), do: {:ok, externals}
+    end
+  end
+
+  defp check_external_size([], _items), do: :ok
+
+  defp check_external_size(_externals, items),
+    do: External.check_size(Enum.map(items, & &1.size_bytes))
+
+  # The external part runs after the commit, in a task: the caller never
+  # waits for SMTP. The task checks the sender again with the same scope.
+  defp start_external(message, [], _scope, _mailbox), do: %{message | external_status: :none}
+
+  defp start_external(message, rows, scope, mailbox) do
+    External.deliver_later(message, rows, scope, mailbox)
+    %{message | external_status: :pending}
   end
 
   # The identity and Reply-To, checked for the scope and the sending mailbox,
@@ -708,7 +770,14 @@ defmodule PhoenixKitInbox.Messages do
 
   defp thread_for(%Message{uuid: uuid}, nil), do: uuid
 
-  defp do_send(mailbox, sender_user_uuid, attrs, {recipients, sender_record}, existing, items) do
+  defp do_send(
+         mailbox,
+         sender_user_uuid,
+         attrs,
+         {recipients, externals, sender_record},
+         existing,
+         items
+       ) do
     base = existing || %Message{}
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -751,10 +820,16 @@ defmodule PhoenixKitInbox.Messages do
     |> Multi.run(:attachments, fn repo, %{thread: message} ->
       Attachments.write_rows(repo, message.uuid, items)
     end)
+    |> Multi.run(:external, fn repo, %{thread: message} ->
+      External.insert_pending(repo, message.uuid, externals)
+    end)
     |> repo().transaction()
     |> case do
-      {:ok, %{thread: message, attachments: dropped}} -> {:ok, message, dropped}
-      {:error, _step, reason, _changes} -> {:error, reason}
+      {:ok, %{thread: message, attachments: dropped, external: rows}} ->
+        {:ok, {message, rows}, dropped}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
     end
   end
 
@@ -886,20 +961,50 @@ defmodule PhoenixKitInbox.Messages do
           entry <- parse_recipient_list(Map.get(attrs, role)),
           do: {role, entry}
 
-    {resolved, unknown, ambiguous} =
-      Enum.reduce(parsed, {[], [], []}, fn {role, entry}, {ok, unknown, ambiguous} ->
-        case Mailboxes.fetch_mailbox_by_recipient(entry) do
-          {:ok, mailbox} -> {[%{role: role, mailbox: mailbox} | ok], unknown, ambiguous}
-          {:error, :ambiguous_recipient} -> {ok, unknown, [entry | ambiguous]}
-          {:error, _} -> {ok, [entry | unknown], ambiguous}
-        end
-      end)
+    {resolved, external, unknown, ambiguous} =
+      Enum.reduce(parsed, {[], [], [], []}, &resolve_recipient/2)
 
     case {unknown, ambiguous} do
-      {[], []} -> {:ok, resolved |> Enum.reverse() |> dedupe_recipients()}
-      {[], ambiguous} -> {:error, {:ambiguous_recipients, Enum.reverse(ambiguous)}}
-      {unknown, _} -> {:error, {:unknown_recipients, Enum.reverse(unknown)}}
+      {[], []} ->
+        {:ok, resolved |> Enum.reverse() |> dedupe_recipients(),
+         external |> Enum.reverse() |> dedupe_externals()}
+
+      {[], ambiguous} ->
+        {:error, {:ambiguous_recipients, Enum.reverse(ambiguous)}}
+
+      {unknown, _} ->
+        {:error, {:unknown_recipients, Enum.reverse(unknown)}}
     end
+  end
+
+  defp resolve_recipient({role, entry}, {ok, external, unknown, ambiguous}) do
+    case Mailboxes.fetch_mailbox_by_recipient(entry) do
+      {:ok, mailbox} ->
+        {[%{role: role, mailbox: mailbox} | ok], external, unknown, ambiguous}
+
+      {:error, :ambiguous_recipient} ->
+        {ok, external, unknown, [entry | ambiguous]}
+
+      # An address no member or shared mailbox answers to: someone outside
+      # the application — whether they may be written to is decided by the
+      # caller (admit_externals/3).
+      {:error, _} ->
+        if External.address?(entry),
+          do: {ok, [%{role: role, address: entry} | external], unknown, ambiguous},
+          else: {ok, external, [entry | unknown], ambiguous}
+    end
+  end
+
+  # One row per address (case-insensitive), with the stronger role, in the
+  # order they were typed.
+  defp dedupe_externals(externals) do
+    rank = fn %{role: role} -> Enum.find_index(@recipient_roles, &(&1 == role)) end
+
+    externals
+    |> Enum.group_by(&String.downcase(&1.address))
+    |> Enum.map(fn {_key, [first | _] = group} -> {first, Enum.min_by(group, rank)} end)
+    |> Enum.sort_by(fn {first, _best} -> Enum.find_index(externals, &(&1 == first)) end)
+    |> Enum.map(fn {first, best} -> %{best | address: first.address} end)
   end
 
   # A mailbox listed in both To and Cc gets one copy, keeping the stronger role
@@ -931,6 +1036,218 @@ defmodule PhoenixKitInbox.Messages do
 
   defp ensure_any_recipient([]), do: {:error, :no_recipients}
   defp ensure_any_recipient(_), do: :ok
+
+  # ── external recipients ─────────────────────────────────────────────────────
+
+  @doc """
+  The external recipients of a message, with their status, as the mailbox
+  `viewer_mailbox_uuid` may see them: all for the sending mailbox, To and Cc
+  for anyone else (`nil` sees To and Cc). See `PhoenixKitInbox.External`.
+  """
+  @spec list_external_recipients(binary(), binary() | nil) :: [ExternalRecipient.t()]
+  def list_external_recipients(message_uuid, viewer_mailbox_uuid),
+    do: External.list_for_viewer(message_uuid, viewer_mailbox_uuid)
+
+  @doc """
+  Whether "Retry" is offered for `message`'s failed external recipients —
+  see `PhoenixKitInbox.External.retry/3`. Does not check who asks.
+  """
+  @spec retry_available?(Message.t()) :: boolean()
+  def retry_available?(%Message{} = message),
+    do: External.retry_available?(message, External.list(to_string(message.uuid)))
+
+  @doc """
+  Re-sends the failed external recipients of a message sent from `mailbox`,
+  through the same `PhoenixKitInbox.Outbound` path and filter — never twice.
+  `{:ok, :pending}`, or why not (see `PhoenixKitInbox.External.retry/3`).
+  """
+  @spec retry_external(Scope.t(), Mailbox.t(), binary()) :: {:ok, :pending} | {:error, term()}
+  def retry_external(scope, mailbox, message_uuid),
+    do: External.retry(scope, mailbox, message_uuid)
+
+  @doc """
+  Records in `mailbox`'s Sent folder an email **the host sent itself** —
+  for instance through its own document pipeline — so the sender's mailbox
+  shows what went out. Nothing is sent and nobody inside the application
+  receives anything.
+
+  Needs the `"inbox"` permission and `"write"` on `mailbox`. `attrs`:
+
+    * `"subject"`, `"body"`, `"body_format"` — as for `send_message/4`
+    * `"external_recipients"` — `[%{"address" => email, "role" => "to" |
+      "cc" | "bcc", "status" => "sent" | "failed", "name", "error",
+      "email_log_message_id"}]`, at least one; `role` defaults to `"to"`,
+      `status` to `"sent"`. An address that names a member or a shared
+      mailbox is refused (`{:error, {:internal_recipients, addresses}}`) —
+      internal mail goes through `send_message/4`; anything that is not an
+      email address is `{:error, {:invalid_external_recipients, entries}}`.
+      `"to"`, `"cc"` and `"bcc"` are not taken
+      (`{:error, :use_external_recipients}`).
+    * `"attachments"` — `[%{"filename" => name, "size_bytes" => n}]`: what
+      the email carried, by name and size. **No file is stored**: the host
+      keeps its files, so a recorded message can't be forwarded with them.
+
+  `opts` (server-side): `host_ref:` — the host's own reference for the send,
+  kept in `metadata["host_ref"]`. `metadata["source"]` is `"host"`; such a
+  message has no "Retry" (its retry would go out without the host's files).
+  The `inbox.message_sent` activity is logged as for a send.
+  """
+  @spec record_sent(Scope.t(), Mailbox.t(), map(), keyword()) ::
+          {:ok, Message.t()} | {:error, term()}
+  def record_sent(scope, mailbox, attrs, opts \\ [])
+
+  def record_sent(%Scope{} = scope, %Mailbox{} = mailbox, attrs, opts) when is_map(attrs) do
+    attrs = normalize_attrs(attrs)
+
+    with {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope),
+         {:ok, fresh} <- Mailboxes.authorize_scope(scope, mailbox, "write"),
+         :ok <- ensure_active(fresh),
+         :ok <- refuse_typed_recipients(attrs),
+         {:ok, entries} <- recorded_recipients(Map.get(attrs, "external_recipients")),
+         :ok <- refuse_internal(entries),
+         {:ok, files} <- recorded_attachments(Map.get(attrs, "attachments")),
+         {:ok, message} <- do_record(fresh, user_uuid, attrs, entries, files, opts) do
+      Notify.message_recorded(message, %{external: length(entries), attachments: length(files)})
+      {:ok, %{message | external_status: :none}}
+    end
+  end
+
+  def record_sent(_scope, _mailbox, _attrs, _opts), do: {:error, :forbidden}
+
+  defp refuse_typed_recipients(attrs) do
+    if Enum.all?(@recipient_roles, &(Map.get(attrs, &1) in [nil, "", []])),
+      do: :ok,
+      else: {:error, :use_external_recipients}
+  end
+
+  defp recorded_recipients(entries) when is_list(entries) and entries != [] do
+    {valid, invalid} =
+      entries
+      |> Enum.map(&recorded_recipient/1)
+      |> Enum.split_with(&match?({:ok, _}, &1))
+
+    case invalid do
+      [] -> {:ok, Enum.map(valid, fn {:ok, entry} -> entry end)}
+      _ -> {:error, {:invalid_external_recipients, Enum.map(invalid, fn {:error, e} -> e end)}}
+    end
+  end
+
+  defp recorded_recipients(_), do: {:error, :no_recipients}
+
+  defp recorded_recipient(entry) when is_map(entry) do
+    entry = normalize_attrs(entry)
+    address = entry |> Map.get("address") |> present()
+    role = Map.get(entry, "role", "to")
+    status = Map.get(entry, "status", "sent")
+
+    log_id = entry |> Map.get("email_log_message_id") |> present()
+
+    if External.address?(address) and role in @recipient_roles and status in ~w(sent failed) and
+         (is_nil(log_id) or String.length(log_id) <= 255) do
+      {:ok,
+       %{
+         role: role,
+         address: address,
+         # A display name is cut to the column, as a filename is.
+         name: entry |> Map.get("name") |> present() |> then(&(&1 && String.slice(&1, 0, 255))),
+         status: status,
+         error: entry |> Map.get("error") |> present(),
+         email_log_message_id: log_id
+       }}
+    else
+      {:error, address || inspect(entry, limit: 5)}
+    end
+  end
+
+  defp recorded_recipient(entry), do: {:error, inspect(entry, limit: 5)}
+
+  defp refuse_internal(entries) do
+    internal =
+      entries
+      |> Enum.map(& &1.address)
+      |> Enum.filter(fn address ->
+        case Mailboxes.fetch_mailbox_by_recipient(address) do
+          {:ok, _mailbox} -> true
+          {:error, :ambiguous_recipient} -> true
+          {:error, _} -> false
+        end
+      end)
+
+    if internal == [], do: :ok, else: {:error, {:internal_recipients, internal}}
+  end
+
+  defp recorded_attachments(nil), do: {:ok, []}
+
+  defp recorded_attachments(files) when is_list(files) do
+    Enum.reduce_while(files, {:ok, []}, fn file, {:ok, acc} ->
+      case recorded_attachment(file) do
+        {:ok, entry} -> {:cont, {:ok, [entry | acc]}}
+        :error -> {:halt, {:error, :invalid_attachments}}
+      end
+    end)
+    |> case do
+      {:ok, entries} -> {:ok, Enum.reverse(entries)}
+      error -> error
+    end
+  end
+
+  defp recorded_attachments(_), do: {:error, :invalid_attachments}
+
+  defp recorded_attachment(file) when is_map(file) do
+    file = normalize_attrs(file)
+
+    case {present(Map.get(file, "filename")), Map.get(file, "size_bytes", 0)} do
+      {name, size} when is_binary(name) and is_integer(size) and size >= 0 ->
+        {:ok, %{"filename" => String.slice(name, 0, 255), "size_bytes" => size}}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp recorded_attachment(_), do: :error
+
+  defp do_record(mailbox, sender_user_uuid, attrs, entries, files, opts) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    metadata =
+      mailbox
+      |> send_record(sender_user_uuid, [])
+      |> Map.merge(%{"source" => "host", "attachments" => files})
+      |> then(fn metadata ->
+        case Keyword.get(opts, :host_ref) do
+          nil -> metadata
+          ref -> Map.put(metadata, "host_ref", to_string(ref))
+        end
+      end)
+
+    changeset =
+      %Message{}
+      |> Message.sent_changeset(%{
+        "sender_mailbox_uuid" => mailbox.uuid,
+        "sender_user_uuid" => sender_user_uuid,
+        "subject" => Map.get(attrs, "subject"),
+        "body" => Map.get(attrs, "body"),
+        "body_format" => Map.get(attrs, "body_format", "text"),
+        "sent_at" => now,
+        "metadata" => metadata
+      })
+      |> ensure_thread_uuid()
+
+    Multi.new()
+    |> Multi.insert(:message, changeset)
+    |> Multi.run(:sender_copy, fn repo, %{message: message} ->
+      upsert_delivery(repo, message.uuid, mailbox.uuid, "from", "sent")
+    end)
+    |> Multi.run(:external, fn repo, %{message: message} ->
+      External.insert_rows(repo, message.uuid, entries)
+    end)
+    |> repo().transaction()
+    |> case do
+      {:ok, %{message: message}} -> {:ok, message}
+      {:error, _step, reason, _changes} -> {:error, reason}
+    end
+  end
 
   # ── per-mailbox state ───────────────────────────────────────────────────────
   #

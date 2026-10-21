@@ -42,6 +42,17 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   chosen; the send checks the choice again. A reply is addressed to the
   message's Reply-To when it has one.
 
+  ## Sender and external recipients
+
+  The "Send as" picker offers the sending identities the user may use from
+  the chosen mailbox (`Identities.list_usable/1`, narrowed to that
+  mailbox), plus "inside the application only" — while external sending is
+  open (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
+  no member's or shared mailbox's goes to that address outside the
+  application — it needs a chosen identity, and the send checks the rest
+  (`Messages.send_message/4`). The external part goes after the send, so
+  the page does not wait for it; the reading pane shows how it went.
+
   ## Access
 
   Composing requires `"write"` on the sending mailbox — `"read"` grantees on a
@@ -60,6 +71,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.Outbound
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Signatures
@@ -87,6 +99,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       |> assign(:signature_uuid, "")
       |> assign(:signature_block, "")
       |> assign(:reply_to_options, [])
+      |> assign(:identities, [])
       |> assign(:show_media_selector, false)
       |> allow_upload(:attachments,
         accept: :any,
@@ -147,7 +160,29 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     |> assign(:mailbox, mailbox)
     |> assign(:signatures, mailbox_signatures(mailbox))
     |> assign(:reply_to_options, reply_to_options(socket.assigns.scope, mailbox))
+    |> assign(:identities, usable_identities(socket.assigns.scope, mailbox))
   end
+
+  # The identities that fit the mailbox: one bound to it, or — from the
+  # user's own personal mailbox — the personal and common ones. None while
+  # external sending is closed: there would be nothing to send as.
+  defp usable_identities(_scope, nil), do: []
+
+  defp usable_identities(scope, mailbox) do
+    if Outbound.open?() do
+      personal? =
+        mailbox.kind == "user" and Mailboxes.scope_user_uuid(scope) == {:ok, mailbox.owner_uuid}
+
+      scope
+      |> Identities.list_usable()
+      |> Enum.filter(&fits_mailbox?(&1, mailbox, personal?))
+    else
+      []
+    end
+  end
+
+  defp fits_mailbox?(%{mailbox_uuid: nil}, _mailbox, personal?), do: personal?
+  defp fits_mailbox?(%{mailbox_uuid: bound}, mailbox, _personal?), do: bound == mailbox.uuid
 
   defp mailbox_signatures(nil), do: []
   defp mailbox_signatures(mailbox), do: Signatures.list(mailbox.uuid)
@@ -198,6 +233,20 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         )
     end
   end
+
+  # A chosen identity that does not fit the new mailbox is let go.
+  defp keep_identity(socket) do
+    chosen = socket.assigns.form.params["identity_uuid"]
+
+    if Enum.any?(socket.assigns.identities, &(&1.identity_uuid == chosen)),
+      do: socket,
+      else: put_form_params(socket, %{"identity_uuid" => ""})
+  end
+
+  defp sent_flash(%Message{external_status: :pending}),
+    do: gettext_str("Message sent. The email to external addresses is on its way.")
+
+  defp sent_flash(_message), do: gettext_str("Message sent.")
 
   defp put_form_params(socket, params) do
     assign(socket, :form, to_form(Map.merge(socket.assigns.form.params, params)))
@@ -286,7 +335,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             "bcc" => recipients["bcc"],
             "subject" => message.subject || "",
             "body" => message.body || "",
-            "reply_to" => sender["reply_to"]
+            "reply_to" => sender["reply_to"],
+            "identity_uuid" => sender["identity_uuid"]
           })
         )
 
@@ -316,11 +366,11 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     with %{} = mailbox <- socket.assigns.mailbox,
          attrs <- send_attrs(socket, params),
          {:ok, uploads} <- pending_uploads(socket),
-         {:ok, _message} <-
+         {:ok, message} <-
            Messages.send_message(socket.assigns.scope, mailbox, attrs, attachments_data: uploads) do
       {:noreply,
        socket
-       |> put_flash(:info, gettext_str("Message sent."))
+       |> put_flash(:info, sent_flash(message))
        |> push_navigate(to: Paths.inbox(mailbox: mailbox.uuid, folder: "sent"))}
     else
       nil ->
@@ -366,6 +416,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     {:noreply,
      socket
      |> put_form_params(%{"reply_to" => default_reply_to(socket)})
+     |> keep_identity()
      |> switch_signature(default_signature(socket), body)}
   end
 
@@ -525,7 +576,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     attrs =
       params
-      |> Map.take(~w(to cc bcc subject body reply_to))
+      |> Map.take(~w(to cc bcc subject body reply_to identity_uuid))
       |> Map.put("body_format", "markdown")
       |> Map.put("uuid", socket.assigns.draft_uuid)
       |> Map.put("parent_uuid", socket.assigns.parent_uuid)
@@ -549,7 +600,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
   defp send_attrs(socket, params) do
     params
-    |> Map.take(~w(to cc bcc subject body reply_to))
+    |> Map.take(~w(to cc bcc subject body reply_to identity_uuid))
     |> Map.put("body_format", "markdown")
     |> Map.put("uuid", socket.assigns.draft_uuid)
     |> Map.put("parent_uuid", socket.assigns.parent_uuid)
@@ -594,6 +645,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         signatures={@signatures}
         signature_uuid={@signature_uuid}
         reply_to_options={@reply_to_options}
+        identities={@identities}
       />
 
       <%!-- Mounted only while open: the picker reports back by message
@@ -623,6 +675,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   attr(:signatures, :list, required: true)
   attr(:signature_uuid, :string, required: true)
   attr(:reply_to_options, :list, required: true)
+  attr(:identities, :list, required: true)
 
   defp compose_form(assigns) do
     ~H"""
@@ -643,6 +696,17 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
               options={Enum.map(@mailboxes, &{&1.name, &1.uuid})}
               class="select-sm"
               phx-change="select_mailbox"
+            />
+          </div>
+
+          <div :if={@identities != []} class="flex items-center gap-2">
+            <span class="text-sm w-16 shrink-0">{gettext_str("Send as")}</span>
+            <.select
+              id="compose-identity"
+              name="identity_uuid"
+              value={@form.params["identity_uuid"] || ""}
+              options={identity_choices(@identities)}
+              class="select-sm"
             />
           </div>
 
@@ -826,6 +890,14 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     if Identities.default_reply_to(options),
       do: choices,
       else: [{gettext_str("No Reply-To — replies go to this mailbox"), ""} | choices]
+  end
+
+  # "Inside only" first: an external send is a choice, never the default.
+  defp identity_choices(identities) do
+    [
+      {gettext_str("Inside the application only"), ""}
+      | Enum.map(identities, &{"#{&1.label} <#{&1.from_address}>", &1.identity_uuid})
+    ]
   end
 
   defp upload_error_text(:too_large), do: gettext_str("Larger than the upload limit.")

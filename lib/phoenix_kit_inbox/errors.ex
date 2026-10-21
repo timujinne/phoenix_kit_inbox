@@ -16,6 +16,8 @@ defmodule PhoenixKitInbox.Errors do
 
   use Gettext, backend: PhoenixKitWeb.Gettext
 
+  alias PhoenixKit.Utils.Format
+
   @doc "Translates an error reason into a user-facing string."
   @spec message(term()) :: String.t()
   def message(:mailbox_not_found), do: gettext("Mailbox not found.")
@@ -103,6 +105,54 @@ defmodule PhoenixKitInbox.Errors do
 
   def message({:integration_unusable, :no_from_address}),
     do: gettext("That mail connection has no login email address to send from.")
+
+  def message(:external_disabled),
+    do: gettext("Sending to addresses outside this application is turned off.")
+
+  def message(:external_needs_scope),
+    do: gettext("Addresses outside this application need the sender's scope.")
+
+  def message(:external_needs_identity),
+    do: gettext("Choose a sender under “Send as” to write to addresses outside this application.")
+
+  def message({:external_too_large, max}),
+    do:
+      gettext(
+        "The attachments are too large for an email outside this application (at most %{size}).",
+        size: Format.bytes(max)
+      )
+
+  def message({:filter_refused, _reason}),
+    do: gettext("This installation's rules don't let that email leave the application.")
+
+  def message(:filter_failed),
+    do:
+      gettext(
+        "The email could not be checked against this installation's rules, so it was not sent."
+      )
+
+  def message(:no_integration), do: gettext("That sender has no mail connection.")
+
+  def message(:retry_unavailable), do: gettext("This message can't be sent again from here.")
+
+  def message(:external_maybe_delivered),
+    do: gettext("The email log shows the email may have gone out, so it is not sent again.")
+
+  def message(:nothing_to_retry), do: gettext("There is nothing to send again.")
+
+  def message({:internal_recipients, addresses}),
+    do:
+      gettext(
+        "These addresses belong to people or mailboxes inside this application: %{addresses}.",
+        addresses: Enum.join(addresses, ", ")
+      )
+
+  def message({:invalid_external_recipients, entries}),
+    do: gettext("Not email addresses: %{entries}.", entries: Enum.join(entries, ", "))
+
+  def message(:use_external_recipients),
+    do:
+      gettext("A recorded email names its recipients as external recipients, with their outcome.")
 
   def message({:library_unavailable, _reason}),
     do: gettext("Attachments are unavailable right now. Try again.")

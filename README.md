@@ -7,9 +7,9 @@ Internal mailbox for [PhoenixKit](https://github.com/BeamLabEU/phoenix_kit) — 
 
 ## What it is, and isn't
 
-Inbox is **internal**. Messages are addressed to mailboxes inside your application, stored in your database, and read in your admin UI. Nothing is fetched over IMAP and nothing is relayed to the outside world.
+Inbox is **internal** first. Messages are addressed to mailboxes inside your application, stored in your database, and read in your admin UI. Nothing is fetched over IMAP.
 
-What it *can* do, when the host also runs [`phoenix_kit_emails`](https://github.com/BeamLabEU/phoenix_kit_emails), is send a short "you have a new message" nudge to a recipient's real email address so they know to come look. That's a **soft** integration — `phoenix_kit_emails` is not in this package's `mix.exs`, the call is guarded with `Code.ensure_loaded?/1`, and the whole thing is off by default behind a setting.
+A message can also go to **email addresses outside** the application — through a mail integration chosen as its sending identity, closed by default and always through a filter the host configures (see [External recipients](#external-recipients)). The same path carries the optional "you have a new message" nudge to a recipient's real address. When the host also runs [`phoenix_kit_emails`](https://github.com/BeamLabEU/phoenix_kit_emails), every such email is in its log; that package stays a **soft** dependency — not in this package's `mix.exs`.
 
 Neighbouring modules, so you pick the right one:
 
@@ -33,7 +33,8 @@ Neighbouring modules, so you pick the right one:
 - **Attachments** — uploads, existing Storage files and forwards, each kept as a snapshot in the module's own hidden Storage library and downloaded only by the people on the message
 - **Markdown bodies** — written in Markdown, shown through core's email renderer: sanitized, `http(s)`/`mailto` links only, remote images shown as links and never loaded, `{{x}}` left as typed
 - **Signatures** — per mailbox, Markdown, one default; put at the end of a message after a `-- ` line and swapped while untouched
-- **Sending identities and Reply-To** — who a message may go out *as* (a mail integration whose login is the From address) and which addresses replies may go to, both checked on every send. Stored and resolved here; sending outside the application is not part of this release
+- **Sending identities and Reply-To** — who a message may go out *as* (a mail integration whose login is the From address) and which addresses replies may go to, both checked on every send
+- **External recipients** — email addresses in To/Cc/Bcc next to internal ones: one email through the sender's integration after the message is committed, real attachments up to a size limit, a status per address, a retry that never sends twice
 - **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; an admin page for shared senders and signatures
 - **Notifications** — new messages raise an activity event, which core turns into an in-app notification with a deep link
 - **Module-owned migrations** — tables ship and version here, not in core
@@ -167,6 +168,48 @@ The From **address** is never typed: it is the login (SMTP username) of the inte
 
 Reply-To choices are the user's own email and the address of every shared mailbox they can write to; the default is the sending shared mailbox's address (none if it has no address), or for the personal mailbox the user's saved choice (`Identities.set_default_reply_to/2`), else their email.
 
+### External recipients
+
+```elixir
+{:ok, message} = Messages.send_message(scope, from_mailbox, %{
+  "to" => "@bob, client@example.com",       # internal and external at once
+  "bcc" => "archive@example.com",
+  "identity_uuid" => identity_uuid,         # required for external addresses
+  "body" => "**Offer** attached", "body_format" => "markdown"
+})
+message.external_status                     #=> :pending (:none without external recipients)
+
+Messages.list_external_recipients(message.uuid, viewer_mailbox_uuid)  # Bcc only for the sender
+External.display_status(row)                #=> :pending | :sent | :failed | :unknown
+External.subscribe(from_mailbox.uuid)       # {:inbox_external_updated, message_uuid}
+Messages.retry_external(scope, from_mailbox, message.uuid)            #=> {:ok, :pending}
+```
+
+An email address that names no member and no shared mailbox is an external recipient — if the sender may write externally (`inbox.send_external`, or sending as their own personal identity); otherwise it is an unknown recipient, as before; the three-argument `send_message/3` refuses it (`{:error, :external_needs_scope}`). External recipients need a sending identity (`{:error, :external_needs_identity}`) and external sending **open**:
+
+```elixir
+PhoenixKitInbox.set_external_enabled(true)          # inbox_external_enabled, off by default
+config :phoenix_kit_inbox, outbound_filter: {MyApp.Inbox, :outbound}   # or :none, explicitly
+```
+
+Without both, `{:error, :external_disabled}`. Every email the module sends — a message, its retry, a nudge — goes through `PhoenixKitInbox.Outbound.deliver/2`: the filter gets the `%Swoosh.Email{}` and a context (kind, integration, sender, message) and returns `{:ok, email}` — of which To, Cc, Bcc and Reply-To are taken, so a staging host can redirect everything to a test address — or `{:error, reason}`; a raise, throw or any other answer refuses. Then core's `PhoenixKit.Mailer.deliver_via_integration/3` through the identity's integration, always with `skip_queue: true` and `queue: false` (a queued message would be re-sent through core's *default* integration), `user_uuid`, `integration_uuid` and `message_tags: %{"source" => "inbox", "inbox_message_uuid" => …, "inbox_kind" => "message" | "nudge"}`.
+
+The message, its deliveries and its external recipients (`pending`) are written in one transaction; the email goes after the commit, in a task under the module's `PhoenixKitInbox.TaskSupervisor`, and the rows become `sent` or `failed`. A failure there never touches the internal part. A row still pending after 15 minutes reads as `:unknown` — check the email log. The body is the Markdown rendered as in the reading pane, plus a plain-text part; attachments travel as real attachments, read from Storage, up to `inbox_external_max_bytes` in total as base64 (25 MB by default) — a larger message is refused before anything is stored.
+
+**Retry** re-sends the failed rows, from the sending mailbox only, with the identity and the right to write externally checked again, and only when `phoenix_kit_emails` runs and every log row of the message's email is `failed` or `rejected`; the rows are taken in one statement, so two retries at once send one email.
+
+A host that sent an email itself records it in the sender's Sent folder:
+
+```elixir
+Messages.record_sent(scope, mailbox, %{
+  "subject" => "Offer 12", "body" => "…",
+  "external_recipients" => [%{"address" => "client@example.com", "status" => "sent"}],
+  "attachments" => [%{"filename" => "offer.pdf", "size_bytes" => 1234}]   # names only, no files
+}, host_ref: "send-42")
+```
+
+No internal delivery (an internal address is `{:error, {:internal_recipients, …}}`), no outbound mail, no stored files, no retry; `metadata["source"] == "host"`.
+
 ### Signatures
 
 ```elixir
@@ -247,19 +290,23 @@ Messages.draft_recipients(draft)   #=> %{"to" => "@bob", "cc" => "", "bcc" => ""
 | Key | Default | What it does |
 |---|---|---|
 | `inbox_enabled` | `false` | Module on/off (the admin Modules page toggle) |
-| `inbox_email_nudges_enabled` | `false` | Send a "new message" email to recipients — needs `phoenix_kit_emails` |
+| `inbox_email_nudges_enabled` | `false` | Send a "new message" email to recipients — also needs a nudge sender and external sending open |
+| `inbox_nudge_identity_uuid` | none | The shared identity nudges go out from; without one there is no nudge |
+| `inbox_external_enabled` | `false` | Allow mail to addresses outside the application — also needs the host's `outbound_filter` |
+| `inbox_external_max_bytes` | `26214400` | Largest total of attachments for external recipients, as base64 |
 | `inbox_max_upload_bytes` | `200000000` | Largest attachment accepted, in bytes |
 
 ```elixir
 PhoenixKitInbox.set_email_nudges(true)
-PhoenixKitInbox.Notify.email_nudges_available?()  #=> is phoenix_kit_emails actually installed?
+PhoenixKitInbox.set_nudge_identity(scope, shared_identity_uuid)   # inbox.manage_shared
+PhoenixKitInbox.Notify.email_nudges_available?()  #=> nudge sender set and external sending open?
 ```
 
 ## Permissions
 
 The module key is `"inbox"`. Two levels:
 
-1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module. Two sub-permissions add capabilities, checked by the context functions with `Scope.can?/2`: `inbox.manage_shared` (create shared mailboxes, set addresses, manage shared senders and shared-mailbox signatures) and `inbox.send_external` (use the common sender for personal mailboxes; sending itself is a later release).
+1. **Module permission** — `Scope.has_module_access?(scope, "inbox")` decides who can open Inbox at all. Managed in the admin roles/permissions matrix like every other module. Two sub-permissions add capabilities, checked by the context functions with `Scope.can?/2`: `inbox.manage_shared` (create shared mailboxes, set addresses, manage shared senders and shared-mailbox signatures) and `inbox.send_external` (write to external addresses through a shared sender, including the common sender for personal mailboxes; a personal sender's owner writes externally without it).
 2. **Mailbox grants** — decide which mailboxes a user sees once inside, and what they may do there (every function that changes something takes the caller's scope and checks both gates itself). Owning a mailbox implies `"admin"` on it; everything else needs a row in `phoenix_kit_inbox_mailbox_grants`.
 
 Levels are ordered `read < write < admin`:

@@ -51,6 +51,11 @@ defmodule PhoenixKitInbox.Schemas.Message do
     field(:sent_at, :utc_datetime)
     field(:metadata, :map, default: %{})
 
+    # Set on what `Messages.send_message/4` returns: `:pending` while the
+    # email to external recipients is still to go, `:none` without any.
+    # `nil` on a message read back from the database.
+    field(:external_status, :any, virtual: true)
+
     timestamps(type: :utc_datetime)
   end
 

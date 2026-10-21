@@ -1,30 +1,39 @@
 defmodule PhoenixKitInbox.Notify do
   @moduledoc """
   Side effects that fire after a message is delivered — activity logging,
-  in-app notifications, and the optional outbound email nudge.
+  in-app notifications, and the optional email nudge.
 
   Everything here is **best effort**. A notification that fails must never
   unsend a message that is already committed, so every function rescues, logs,
   and returns. Callers ignore the return value.
 
-  ## The phoenix_kit_emails integration
+  ## The email nudge
 
   Inbox is an internal messaging system: messages live in this app's tables and
   are read in this app's UI. But a user who isn't looking at the app won't know
-  a message arrived, so — **when the host also runs `phoenix_kit_emails`** — we
-  send a short "you have a new message" nudge to the recipient's real email
-  address.
+  a message arrived, so a short "you have a new message" email can go to the
+  recipient's real address. It is off unless **all** of these hold:
 
-  That integration is deliberately soft. `phoenix_kit_emails` is not in this
-  module's `mix.exs`; `Code.ensure_loaded?/1` decides at runtime whether the
-  nudge happens. Hosts running both modules get it for free, hosts running only
-  Inbox are unaffected, and neither release cycle is coupled to the other.
+    * the `inbox_email_nudges_enabled` setting is on;
+    * a nudge sender is set — a shared identity named by the
+      `inbox_nudge_identity_uuid` setting (`PhoenixKitInbox.set_nudge_identity/2`),
+      whose system integration still works. Without one there is no nudge:
+      it never falls back to core's default integration;
+    * external sending is open (`PhoenixKitInbox.Outbound`) — a nudge is
+      external mail and goes through the same filter.
+
+  The nudges of a message are sent in one task under the module's task
+  supervisor, after the commit, so the sender never waits for SMTP. When
+  `phoenix_kit_emails` runs, it logs them like any other send.
   """
 
   require Logger
 
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKitInbox.External
+  alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
+  alias PhoenixKitInbox.Outbound
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
@@ -32,19 +41,34 @@ defmodule PhoenixKitInbox.Notify do
   @doc """
   Announces a sent message: one permanent `inbox.message_sent` activity for
   the send itself, one activity event per recipient (which core turns into
-  that user's in-app notification), plus an optional email nudge.
+  that user's in-app notification), plus the email nudges.
+
+  `counts` — `%{external: n, attachments: n}` — goes into the activity next
+  to the number of internal recipients.
 
   `bcc` recipients are notified like anyone else — they just don't appear in
   anyone else's recipient list.
   """
-  @spec message_sent(Message.t(), Mailbox.t(), [%{role: String.t(), mailbox: Mailbox.t()}]) :: :ok
-  def message_sent(%Message{} = message, %Mailbox{} = sender, recipients) do
-    log_sent(message, recipients)
+  @spec message_sent(Message.t(), Mailbox.t(), [%{role: String.t(), mailbox: Mailbox.t()}], map()) ::
+          :ok
+  def message_sent(%Message{} = message, %Mailbox{} = sender, recipients, counts \\ %{}) do
+    log_sent(message, length(recipients), counts)
 
     Enum.each(recipients, fn %{mailbox: recipient_mailbox} ->
       notify_recipient(message, sender, recipient_mailbox)
     end)
 
+    send_email_nudges(message, sender, recipients)
+    :ok
+  end
+
+  @doc """
+  Logs the `inbox.message_sent` activity of a message the host recorded
+  (`Messages.record_sent/4`) — it has no internal recipients to notify.
+  """
+  @spec message_recorded(Message.t(), map()) :: :ok
+  def message_recorded(%Message{} = message, counts) do
+    log_sent(message, 0, counts)
     :ok
   end
 
@@ -52,7 +76,7 @@ defmodule PhoenixKitInbox.Notify do
   # free of personal data — counts only, no subject, no addresses (those live
   # in the module's own tables, see `Messages.send_message/4`). No target, so
   # it notifies nobody.
-  defp log_sent(message, recipients) do
+  defp log_sent(message, internal, counts) do
     if Code.ensure_loaded?(PhoenixKit.Activity) do
       PhoenixKit.Activity.log(%{
         action: "inbox.message_sent",
@@ -64,9 +88,9 @@ defmodule PhoenixKitInbox.Notify do
         target_uuid: nil,
         permanent: true,
         metadata: %{
-          "internal_recipients" => length(recipients),
-          "external_recipients" => 0,
-          "attachments" => 0
+          "internal_recipients" => internal,
+          "external_recipients" => Map.get(counts, :external, 0),
+          "attachments" => Map.get(counts, :attachments, 0)
         }
       })
     end
@@ -80,8 +104,6 @@ defmodule PhoenixKitInbox.Notify do
     recipient_mailbox
     |> readers()
     |> Enum.each(&log_activity(message, sender, recipient_mailbox, &1))
-
-    send_email_nudge(message, sender, recipient_mailbox)
   end
 
   # Everyone who reads the mailbox: its owner and, for a shared one, every
@@ -143,15 +165,12 @@ defmodule PhoenixKitInbox.Notify do
     "#{sender.name}: #{subject}"
   end
 
-  # ── outbound email nudge (soft dependency) ──────────────────────────────────
+  # ── email nudge ─────────────────────────────────────────────────────────────
 
-  defp send_email_nudge(message, sender, recipient_mailbox) do
-    with true <- emails_module_available?(),
-         true <- email_nudges_enabled?(),
-         address when is_binary(address) <- nudge_address(recipient_mailbox) do
-      deliver_nudge(address, message, sender, recipient_mailbox)
-    else
-      _ -> :skipped
+  defp send_email_nudges(message, sender, recipients) do
+    with {:ok, identity} <- nudge_sender(),
+         [_ | _] = nudges <- nudge_targets(recipients) do
+      External.start_task(fn -> deliver_nudges(nudges, message, sender, identity) end)
     end
   rescue
     e ->
@@ -159,36 +178,32 @@ defmodule PhoenixKitInbox.Notify do
       :error
   end
 
-  # Both the module and core's mailer have to be present. `phoenix_kit_emails`
-  # intercepts and logs whatever core's mailer sends, so we deliver through
-  # core and let the emails module do its tracking job.
-  #
-  # Called through `apply/3`, guarded by `function_exported?/3`. A literal
-  # `PhoenixKit.Modules.Emails.enabled?()` — even via a bound variable — is a
-  # compile-time "undefined function" warning here, and `mix precommit`
-  # compiles with --warnings-as-errors. `apply/3` is the escape hatch core
-  # itself uses for optional-module calls (see `PhoenixKit.Mailer` and
-  # `PhoenixKitWeb.CommentsForwarding`), hence the credo exemption.
-  defp emails_module, do: PhoenixKit.Modules.Emails
-
-  defp emails_module_available? do
-    mod = emails_module()
-
-    Code.ensure_loaded?(mod) and function_exported?(mod, :enabled?, 0) and emails_enabled?(mod)
-  rescue
-    _ -> false
+  defp deliver_nudges(nudges, message, sender, identity) do
+    Enum.each(nudges, fn {address, mailbox} ->
+      deliver_nudge(address, message, sender, mailbox, identity)
+    end)
   end
 
-  # credo:disable-for-next-line Credo.Check.Refactor.Apply
-  defp emails_enabled?(mod), do: apply(mod, :enabled?, [])
+  # The identity the setting names, if nudges are on, external mail is open
+  # and the identity still works — else no nudge at all.
+  defp nudge_sender do
+    with true <- PhoenixKitInbox.email_nudges_enabled?(),
+         uuid when is_binary(uuid) <- PhoenixKitInbox.nudge_identity_uuid(),
+         :ok <- Outbound.check_open(),
+         {:ok, identity} <- Identities.resolve_system(uuid) do
+      {:ok, identity}
+    else
+      _ -> :none
+    end
+  end
 
-  # Host-controlled kill switch, off by default: a host that wants Inbox to be
-  # purely in-app shouldn't start mailing people because they installed an
-  # unrelated module.
-  defp email_nudges_enabled? do
-    PhoenixKit.Settings.get_boolean_setting("inbox_email_nudges_enabled", false)
-  rescue
-    _ -> false
+  defp nudge_targets(recipients) do
+    Enum.flat_map(recipients, fn %{mailbox: mailbox} ->
+      case nudge_address(mailbox) do
+        address when is_binary(address) -> [{address, mailbox}]
+        nil -> []
+      end
+    end)
   end
 
   @doc """
@@ -211,15 +226,8 @@ defmodule PhoenixKitInbox.Notify do
 
   def nudge_address(_), do: nil
 
-  # Built through core's mailer rather than a Swoosh adapter of our own, so the
-  # host's configured provider, blocklist, and (when phoenix_kit_emails is
-  # installed) tracking/queueing all apply without Inbox knowing about any of
-  # it. `swoosh` arrives transitively via phoenix_kit — same as
-  # phoenix_kit_newsletters' delivery worker.
-  defp deliver_nudge(address, message, sender, recipient_mailbox) do
+  defp deliver_nudge(address, message, sender, recipient_mailbox, identity) do
     subject = message.subject || "(no subject)"
-    from_email = PhoenixKit.Settings.get_setting("from_email", "noreply@example.com")
-    from_name = PhoenixKit.Settings.get_setting("from_name", "Inbox")
 
     body = """
     #{sender.name} sent you a message.
@@ -231,18 +239,32 @@ defmodule PhoenixKitInbox.Notify do
 
     Swoosh.Email.new()
     |> Swoosh.Email.to(address)
-    |> Swoosh.Email.from({from_name, from_email})
+    |> Swoosh.Email.from({identity.from_name, identity.from_address})
     |> Swoosh.Email.subject("New message: #{subject}")
     |> Swoosh.Email.text_body(body)
-    |> PhoenixKit.Mailer.deliver_email()
+    |> Outbound.deliver(%{
+      kind: :nudge,
+      integration_uuid: identity.integration_uuid,
+      user_uuid: message.sender_user_uuid && to_string(message.sender_user_uuid),
+      message_uuid: to_string(message.uuid),
+      identity_uuid: identity.identity_uuid
+    })
+    |> case do
+      {:ok, _} -> :ok
+      {:error, reason} -> Logger.info("[Inbox] email nudge not sent: #{inspect(reason)}")
+    end
+  rescue
+    e -> Logger.warning("[Inbox] email nudge failed: #{Exception.message(e)}")
   end
 
   @doc """
-  Whether the outbound email nudge is currently wired up — used by the admin UI
-  to explain why the toggle does or doesn't do anything on this host.
+  Whether the email nudge is wired up — a nudge sender is set and external
+  sending is open — for a host's settings UI to explain why the toggle does or
+  doesn't do anything on this host.
   """
   @spec email_nudges_available?() :: boolean()
-  def email_nudges_available?, do: emails_module_available?()
+  def email_nudges_available?,
+    do: PhoenixKitInbox.nudge_identity_uuid() != nil and Outbound.open?()
 
   @doc """
   Names of recipients with no email address on file — for callers that want to

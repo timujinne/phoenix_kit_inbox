@@ -23,6 +23,15 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
     1. `Scope.has_module_access?(scope, "inbox")` — can they use Inbox at all
     2. `Mailboxes.authorize/3` — can they open *this* mailbox
+
+  ## External recipients
+
+  The reading pane lists a message's external recipients with their status
+  (`PhoenixKitInbox.External`) — Bcc ones to the sending mailbox only — and
+  follows a send still under way: the LiveView subscribes to the external
+  updates of the user's mailboxes. "Retry" is shown to the sending mailbox's
+  writers when `Messages.retry_available?/1` says so; `Messages.retry_external/3`
+  checks again.
   """
 
   use PhoenixKitWeb, :live_view
@@ -34,6 +43,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Body
   alias PhoenixKitInbox.Errors
+  alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Paths
@@ -77,8 +87,14 @@ defmodule PhoenixKitInbox.Web.InboxLive do
       |> assign(:selected, nil)
       |> assign(:recipients, [])
       |> assign(:attachments, [])
+      |> assign(:externals, [])
+      |> assign(:externals_sender, false)
+      |> assign(:retry_available, false)
+      |> load_mailboxes()
 
-    {:ok, load_mailboxes(socket)}
+    if connected?(socket), do: Enum.each(socket.assigns.mailboxes, &External.subscribe(&1.uuid))
+
+    {:ok, socket}
   end
 
   @impl true
@@ -208,6 +224,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
           Messages.list_recipients(message_uuid, socket.assigns.mailbox.uuid)
         )
         |> assign(:attachments, Attachments.list_for_message(entry.message.uuid))
+        |> assign_externals(entry.message)
         |> assign(:unseen_counts, Mailboxes.unseen_counts(socket.assigns.mailbox.uuid))
 
       {:error, reason} ->
@@ -215,6 +232,24 @@ defmodule PhoenixKitInbox.Web.InboxLive do
         |> assign(selected: nil, recipients: [])
         |> put_flash(:error, Errors.message(reason))
     end
+  end
+
+  # How the external part went is the sender's business: the sending mailbox
+  # sees each status (and error), its writers get Retry; a recipient sees
+  # only the To and Cc addresses.
+  defp assign_externals(socket, message) do
+    mailbox = socket.assigns.mailbox
+    externals = Messages.list_external_recipients(message.uuid, mailbox.uuid)
+    sender? = message.sender_mailbox_uuid == mailbox.uuid
+
+    retry? =
+      sender? and socket.assigns.access in ~w(write admin) and
+        Enum.any?(externals, &(&1.status == "failed")) and Messages.retry_available?(message)
+
+    socket
+    |> assign(:externals, externals)
+    |> assign(:externals_sender, sender?)
+    |> assign(:retry_available, retry?)
   end
 
   defp maybe_mark_seen(socket, %{delivery: %Delivery{seen_at: nil}} = entry) do
@@ -290,6 +325,40 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   def handle_event("refresh", _params, socket) do
     {:noreply, load_messages(socket)}
   end
+
+  def handle_event(
+        "retry_external",
+        %{"uuid" => uuid},
+        %{assigns: %{mailbox: %{} = mailbox}} = socket
+      ) do
+    case Messages.retry_external(socket.assigns.scope, mailbox, uuid) do
+      {:ok, :pending} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, gettext_str("Sending again."))
+         |> refresh_externals()}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, Errors.message(reason))}
+    end
+  end
+
+  def handle_event("retry_external", _params, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_info({:inbox_external_updated, message_uuid}, socket) do
+    case socket.assigns.selected do
+      %{message: %{uuid: ^message_uuid}} -> {:noreply, refresh_externals(socket)}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp refresh_externals(%{assigns: %{selected: %{message: message}, mailbox: %{}}} = socket),
+    do: assign_externals(socket, message)
+
+  defp refresh_externals(socket), do: socket
 
   # Runs a mutation against the current mailbox with the session scope, then
   # reloads the list. The context function checks the scope's grant level
@@ -378,6 +447,9 @@ defmodule PhoenixKitInbox.Web.InboxLive do
               selected={@selected}
               recipients={@recipients}
               attachments={@attachments}
+              externals={@externals}
+              externals_sender={@externals_sender}
+              retry_available={@retry_available}
               mailbox={@mailbox}
               access={@access}
               folder={@folder}
@@ -605,6 +677,9 @@ defmodule PhoenixKitInbox.Web.InboxLive do
   attr(:selected, :any, required: true)
   attr(:recipients, :list, required: true)
   attr(:attachments, :list, default: [])
+  attr(:externals, :list, default: [])
+  attr(:externals_sender, :boolean, default: false)
+  attr(:retry_available, :boolean, default: false)
   attr(:mailbox, :any, required: true)
   attr(:access, :any, required: true)
   attr(:folder, :string, required: true)
@@ -649,6 +724,14 @@ defmodule PhoenixKitInbox.Web.InboxLive do
           </span>
         </div>
 
+        <.external_recipients
+          :if={@externals != []}
+          externals={@externals}
+          sender={@externals_sender}
+          message={@selected.message}
+          retry_available={@retry_available}
+        />
+
         <div class="divider my-0"></div>
 
         <.message_body message={@selected.message} />
@@ -682,6 +765,55 @@ defmodule PhoenixKitInbox.Web.InboxLive do
     </div>
     """
   end
+
+  attr(:externals, :list, required: true)
+  attr(:sender, :boolean, required: true)
+  attr(:message, :any, required: true)
+  attr(:retry_available, :boolean, required: true)
+
+  defp external_recipients(assigns) do
+    assigns = assign(assigns, :now, DateTime.utc_now())
+
+    ~H"""
+    <div id="external-recipients" class="flex flex-wrap items-center gap-2 text-xs">
+      <span
+        :for={row <- @externals}
+        id={"external-#{row.uuid}"}
+        class={[
+          "badge badge-sm gap-1",
+          if(@sender, do: external_badge(External.display_status(row, @now)), else: "badge-ghost")
+        ]}
+        title={@sender && row.error}
+      >
+        <span class="uppercase opacity-60">{row.role}</span>
+        {row.name || row.address}
+        <span :if={@sender} class="opacity-70">
+          · {external_label(External.display_status(row, @now))}
+        </span>
+      </span>
+      <button
+        :if={@retry_available}
+        id="retry-external"
+        class="btn btn-ghost btn-xs"
+        phx-click="retry_external"
+        phx-value-uuid={@message.uuid}
+      >
+        <.icon name="hero-arrow-path" class="w-3 h-3" />
+        {gettext_str("Retry")}
+      </button>
+    </div>
+    """
+  end
+
+  defp external_badge(:sent), do: "badge-success badge-outline"
+  defp external_badge(:failed), do: "badge-error badge-outline"
+  defp external_badge(:pending), do: "badge-warning badge-outline"
+  defp external_badge(:unknown), do: "badge-ghost"
+
+  defp external_label(:sent), do: gettext_str("sent")
+  defp external_label(:failed), do: gettext_str("not delivered")
+  defp external_label(:pending), do: gettext_str("sending…")
+  defp external_label(:unknown), do: gettext_str("unknown — check the email log")
 
   attr(:message, :any, required: true)
 

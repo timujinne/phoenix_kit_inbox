@@ -10,13 +10,13 @@ defmodule PhoenixKitInbox do
 
   ## What it is, and isn't
 
-  Inbox is **internal**. Messages are addressed to mailboxes inside this
-  application; nothing is fetched over IMAP and nothing is relayed to the
-  outside world. What it *can* do, when the host also runs
-  `phoenix_kit_emails`, is send a short "you have a new message" nudge to a
-  recipient's real email address — a soft, `Code.ensure_loaded?/1`-guarded
-  integration with no dependency in `mix.exs`, off by default behind the
-  `inbox_email_nudges_enabled` setting. See `PhoenixKitInbox.Notify`.
+  Inbox is **internal** first. Messages are addressed to mailboxes inside
+  this application; nothing is fetched over IMAP. A message may also go to
+  email addresses outside it, sent as a chosen identity, and a short "you
+  have a new message" nudge may go to a recipient's real address — both
+  closed by default and only through `PhoenixKitInbox.Outbound`, which runs
+  the host's filter. See `PhoenixKitInbox.External` and
+  `PhoenixKitInbox.Notify`.
 
   If you want outbound campaign email, that's `phoenix_kit_newsletters`; for
   delivery tracking and SES integration, `phoenix_kit_emails`; for customer
@@ -58,6 +58,10 @@ defmodule PhoenixKitInbox do
 
   @settings_key "inbox_enabled"
   @nudges_settings_key "inbox_email_nudges_enabled"
+  @external_settings_key "inbox_external_enabled"
+  @nudge_identity_key "inbox_nudge_identity_uuid"
+  @external_max_bytes_key "inbox_external_max_bytes"
+  @default_external_max_bytes 25 * 1024 * 1024
 
   # ===========================================================================
   # Required callbacks
@@ -299,6 +303,14 @@ defmodule PhoenixKitInbox do
   def before_user_delete(user_uuid), do: PhoenixKitInbox.Mailboxes.handle_user_deletion(user_uuid)
 
   @impl PhoenixKit.Module
+  @doc """
+  Supervised processes: `PhoenixKitInbox.TaskSupervisor`, under which the
+  external part of a send runs after its transaction commits
+  (`PhoenixKitInbox.External`).
+  """
+  def children, do: [{Task.Supervisor, name: PhoenixKitInbox.TaskSupervisor}]
+
+  @impl PhoenixKit.Module
   @doc "OTP apps whose templates Tailwind should scan for CSS classes."
   def css_sources, do: [:phoenix_kit_inbox]
 
@@ -357,6 +369,71 @@ defmodule PhoenixKitInbox do
   @spec set_email_nudges(boolean()) :: term()
   def set_email_nudges(enabled) when is_boolean(enabled) do
     Settings.update_boolean_setting_with_module(@nudges_settings_key, enabled, module_key())
+  end
+
+  @doc """
+  Whether messages may go to addresses outside the application — the
+  `inbox_external_enabled` setting, off by default. External mail also needs
+  the host's `outbound_filter` (see `PhoenixKitInbox.Outbound`).
+  """
+  @spec external_enabled?() :: boolean()
+  def external_enabled? do
+    Settings.get_boolean_setting(@external_settings_key, false)
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
+  end
+
+  @doc "Turns sending to external addresses on or off."
+  @spec set_external_enabled(boolean()) :: term()
+  def set_external_enabled(enabled) when is_boolean(enabled) do
+    Settings.update_boolean_setting_with_module(@external_settings_key, enabled, module_key())
+  end
+
+  @doc """
+  Largest total of a message's attachments for external recipients, in
+  bytes as they travel (base64) — the `inbox_external_max_bytes` setting,
+  #{@default_external_max_bytes} by default.
+  """
+  @spec external_max_bytes() :: pos_integer()
+  def external_max_bytes do
+    case Settings.get_integer_setting(@external_max_bytes_key, @default_external_max_bytes) do
+      bytes when is_integer(bytes) and bytes > 0 -> bytes
+      _ -> @default_external_max_bytes
+    end
+  rescue
+    _ -> @default_external_max_bytes
+  catch
+    :exit, _ -> @default_external_max_bytes
+  end
+
+  @doc """
+  The shared sending identity the new-message email nudge goes out from —
+  the `inbox_nudge_identity_uuid` setting. `nil` when none is set: then
+  there is no nudge (never through core's default integration).
+  """
+  @spec nudge_identity_uuid() :: String.t() | nil
+  def nudge_identity_uuid do
+    case Settings.get_setting(@nudge_identity_key, nil) do
+      uuid when is_binary(uuid) and uuid != "" -> uuid
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc """
+  Sets the nudge's sending identity: a shared identity, set by a holder of
+  `inbox.manage_shared` (`{:error, :forbidden}`); `nil` clears it.
+  """
+  @spec set_nudge_identity(Scope.t(), String.t() | nil) :: {:ok, term()} | {:error, term()}
+  def set_nudge_identity(scope, identity_uuid) do
+    with :ok <- PhoenixKitInbox.Identities.authorize_nudge_identity(scope, identity_uuid) do
+      Settings.update_setting_with_module(@nudge_identity_key, identity_uuid || "", module_key())
+    end
   end
 
   # ===========================================================================
