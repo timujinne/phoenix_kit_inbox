@@ -94,6 +94,16 @@ defmodule PhoenixKitInbox.NudgeTest do
     assert_receive {:outbound, %{to: [{"", "redirect@test.example"}]}, _, _}, 2_000
   end
 
+  test "with external sending closed the nudge sender is not even checked", ctx do
+    {:ok, _} = PhoenixKitInbox.set_nudge_identity(ctx.manager, ctx.notices.uuid)
+    :ok = PhoenixKit.Integrations.remove_connection(ctx.smtp, nil, owner: :system)
+    outbound_filter(nil)
+
+    send_to_bob(ctx)
+
+    assert Repo.get(PhoenixKitInbox.Schemas.Identity, ctx.notices.uuid).status == "active"
+  end
+
   test "with the nudge setting off there is no nudge", ctx do
     {:ok, _} = PhoenixKitInbox.set_nudge_identity(ctx.manager, ctx.notices.uuid)
     {:ok, _} = PhoenixKitInbox.set_email_nudges(false)

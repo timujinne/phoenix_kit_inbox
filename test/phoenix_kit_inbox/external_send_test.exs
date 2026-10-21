@@ -13,6 +13,7 @@ defmodule PhoenixKitInbox.ExternalSendTest do
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.Schemas.Attachment
   alias PhoenixKitInbox.Schemas.ExternalRecipient
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Test.OutboundFilters
@@ -79,6 +80,21 @@ defmodule PhoenixKitInbox.ExternalSendTest do
   end
 
   defp rows(message), do: External.list(message.uuid)
+
+  # A send whose task has not run yet: the first attempt failed, and its
+  # rows are taken back to pending — then the test runs the task's body.
+  defp pending_send(ctx, extra \\ %{}, opts \\ []) do
+    outbound_result({:error, :not_yet})
+    {:ok, message} = send_mail(ctx, extra, opts)
+    assert_received {:outbound, _, _, _}
+
+    Repo.update_all(from(r in ExternalRecipient, where: r.message_uuid == ^message.uuid),
+      set: [status: "pending", error: nil]
+    )
+
+    outbound_result({:ok, %{id: "ok"}})
+    {message, Enum.map(rows(message), & &1.uuid)}
+  end
 
   describe "a mixed send" do
     test "delivers inside, writes the external rows, and sends one email after the commit",
@@ -305,6 +321,24 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       assert_received {:outbound, _, _, _}
     end
 
+    test "a retry by another writer is logged as theirs", ctx do
+      carol = user_fixture()
+      grant_fixture(ctx.desk, carol, "write")
+      outbound_result({:error, :smtp_down})
+      {:ok, message} = desk_send(ctx, ctx.scope)
+      assert_received {:outbound, _, _, opts}
+      assert opts[:user_uuid] == ctx.alice.uuid
+      emails_module_enabled!()
+      outbound_result({:ok, %{id: "ok"}})
+
+      assert {:ok, :pending} =
+               Messages.retry_external(scope_for(carol, @external), ctx.desk, message.uuid)
+
+      await_external(message.uuid)
+      assert_received {:outbound, _, _, opts}
+      assert opts[:user_uuid] == carol.uuid
+    end
+
     test "a retry checks inbox.send_external again", ctx do
       outbound_result({:error, :smtp_down})
       {:ok, message} = desk_send(ctx, ctx.scope)
@@ -326,6 +360,40 @@ defmodule PhoenixKitInbox.ExternalSendTest do
 
   describe "attachments for external recipients" do
     setup :storage_setup
+
+    test "an over-long address refuses the send before any snapshot is stored", ctx do
+      long = String.duplicate("a", 250) <> "@example.com"
+      data = [%{binary: "PDF", filename: "offer.pdf", content_type: "application/pdf"}]
+
+      assert send_mail(ctx, %{"to" => long, "cc" => "", "bcc" => ""},
+               send_opts: [attachments_data: data]
+             ) == {:error, {:unknown_recipients, [long]}}
+
+      {:ok, library} = PhoenixKitInbox.Attachments.ensure_library()
+      assert files_in_library(library.uuid) == []
+    end
+
+    test "the limit is checked again on the bytes read, not only the sizes recorded", ctx do
+      data = [%{binary: String.duplicate("x", 600), filename: "a.bin", content_type: nil}]
+      {message, uuids} = pending_send(ctx, %{}, send_opts: [attachments_data: data])
+
+      # A file whose size was not known counts 0 against the limit at send.
+      Repo.update_all(from(a in Attachment, where: a.message_uuid == ^message.uuid),
+        set: [size_bytes: 0]
+      )
+
+      {:ok, _} =
+        PhoenixKit.Settings.update_setting_with_module("inbox_external_max_bytes", "500", "inbox")
+
+      External.deliver_now(message, uuids, ctx.scope, ctx.alice_mb)
+
+      assert Enum.all?(
+               rows(message),
+               &(&1.status == "failed" and &1.error =~ "external_too_large")
+             )
+
+      refute_received {:outbound, _, _, _}
+    end
 
     test "travel as real attachments", ctx do
       assert {:ok, message} =
@@ -384,6 +452,52 @@ defmodule PhoenixKitInbox.ExternalSendTest do
                send_mail(ctx, %{"to" => "@" <> ctx.bob.username, "cc" => "", "bcc" => ""},
                  send_opts: [attachments_data: data]
                )
+    end
+  end
+
+  describe "the task" do
+    test "checks the sender again: broken between commit and task, nothing goes", ctx do
+      {message, uuids} = pending_send(ctx)
+      :ok = Integrations.remove_connection(ctx.system_smtp, nil, owner: :system)
+
+      External.deliver_now(message, uuids, ctx.scope, ctx.alice_mb)
+
+      assert Enum.all?(rows(message), &(&1.status == "failed" and &1.error =~ "broken"))
+      refute_received {:outbound, _, _, _}
+    end
+
+    test "checks the right to write externally again", ctx do
+      {message, uuids} = pending_send(ctx)
+
+      External.deliver_now(message, uuids, scope_for(ctx.alice), ctx.alice_mb)
+
+      assert Enum.all?(rows(message), &(&1.status == "failed" and &1.error =~ "forbidden"))
+      refute_received {:outbound, _, _, _}
+    end
+
+    test "sends from what the check returns now", ctx do
+      {message, uuids} = pending_send(ctx)
+
+      {1, _} =
+        Repo.update_all(
+          from(i in PhoenixKitInbox.Schemas.Identity, where: i.uuid == ^ctx.common.uuid),
+          set: [from_name: "Renamed"]
+        )
+
+      External.deliver_now(message, uuids, ctx.scope, ctx.alice_mb)
+
+      assert_received {:outbound, %{from: {"Alice Smith | Renamed", _}}, _, _}
+      assert Enum.all?(rows(message), &(&1.status == "sent"))
+    end
+
+    test "sends nothing for rows no longer pending", ctx do
+      {:ok, message} = send_mail(ctx, %{})
+      assert_received {:outbound, _, _, _}
+
+      External.deliver_now(message, Enum.map(rows(message), & &1.uuid), ctx.scope, ctx.alice_mb)
+
+      refute_received {:outbound, _, _, _}
+      assert Enum.all?(rows(message), &(&1.status == "sent"))
     end
   end
 

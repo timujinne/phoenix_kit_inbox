@@ -618,7 +618,7 @@ defmodule PhoenixKitInbox.Messages do
         attachments: length(items)
       })
 
-      {:ok, start_external(message, external_rows, sender_record)}
+      {:ok, start_external(message, external_rows, scope, mailbox)}
     end
   end
 
@@ -650,11 +650,11 @@ defmodule PhoenixKitInbox.Messages do
     do: External.check_size(Enum.map(items, & &1.size_bytes))
 
   # The external part runs after the commit, in a task: the caller never
-  # waits for SMTP.
-  defp start_external(message, [], _sender_record), do: %{message | external_status: :none}
+  # waits for SMTP. The task checks the sender again with the same scope.
+  defp start_external(message, [], _scope, _mailbox), do: %{message | external_status: :none}
 
-  defp start_external(message, rows, sender_record) do
-    External.deliver_later(message, rows, sender_record["identity"])
+  defp start_external(message, rows, scope, mailbox) do
+    External.deliver_later(message, rows, scope, mailbox)
     %{message | external_status: :pending}
   end
 

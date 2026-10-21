@@ -16,10 +16,13 @@ defmodule PhoenixKitInbox.External do
   internal part, which is already delivered.
 
   The sending identity is checked (`Identities.resolve/3`, with its
-  integration and owner) by `send_message/4` just before the transaction,
-  and the task sends with what that check returned; it does not check it a
-  second time. A retry checks it again, for the user who retries — the
-  email's `user_uuid` stays the message's sender.
+  integration and owner) and so is the right to write externally — by
+  `send_message/4` before the transaction, and again in the task, just
+  before the email is built, with the sender's scope; the email goes out as
+  that second check returns (From name, integration). A sender broken or
+  a right withdrawn in between fails the rows, and nothing is sent. A
+  retry checks the same way, for the user who retries, and the email log
+  names them (`user_uuid`).
 
   A transport that raises, exits or throws is a failed send. An exit after
   the relay took the message would make that a false "failed" — the retry's
@@ -73,6 +76,7 @@ defmodule PhoenixKitInbox.External do
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Outbound
   alias PhoenixKitInbox.Schemas.ExternalRecipient
+  alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
 
   @unknown_after_seconds 15 * 60
@@ -249,11 +253,11 @@ defmodule PhoenixKitInbox.External do
   # After the send's commit: sends the email to `rows` in a task under the
   # module's supervisor. When the task can't be started the rows fail at
   # once (and can be retried) rather than stay pending forever.
-  @spec deliver_later(Message.t(), [ExternalRecipient.t()], map()) :: :ok
-  def deliver_later(%Message{} = message, rows, identity) do
+  @spec deliver_later(Message.t(), [ExternalRecipient.t()], Scope.t(), Mailbox.t()) :: :ok
+  def deliver_later(%Message{} = message, rows, scope, mailbox) do
     uuids = Enum.map(rows, & &1.uuid)
 
-    case start_task(fn -> deliver_now(message, uuids, identity) end) do
+    case start_task(fn -> deliver_now(message, uuids, scope, mailbox) end) do
       :ok ->
         :ok
 
@@ -277,26 +281,31 @@ defmodule PhoenixKitInbox.External do
   end
 
   @doc false
-  # The task's body: builds the email for the rows still pending among
-  # `uuids` and sends it. A failure while building fails the rows; once
+  # The task's body: checks the sender again (identity and right, for
+  # `scope` from `mailbox`), builds the email for the rows still pending
+  # among `uuids` and sends it. A failed check or build fails the rows; once
   # the email went to the transport, its answer decides.
-  @spec deliver_now(Message.t(), [binary()], map()) :: :ok
-  def deliver_now(%Message{} = message, uuids, identity) do
-    rows = pending_rows(message.uuid, uuids)
+  @spec deliver_now(Message.t(), [binary()], Scope.t(), Mailbox.t()) :: :ok
+  def deliver_now(%Message{} = message, uuids, scope, mailbox) do
+    case pending_rows(message.uuid, uuids) do
+      [] ->
+        :ok
 
-    result =
-      if rows == [] do
-        :nothing
-      else
-        case build_email(message, rows, identity) do
-          {:ok, email} -> Outbound.deliver(email, context(message, identity))
-          {:error, reason} -> {:error, reason}
-        end
-      end
+      rows ->
+        result =
+          with {:ok, identity} <- current_identity(scope, mailbox, message),
+               :ok <- check_allowed(scope, identity),
+               {:ok, email} <- build_email(message, rows, identity) do
+            Outbound.deliver(email, context(message, identity, scope))
+          end
 
-    if result != :nothing, do: finish(message, Enum.map(rows, & &1.uuid), result)
-    :ok
+        finish(message, Enum.map(rows, & &1.uuid), result)
+        :ok
+    end
   end
+
+  defp check_allowed(scope, identity),
+    do: if(allowed?(scope, identity), do: :ok, else: {:error, :forbidden})
 
   defp pending_rows(message_uuid, uuids) do
     from(r in ExternalRecipient,
@@ -306,11 +315,12 @@ defmodule PhoenixKitInbox.External do
     |> repo().all()
   end
 
-  defp context(message, identity) do
+  # The user who sends now: the sender, or whoever retries.
+  defp context(message, identity, scope) do
     %{
       kind: :message,
       integration_uuid: identity["integration_uuid"],
-      user_uuid: message.sender_user_uuid && to_string(message.sender_user_uuid),
+      user_uuid: scope.user && scope.user.uuid && to_string(scope.user.uuid),
       message_uuid: to_string(message.uuid),
       identity_uuid: identity["uuid"]
     }
@@ -356,9 +366,13 @@ defmodule PhoenixKitInbox.External do
   defp build_email(message, rows, identity) do
     attachments = Attachments.list_for_message(to_string(message.uuid))
 
+    # Sizes as recorded first, so nothing is read for a message plainly too
+    # large; then the bytes actually read — a size Storage did not know is
+    # recorded as 0.
     with {:ok, from} <- from_address(identity),
          :ok <- check_size(Enum.map(attachments, & &1.size_bytes)),
-         {:ok, files} <- read_attachments(attachments) do
+         {:ok, files} <- read_attachments(attachments),
+         :ok <- check_size(Enum.map(files, &byte_size(&1.data))) do
       email =
         Swoosh.Email.new()
         |> Swoosh.Email.from(from)
@@ -466,17 +480,17 @@ defmodule PhoenixKitInbox.External do
   (`Identities.resolve/3`), as is the right to write externally. Returns
   `{:ok, :pending}` once the send is under way.
   """
-  @spec retry(Scope.t(), PhoenixKitInbox.Schemas.Mailbox.t(), binary()) ::
+  @spec retry(Scope.t(), Mailbox.t(), binary()) ::
           {:ok, :pending} | {:error, term()}
   def retry(%Scope{} = scope, mailbox, message_uuid) do
     with {:ok, fresh} <- Mailboxes.authorize_scope(scope, mailbox, "write"),
          {:ok, message} <- sent_message(fresh, message_uuid),
          :ok <- retry_check(message),
-         {:ok, identity} <- retry_identity(scope, fresh, message),
-         true <- allowed?(scope, identity) || {:error, :forbidden},
+         {:ok, identity} <- current_identity(scope, fresh, message),
+         :ok <- check_allowed(scope, identity),
          :ok <- Outbound.check_open(),
          {:ok, rows} <- claim_failed(message) do
-      deliver_later(message, rows, identity)
+      deliver_later(message, rows, scope, fresh)
       {:ok, :pending}
     end
   end
@@ -493,7 +507,8 @@ defmodule PhoenixKitInbox.External do
     end
   end
 
-  defp retry_identity(scope, mailbox, %Message{metadata: %{"identity" => %{"uuid" => uuid}}}) do
+  # The message's identity as `scope` may send from it from `mailbox` now.
+  defp current_identity(scope, mailbox, %Message{metadata: %{"identity" => %{"uuid" => uuid}}}) do
     case Identities.resolve(scope, uuid, mailbox) do
       {:ok, resolved} ->
         {:ok,
@@ -510,7 +525,7 @@ defmodule PhoenixKitInbox.External do
     end
   end
 
-  defp retry_identity(_scope, _mailbox, _message), do: {:error, :retry_unavailable}
+  defp current_identity(_scope, _mailbox, _message), do: {:error, :retry_unavailable}
 
   # failed -> pending in one statement: of two retries at once, one gets the
   # rows and the other nothing to send.
