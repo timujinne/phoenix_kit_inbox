@@ -243,7 +243,8 @@ defmodule PhoenixKitInbox do
     * **Mail settings** — the user's own settings (`Web.MySettingsLive`,
       `/dashboard/inbox-settings`, a route core generates): signatures,
       default Reply-To, personal senders. `personal: true` — it shows the
-      viewer their own data.
+      viewer their own data — and still gated on `"inbox"`, so the sidebar
+      does not offer it to users who cannot use Inbox.
   """
   def user_dashboard_tabs do
     [
@@ -267,6 +268,7 @@ defmodule PhoenixKitInbox do
         match: :prefix,
         group: :account,
         personal: true,
+        permission: module_key(),
         live_view: {PhoenixKitInbox.Web.MySettingsLive, :index},
         user_menu: &__MODULE__.user_menu?/1
       )

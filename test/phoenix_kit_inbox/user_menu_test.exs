@@ -45,6 +45,17 @@ defmodule PhoenixKitInbox.UserMenuTest do
     end
   end
 
+  test "both are in the sidebar only for users who can use Inbox", %{tabs: tabs} do
+    enable_inbox!()
+    member = scope_for(user_fixture())
+    client = scope_for(user_fixture(%{inbox_member: false}), [])
+
+    for id <- [:inbox_user_mail, :inbox_user_settings] do
+      assert Tab.permission_granted?(tab(tabs, id), member)
+      refute Tab.permission_granted?(tab(tabs, id), client)
+    end
+  end
+
   test "nobody gets them while the module is off", %{tabs: tabs} do
     PhoenixKitInbox.disable_system()
     member = scope_for(user_fixture())
