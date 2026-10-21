@@ -136,4 +136,12 @@ defmodule PhoenixKitInbox.LiveCase do
   def put_test_scope(conn, scope) do
     Plug.Test.init_test_session(conn, %{"phoenix_kit_test_scope" => scope})
   end
+
+  @doc """
+  Asks the test `:assign_scope` hook to install `locale` for the LiveView
+  the way core's locale hook does in production.
+  """
+  def put_test_locale(conn, locale) do
+    Plug.Test.init_test_session(conn, %{"phoenix_kit_test_locale" => locale})
+  end
 end

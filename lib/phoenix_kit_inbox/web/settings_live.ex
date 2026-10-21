@@ -15,6 +15,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
   """
 
   use PhoenixKitWeb, :live_view
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitInbox.Errors
@@ -31,7 +32,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
 
     socket =
       socket
-      |> assign(:page_title, gettext_str("Inbox settings"))
+      |> assign(:page_title, gettext("Inbox settings"))
       |> assign(:scope, scope)
       |> assign(:module_access, module_access)
       |> assign(:can_manage_shared, manage)
@@ -96,22 +97,22 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
     <div id="inbox-settings" class="flex flex-col px-4 py-6 gap-4">
       <div :if={not @module_access} class="alert alert-warning">
         <.icon name="hero-lock-closed" class="w-5 h-5" />
-        <span>{gettext_str("You don't have permission to use Inbox.")}</span>
+        <span>{gettext("You don't have permission to use Inbox.")}</span>
       </div>
 
       <div :if={@module_access and not @can_manage_shared} class="alert alert-info">
         <.icon name="hero-information-circle" class="w-5 h-5" />
         <span>
-          {gettext_str("Shared senders and signatures are managed by holders of “Manage shared mailboxes”.")}
+          {gettext("Shared senders and signatures are managed by holders of “Manage shared mailboxes”.")}
         </span>
-        <.link navigate={Paths.my_settings()} class="link">{gettext_str("Your mail settings")}</.link>
+        <.link navigate={Paths.my_settings()} class="link">{gettext("Your mail settings")}</.link>
       </div>
 
       <section :if={@can_manage_shared} class="card bg-base-100 shadow max-w-4xl">
         <div class="card-body gap-3">
-          <h2 class="card-title text-base">{gettext_str("Shared senders")}</h2>
+          <h2 class="card-title text-base">{gettext("Shared senders")}</h2>
           <p class="text-sm text-base-content/60">
-            {gettext_str(
+            {gettext(
               "A system mail connection to send from. Bound to a shared mailbox, everyone who writes to it may use it; bound to none, it is the common sender for personal mailboxes, for those allowed to write to external addresses."
             )}
           </p>
@@ -129,10 +130,10 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
 
       <section :if={@can_manage_shared} class="card bg-base-100 shadow max-w-4xl">
         <div class="card-body gap-3">
-          <h2 class="card-title text-base">{gettext_str("Signatures of shared mailboxes")}</h2>
+          <h2 class="card-title text-base">{gettext("Signatures of shared mailboxes")}</h2>
 
           <p :if={@admin_mailboxes == []} class="text-sm text-base-content/60">
-            {gettext_str("You don't administer any shared mailbox.")}
+            {gettext("You don't administer any shared mailbox.")}
           </p>
 
           <form
@@ -141,7 +142,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
             phx-change="sig_mailbox"
             class="flex items-center gap-2"
           >
-            <span class="text-sm">{gettext_str("Mailbox")}</span>
+            <span class="text-sm">{gettext("Mailbox")}</span>
             <.select
               name="mailbox"
               value={@sig_mailbox && @sig_mailbox.uuid}
@@ -162,6 +163,4 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
     </div>
     """
   end
-
-  defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end

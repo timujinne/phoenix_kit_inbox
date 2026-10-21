@@ -40,7 +40,7 @@ defmodule PhoenixKitInbox.Test.Router do
     # Core emits admin paths without the default locale (2.5x+), and its
     # router keeps both shapes reachable; mirror both so a `push_patch` built
     # by `Paths` lands on a route whichever shape it takes.
-    for base <- ["/en/admin/inbox", "/admin/inbox"] do
+    for base <- ["/en/admin/inbox", "/ru/admin/inbox", "/et/admin/inbox", "/admin/inbox"] do
       scope base, PhoenixKitInbox.Web do
         pipe_through(:browser)
 

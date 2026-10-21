@@ -14,7 +14,7 @@ defmodule PhoenixKitInbox.Errors do
       "Message not found."
   """
 
-  use Gettext, backend: PhoenixKitWeb.Gettext
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Utils.Format
 

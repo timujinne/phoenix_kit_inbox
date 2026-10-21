@@ -11,6 +11,7 @@ defmodule PhoenixKitInbox.NudgeTest do
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Notify
   alias PhoenixKitInbox.Test.OutboundFilters
+  alias PhoenixKitInbox.Test.Repo
 
   setup :outbound_setup
 
@@ -66,6 +67,48 @@ defmodule PhoenixKitInbox.NudgeTest do
     assert opts[:message_tags]["inbox_kind"] == "nudge"
     assert opts[:message_tags]["inbox_message_uuid"] == message.uuid
     assert Notify.email_nudges_available?()
+  end
+
+  test "is written in the recipient's language, not the sender's", ctx do
+    {:ok, _} = PhoenixKitInbox.set_nudge_identity(ctx.manager, ctx.notices.uuid)
+
+    dave =
+      user_fixture(%{email: "dave@company.test", custom_fields: %{"preferred_locale" => "ru"}})
+
+    {:ok, _} =
+      Messages.send_message(scope_for(ctx.alice), ctx.alice_mb, %{
+        "to" => "@" <> dave.username,
+        "subject" => "Lunch?"
+      })
+
+    assert_receive {:outbound, email, _, _}, 2_000
+    assert email.to == [{"", "dave@company.test"}]
+    assert email.subject == "Новое сообщение: Lunch?"
+    assert email.text_body =~ "Тема: Lunch?"
+    refute email.text_body =~ "Subject"
+  end
+
+  test "the in-app notification text is in the reader's language", ctx do
+    dave = user_fixture(%{custom_fields: %{"preferred_locale" => "ru"}})
+
+    {:ok, message} =
+      Messages.send_message(scope_for(ctx.alice), ctx.alice_mb, %{
+        "to" => "@" <> dave.username,
+        "body" => "Hello"
+      })
+
+    texts =
+      Ecto.Query.from(a in "phoenix_kit_activities",
+        where:
+          a.action == "inbox.message_received" and
+            a.resource_uuid == type(^message.uuid, :binary_id),
+        select: a.metadata
+      )
+      |> Repo.all()
+      |> Enum.map(& &1["notification_text"])
+
+    assert [text] = texts
+    assert text =~ "(без темы)"
   end
 
   test "without a nudge sender there is no nudge", ctx do

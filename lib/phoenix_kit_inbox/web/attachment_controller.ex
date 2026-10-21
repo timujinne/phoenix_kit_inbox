@@ -16,6 +16,7 @@ defmodule PhoenixKitInbox.Web.AttachmentController do
   """
 
   use PhoenixKitWeb, :controller
+  use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKitInbox.Attachments
 
@@ -47,7 +48,7 @@ defmodule PhoenixKitInbox.Web.AttachmentController do
     conn
     |> put_resp_header("cache-control", "private, no-store")
     |> put_resp_content_type("text/plain")
-    |> send_resp(404, "Not found")
+    |> send_resp(404, gettext("Not found"))
   end
 
   # An ASCII fallback for old clients plus the exact name (RFC 6266 / 5987).
