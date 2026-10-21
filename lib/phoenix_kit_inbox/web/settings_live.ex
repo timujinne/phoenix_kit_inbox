@@ -118,7 +118,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
           <h2 class="card-title text-base">{gettext("Shared mail")}</h2>
           <p class="text-sm text-base-content/60">
             {gettext(
-              "A system mail connection people send from, in their own name and the mail's, from their personal mailbox. Each one is open to the roles ticked; the Owner always."
+              "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
             )}
           </p>
           <IdentityEditor.editor

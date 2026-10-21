@@ -214,6 +214,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         match?(%Identity{mailbox_uuid: bound} when is_binary(bound), assigns.editing)
       )
       |> assign(:ticked, ticked(assigns.form))
+      |> assign(:integration_prompt, integration_prompt(assigns.form, assigns.integrations))
 
     ~H"""
     <div id={@id} class="flex flex-col gap-3">
@@ -296,6 +297,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         <.select
           field={@form[:integration_uuid]}
           label={gettext("Mail connection (its login is the From address)")}
+          prompt={@integration_prompt}
           options={Enum.map(@integrations, &{"#{&1.name} <#{&1.from_address}>", &1.uuid})}
         />
         <p :if={@kind == :shared and @bound_edit?} class="text-sm text-base-content/70">
@@ -335,7 +337,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
           </label>
           <span class="text-xs text-base-content/60">
             {gettext(
-              "Sending also needs the “Send to external addresses” permission. Nobody else can read this mail here."
+              "Sending also needs the “Send to external addresses” permission. Nobody can read this mail here."
             )}
           </span>
         </fieldset>
@@ -367,6 +369,20 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
       </div>
     </div>
     """
+  end
+
+  # An edited identity whose connection is not among the working ones keeps
+  # it unless another is picked: a blank choice leaves `integration_uuid`
+  # alone (`Identities.update_identity/3`), where the browser would
+  # otherwise select the first working one.
+  defp integration_prompt(nil, _integrations), do: nil
+
+  defp integration_prompt(form, integrations) do
+    current = form.params["integration_uuid"]
+
+    if current in [nil, ""] or Enum.any?(integrations, &(&1.uuid == current)),
+      do: nil,
+      else: gettext("Keep the current connection (it does not work now)")
   end
 
   defp ticked(nil), do: []

@@ -129,12 +129,15 @@ defmodule PhoenixKitInbox.DataCase do
 
   `roles` are the roles in effect (`%Role{}` or names) — what
   `Scope.user_roles/1` and `Scope.owner?/1` read; none by default.
+  `held_roles` are all the roles the user holds (`Scope.held_roles/1`),
+  `roles` unless given — a user acting as one of them holds more.
   """
-  def scope_for(user, permissions \\ ["inbox"], roles \\ []) do
+  def scope_for(user, permissions \\ ["inbox"], roles \\ [], held_roles \\ nil) do
     %Scope{
       user: user,
       authenticated?: true,
       cached_roles: Enum.map(roles, &role_name/1),
+      held_roles: Enum.map(held_roles || roles, &role_name/1),
       cached_permissions: MapSet.new(permissions)
     }
   end

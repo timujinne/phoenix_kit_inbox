@@ -775,17 +775,19 @@ defmodule PhoenixKitInbox.Identities do
     {_count, _} =
       repo().insert_all(
         IdentityRole,
-        Enum.map(rows, &%{identity_uuid: uuid, role_uuid: &1, inserted_at: now})
+        Enum.map(rows, &%{identity_uuid: uuid, role_uuid: &1, inserted_at: now}),
+        on_conflict: :nothing
       )
 
     :ok
   end
 
-  # The roles named that exist, Owner aside; anything else is dropped.
+  # The roles named that exist, Owner aside; anything else is dropped. A
+  # form may send the list as a map of index => uuid.
   defp known_role_uuids(values) do
     uuids =
       values
-      |> List.wrap()
+      |> then(&if(is_map(&1), do: Map.values(&1), else: List.wrap(&1)))
       |> Enum.flat_map(fn value ->
         case Ecto.UUID.cast(value) do
           {:ok, uuid} -> [uuid]

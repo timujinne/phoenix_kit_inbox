@@ -86,6 +86,12 @@ defmodule PhoenixKitInbox.IdentityRolesTest do
       assert role_uuids(identity) == [ctx.reader.uuid]
     end
 
+    test "a list sent as a map of index => uuid is read the same", ctx do
+      identity = common!(ctx, %{"role_uuids" => %{"0" => ctx.sales.uuid, "1" => ctx.reader.uuid}})
+
+      assert role_uuids(identity) == Enum.sort([ctx.sales.uuid, ctx.reader.uuid])
+    end
+
     test "an empty list opens it to nobody", ctx do
       assert role_uuids(common!(ctx, %{"role_uuids" => []})) == []
     end
@@ -263,7 +269,7 @@ defmodule PhoenixKitInbox.IdentityRolesTest do
     end
 
     test "Owner acting as another role goes by that role", ctx do
-      acting = scope_for(ctx.admin, @external, [ctx.reader])
+      acting = scope_for(ctx.admin, @external, [ctx.reader], ["Owner", ctx.reader])
 
       refute ctx.common.uuid in usable(acting)
       assert {:error, :forbidden} = Identities.resolve(acting, ctx.common.uuid)
@@ -273,7 +279,7 @@ defmodule PhoenixKitInbox.IdentityRolesTest do
       # Alice holds sales (on the list) and reader; acting as reader, only
       # reader is in effect.
       grant_role!(ctx.alice, [], name: ctx.reader.name)
-      acting = scope_for(ctx.alice, @external, [ctx.reader])
+      acting = scope_for(ctx.alice, @external, [ctx.reader], [ctx.sales, ctx.reader])
 
       refute ctx.common.uuid in usable(acting)
       assert {:error, :forbidden} = Identities.resolve(acting, ctx.common.uuid)

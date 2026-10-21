@@ -45,8 +45,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   ## Sender and external recipients
 
   The "Send as" picker offers the sending identities the user may use from
-  the chosen mailbox (`Identities.list_usable/2`), plus "inside the application only" — while external sending is
-  open (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
+  the chosen mailbox (`Identities.list_usable/2`), plus "inside the
+  application only" — while external sending is open
+  (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
   no member's or shared mailbox's goes to that address outside the
   application — it needs a chosen identity, and the send checks the rest
   (`Messages.send_message/4`). The external part goes after the send, so

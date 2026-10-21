@@ -381,7 +381,7 @@ defmodule PhoenixKitInbox.MigrationsTest do
       personal = insert_identity!(@probe, "personal", nil, owner)
 
       sender = insert_probe_role!("Sender", ["inbox", "inbox.send_external"])
-      super = insert_probe_role!("Super", ["*", "inbox.send_external"])
+      super = insert_probe_role!("Super", ["*"])
       _reader = insert_probe_role!("Reader", ["inbox"])
       _owner = insert_probe_role!("Owner", ["inbox.send_external", "*"])
 

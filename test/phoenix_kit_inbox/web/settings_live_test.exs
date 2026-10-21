@@ -226,6 +226,28 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
       assert has_element?(view, "#identity-#{identity.uuid}-roles", ctx.reader.name)
     end
 
+    test "editing a mail whose connection is broken keeps that connection", ctx do
+      identity = common!(ctx, %{"role_uuids" => [ctx.sales.uuid]})
+      :ok = Integrations.remove_connection(ctx.system_smtp, nil, owner: :system)
+      _working = mail_integration_fixture(:system, username: "other@company.test")
+      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+
+      view
+      |> element("#identity-#{identity.uuid} button[phx-click='ident_edit']")
+      |> render_click()
+
+      assert has_element?(view, "#shared-identities-form option[value='']")
+
+      view
+      |> form("#shared-identities-form", %{"identity" => %{"label" => "Renamed"}})
+      |> render_submit()
+
+      assert %Identity{label: "Renamed", integration_uuid: integration} =
+               Repo.get(Identity, identity.uuid)
+
+      assert integration == ctx.system_smtp
+    end
+
     test "a sender bound to a shared mailbox is listed by its mailbox, without roles", ctx do
       bound = common!(ctx, %{"label" => "Desk", "mailbox_uuid" => ctx.desk.uuid})
       {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
