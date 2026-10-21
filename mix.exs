@@ -87,6 +87,9 @@ defmodule PhoenixKitInbox.MixProject do
       # (2.16.0).
       pk_dep(:phoenix_kit, "~> 2.16"),
 
+      # The module's own Gettext backend and its catalogues under priv/gettext.
+      {:gettext, "~> 1.0"},
+
       # LiveView for the admin mailbox UI.
       {:phoenix_live_view, "~> 1.1"},
 

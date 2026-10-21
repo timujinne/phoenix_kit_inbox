@@ -49,6 +49,9 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
 
     assert Errors.message({:too_many_attachments, 3}) ==
              "К сообщению можно прикрепить не более 3 файлов."
+
+    assert PhoenixKitInbox.Mailboxes.user_display_name(%{uuid: "abcdef12-0000"}) ==
+             "Пользователь abcdef12"
   end
 
   test "the permission labels are localized by the module's backend" do
@@ -63,8 +66,19 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
     end)
   end
 
+  test "the attachment limit takes the plural form of the language" do
+    ru = fn max ->
+      Gettext.with_locale(Backend, "ru", fn -> Errors.message({:too_many_attachments, max}) end)
+    end
+
+    assert ru.(1) =~ "не более 1 файла"
+    assert ru.(3) =~ "не более 3 файлов"
+    assert ru.(21) =~ "не более 21 файла"
+    assert ru.(50) =~ "не более 50 файлов"
+  end
+
   test "the sidebar tabs are localized by the module's backend" do
-    for {locale, inbox} <- [{"ru", "Входящие"}, {"et", "Postkast"}, {"en", "Inbox"}] do
+    for {locale, inbox} <- [{"ru", "Входящие"}, {"et", "Saabunud"}, {"en", "Inbox"}] do
       Gettext.with_locale(Backend, locale, fn ->
         assert [%Tab{} = tab | _] = PhoenixKitInbox.admin_tabs()
         assert Tab.localized_label(tab) == inbox

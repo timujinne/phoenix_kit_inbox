@@ -11,20 +11,20 @@ msgstr ""
 "Language: ru\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100 != 11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10||n%100>=20) ? 1 : 2);\n"
 
-#: lib/phoenix_kit_inbox/errors.ex:61
+#: lib/phoenix_kit_inbox/errors.ex:67
 #, elixir-autogen, elixir-format
 msgid "%{filename} is larger than the upload limit."
 msgstr "Файл %{filename} больше допустимого размера."
 
-#: lib/phoenix_kit_inbox/notify.ex:280
+#: lib/phoenix_kit_inbox/notify.ex:299
 #, elixir-autogen, elixir-format
 msgid "%{sender} sent you a message."
 msgstr "%{sender} отправил(а) вам сообщение."
 
 #: lib/phoenix_kit_inbox.ex:475
-#: lib/phoenix_kit_inbox/notify.ex:166
-#: lib/phoenix_kit_inbox/notify.ex:167
-#: lib/phoenix_kit_inbox/notify.ex:275
+#: lib/phoenix_kit_inbox/notify.ex:171
+#: lib/phoenix_kit_inbox/notify.ex:172
+#: lib/phoenix_kit_inbox/notify.ex:294
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:628
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:706
 #, elixir-autogen, elixir-format
@@ -41,17 +41,12 @@ msgstr "@имя_пользователя, email или общий ящик — �
 msgid "A file can't be attached: it is in the trash or no longer available."
 msgstr "Файл нельзя прикрепить: он в корзине или больше недоступен."
 
-#: lib/phoenix_kit_inbox/errors.ex:58
-#, elixir-autogen, elixir-format
-msgid "A message can carry at most %{max} files."
-msgstr "К сообщению можно прикрепить не более %{max} файлов."
-
-#: lib/phoenix_kit_inbox/errors.ex:155
+#: lib/phoenix_kit_inbox/errors.ex:161
 #, elixir-autogen, elixir-format
 msgid "A recorded email names its recipients as external recipients, with their outcome."
 msgstr "В записанном письме получатели указаны как внешние, вместе с результатом отправки."
 
-#: lib/phoenix_kit_inbox/errors.ex:80
+#: lib/phoenix_kit_inbox/errors.ex:86
 #, elixir-autogen, elixir-format
 msgid "A sending identity and a Reply-To need the sender's scope."
 msgstr "Для отправителя и Reply-To нужны права отправителя."
@@ -107,7 +102,7 @@ msgstr "Добавляется в конец сообщения, написан�
 msgid "Address"
 msgstr "Адрес"
 
-#: lib/phoenix_kit_inbox/errors.ex:113
+#: lib/phoenix_kit_inbox/errors.ex:119
 #, elixir-autogen, elixir-format
 msgid "Addresses outside this application need the sender's scope."
 msgstr "Для адресов вне приложения нужны права отправителя."
@@ -117,7 +112,7 @@ msgstr "Для адресов вне приложения нужны права 
 msgid "Admin"
 msgstr "Администратор"
 
-#: lib/phoenix_kit_inbox/errors.ex:67
+#: lib/phoenix_kit_inbox/errors.ex:73
 #, elixir-autogen, elixir-format
 msgid "An attachment could not be stored. Try again."
 msgstr "Не удалось сохранить вложение. Попробуйте ещё раз."
@@ -144,12 +139,12 @@ msgstr "Прикрепить существующий файл"
 msgid "Attach existing files"
 msgstr "Прикрепить существующие файлы"
 
-#: lib/phoenix_kit_inbox/errors.ex:70
+#: lib/phoenix_kit_inbox/errors.ex:76
 #, elixir-autogen, elixir-format
 msgid "Attachments are not supported by this installation's file storage."
 msgstr "Файловое хранилище этой установки не поддерживает вложения."
 
-#: lib/phoenix_kit_inbox/errors.ex:158
+#: lib/phoenix_kit_inbox/errors.ex:164
 #, elixir-autogen, elixir-format
 msgid "Attachments are unavailable right now. Try again."
 msgstr "Вложения сейчас недоступны. Попробуйте ещё раз."
@@ -196,7 +191,7 @@ msgstr "Копия"
 msgid "Check"
 msgstr "Проверить"
 
-#: lib/phoenix_kit_inbox/errors.ex:116
+#: lib/phoenix_kit_inbox/errors.ex:122
 #, elixir-autogen, elixir-format
 msgid "Choose a sender under “Send as” to write to addresses outside this application."
 msgstr "Чтобы писать на адреса вне приложения, выберите отправителя в поле «Отправить как»."
@@ -449,7 +444,7 @@ msgstr "Сообщения"
 msgid "Messages between users of this application"
 msgstr "Сообщения между пользователями этого приложения"
 
-#: lib/phoenix_kit_inbox/errors.ex:175
+#: lib/phoenix_kit_inbox/errors.ex:181
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
@@ -473,7 +468,7 @@ msgstr "Имя, которое видят получатели"
 msgid "New message"
 msgstr "Новое сообщение"
 
-#: lib/phoenix_kit_inbox/notify.ex:292
+#: lib/phoenix_kit_inbox/notify.ex:311
 #, elixir-autogen, elixir-format
 msgid "New message: %{subject}"
 msgstr "Новое сообщение: %{subject}"
@@ -488,7 +483,7 @@ msgstr "Новый общий ящик"
 msgid "No Reply-To — replies go to this mailbox"
 msgstr "Без Reply-To — ответы придут в этот ящик"
 
-#: lib/phoenix_kit_inbox/errors.ex:165
+#: lib/phoenix_kit_inbox/errors.ex:171
 #, elixir-autogen, elixir-format
 msgid "No recipient matches: %{recipients}. Use @username, an email address, or a shared mailbox name."
 msgstr "Получатель не найден: %{recipients}. Укажите @имя_пользователя, адрес email или название общего ящика."
@@ -523,7 +518,7 @@ msgstr "Нет — общий отправитель для личных ящи�
 msgid "Not attached: %{names}. %{reason}"
 msgstr "Не прикреплено: %{names}. %{reason}"
 
-#: lib/phoenix_kit_inbox/errors.ex:151
+#: lib/phoenix_kit_inbox/errors.ex:157
 #, elixir-autogen, elixir-format
 msgid "Not email addresses: %{entries}."
 msgstr "Это не адреса email: %{entries}."
@@ -533,7 +528,7 @@ msgstr "Это не адреса email: %{entries}."
 msgid "Not found"
 msgstr "Не найдено"
 
-#: lib/phoenix_kit_inbox/errors.ex:74
+#: lib/phoenix_kit_inbox/errors.ex:80
 #, elixir-autogen, elixir-format
 msgid "Not found."
 msgstr "Не найдено."
@@ -573,7 +568,7 @@ msgstr "Личные ящики нельзя архивировать."
 msgid "Read"
 msgstr "Чтение"
 
-#: lib/phoenix_kit_inbox/notify.ex:282
+#: lib/phoenix_kit_inbox/notify.ex:301
 #, elixir-autogen, elixir-format
 msgid "Read it: %{url}"
 msgstr "Прочитать: %{url}"
@@ -678,7 +673,7 @@ msgstr "Отправители"
 msgid "Sending again."
 msgstr "Отправляю повторно."
 
-#: lib/phoenix_kit_inbox/errors.ex:110
+#: lib/phoenix_kit_inbox/errors.ex:116
 #, elixir-autogen, elixir-format
 msgid "Sending to addresses outside this application is turned off."
 msgstr "Отправка на адреса вне приложения отключена."
@@ -774,7 +769,7 @@ msgstr "Отметить звёздочкой"
 msgid "Subject"
 msgstr "Тема"
 
-#: lib/phoenix_kit_inbox/notify.ex:281
+#: lib/phoenix_kit_inbox/notify.ex:300
 #, elixir-autogen, elixir-format
 msgid "Subject: %{subject}"
 msgstr "Тема: %{subject}"
@@ -784,57 +779,57 @@ msgstr "Тема: %{subject}"
 msgid "Support"
 msgstr "Поддержка"
 
-#: lib/phoenix_kit_inbox/errors.ex:98
+#: lib/phoenix_kit_inbox/errors.ex:104
 #, elixir-autogen, elixir-format
 msgid "That connection can't send email."
 msgstr "Это подключение не может отправлять письма."
 
-#: lib/phoenix_kit_inbox/errors.ex:95
+#: lib/phoenix_kit_inbox/errors.ex:101
 #, elixir-autogen, elixir-format
 msgid "That mail connection doesn't exist."
 msgstr "Такого почтового подключения нет."
 
-#: lib/phoenix_kit_inbox/errors.ex:107
+#: lib/phoenix_kit_inbox/errors.ex:113
 #, elixir-autogen, elixir-format
 msgid "That mail connection has no login email address to send from."
 msgstr "У этого почтового подключения нет адреса email для входа, с которого можно отправлять."
 
-#: lib/phoenix_kit_inbox/errors.ex:104
+#: lib/phoenix_kit_inbox/errors.ex:110
 #, elixir-autogen, elixir-format
 msgid "That mail connection isn't available for this sender."
 msgstr "Это почтовое подключение недоступно для этого отправителя."
 
-#: lib/phoenix_kit_inbox/errors.ex:101
+#: lib/phoenix_kit_inbox/errors.ex:107
 #, elixir-autogen, elixir-format
 msgid "That mail connection isn't connected."
 msgstr "Это почтовое подключение не подключено."
 
-#: lib/phoenix_kit_inbox/errors.ex:172
+#: lib/phoenix_kit_inbox/errors.ex:178
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "Это имя подходит нескольким получателям."
 
-#: lib/phoenix_kit_inbox/errors.ex:89
+#: lib/phoenix_kit_inbox/errors.ex:95
 #, elixir-autogen, elixir-format
 msgid "That sender can't be used from this mailbox."
 msgstr "Этого отправителя нельзя использовать из этого ящика."
 
-#: lib/phoenix_kit_inbox/errors.ex:84
+#: lib/phoenix_kit_inbox/errors.ex:90
 #, elixir-autogen, elixir-format
 msgid "That sender can't send right now: its mail connection is missing or disconnected."
 msgstr "Этот отправитель сейчас не может отправлять: его почтовое подключение отсутствует или отключено."
 
-#: lib/phoenix_kit_inbox/errors.ex:134
+#: lib/phoenix_kit_inbox/errors.ex:140
 #, elixir-autogen, elixir-format
 msgid "That sender has no mail connection."
 msgstr "У этого отправителя нет почтового подключения."
 
-#: lib/phoenix_kit_inbox/errors.ex:86
+#: lib/phoenix_kit_inbox/errors.ex:92
 #, elixir-autogen, elixir-format
 msgid "That sender no longer exists."
 msgstr "Этого отправителя больше нет."
 
-#: lib/phoenix_kit_inbox/errors.ex:120
+#: lib/phoenix_kit_inbox/errors.ex:126
 #, elixir-autogen, elixir-format
 msgid "The attachments are too large for an email outside this application (at most %{size})."
 msgstr "Вложения слишком велики для письма вне приложения (не более %{size})."
@@ -844,12 +839,12 @@ msgstr "Вложения слишком велики для письма вне 
 msgid "The attachments could not be read."
 msgstr "Не удалось прочитать вложения."
 
-#: lib/phoenix_kit_inbox/errors.ex:130
+#: lib/phoenix_kit_inbox/errors.ex:136
 #, elixir-autogen, elixir-format
 msgid "The email could not be checked against this installation's rules, so it was not sent."
 msgstr "Не удалось проверить письмо по правилам этой установки, поэтому оно не отправлено."
 
-#: lib/phoenix_kit_inbox/errors.ex:139
+#: lib/phoenix_kit_inbox/errors.ex:145
 #, elixir-autogen, elixir-format
 msgid "The email log shows the email may have gone out, so it is not sent again."
 msgstr "По журналу писем письмо могло уйти, поэтому повторно оно не отправляется."
@@ -869,17 +864,17 @@ msgstr "Не удалось загрузить файл."
 msgid "There is no mail connection with a login address to send from yet."
 msgstr "Пока нет почтового подключения с адресом для входа, с которого можно отправлять."
 
-#: lib/phoenix_kit_inbox/errors.ex:141
+#: lib/phoenix_kit_inbox/errors.ex:147
 #, elixir-autogen, elixir-format
 msgid "There is nothing to send again."
 msgstr "Повторно отправлять нечего."
 
-#: lib/phoenix_kit_inbox/errors.ex:145
+#: lib/phoenix_kit_inbox/errors.ex:151
 #, elixir-autogen, elixir-format
 msgid "These addresses belong to people or mailboxes inside this application: %{addresses}."
 msgstr "Эти адреса принадлежат людям или ящикам внутри приложения: %{addresses}."
 
-#: lib/phoenix_kit_inbox/errors.ex:64
+#: lib/phoenix_kit_inbox/errors.ex:70
 #, elixir-autogen, elixir-format
 msgid "These attachments can't be sent to these recipients."
 msgstr "Эти вложения нельзя отправить этим получателям."
@@ -894,7 +889,7 @@ msgstr "Для этих параметров нужны права отправ�
 msgid "This file type is not accepted."
 msgstr "Этот тип файла не принимается."
 
-#: lib/phoenix_kit_inbox/errors.ex:126
+#: lib/phoenix_kit_inbox/errors.ex:132
 #, elixir-autogen, elixir-format
 msgid "This installation's rules don't let that email leave the application."
 msgstr "Правила этой установки не позволяют отправить это письмо за пределы приложения."
@@ -904,7 +899,7 @@ msgstr "Правила этой установки не позволяют от�
 msgid "This mailbox is archived; it can't send."
 msgstr "Этот ящик в архиве; отправлять из него нельзя."
 
-#: lib/phoenix_kit_inbox/errors.ex:136
+#: lib/phoenix_kit_inbox/errors.ex:142
 #, elixir-autogen, elixir-format
 msgid "This message can't be sent again from here."
 msgstr "Это сообщение нельзя отправить повторно отсюда."
@@ -925,7 +920,7 @@ msgstr "Слишком много файлов."
 msgid "Trash"
 msgstr "Корзина"
 
-#: lib/phoenix_kit_inbox/errors.ex:195
+#: lib/phoenix_kit_inbox/errors.ex:201
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Непредвиденная ошибка: %{reason}"
@@ -950,7 +945,7 @@ msgstr "Использовать по умолчанию"
 msgid "User UUID"
 msgstr "UUID пользователя"
 
-#: lib/phoenix_kit_inbox/errors.ex:72
+#: lib/phoenix_kit_inbox/errors.ex:78
 #, elixir-autogen, elixir-format
 msgid "Wait for the uploads to finish."
 msgstr "Дождитесь окончания загрузки."
@@ -963,19 +958,19 @@ msgstr "Куда по умолчанию приходят ответы на ва
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:336
 #, elixir-autogen, elixir-format
 msgid "Write"
-msgstr "Запись"
+msgstr "Отправка"
 
 #: lib/phoenix_kit_inbox/errors.ex:52
 #, elixir-autogen, elixir-format
 msgid "You can't attach a file you don't have access to."
 msgstr "Нельзя прикрепить файл, к которому у вас нет доступа."
 
-#: lib/phoenix_kit_inbox/errors.ex:92
+#: lib/phoenix_kit_inbox/errors.ex:98
 #, elixir-autogen, elixir-format
 msgid "You can't send as that sender."
 msgstr "Вы не можете отправлять от имени этого отправителя."
 
-#: lib/phoenix_kit_inbox/errors.ex:77
+#: lib/phoenix_kit_inbox/errors.ex:83
 #, elixir-autogen, elixir-format
 msgid "You can't use that Reply-To address."
 msgstr "Этот адрес Reply-To использовать нельзя."
@@ -1140,3 +1135,16 @@ msgstr "Отправка на внешние адреса"
 #, elixir-autogen, elixir-format
 msgid "Write to email addresses outside this application"
 msgstr "Письма на адреса email вне приложения"
+
+#: lib/phoenix_kit_inbox/errors.ex:59
+#, elixir-autogen, elixir-format
+msgid "A message can carry at most %{max} file."
+msgid_plural "A message can carry at most %{max} files."
+msgstr[0] "К сообщению можно прикрепить не более %{max} файла."
+msgstr[1] "К сообщению можно прикрепить не более %{max} файлов."
+msgstr[2] "К сообщению можно прикрепить не более %{max} файлов."
+
+#: lib/phoenix_kit_inbox/mailboxes.ex:446
+#, elixir-autogen, elixir-format
+msgid "User %{id}"
+msgstr "Пользователь %{id}"

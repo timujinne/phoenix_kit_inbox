@@ -76,8 +76,19 @@ defmodule PhoenixKitInbox.Web.AttachmentControllerTest do
     conn = download(conn, scope_for(carol), row)
 
     assert conn.status == 404
+    assert conn.resp_body == "Not found"
     assert get_resp_header(conn, "location") == []
     refute conn.resp_body =~ "%PDF"
+  end
+
+  test "the 404 text follows the request's locale", %{conn: conn, carol: carol, row: row} do
+    # Core's locale plug does this for the request process; a ConnTest request
+    # runs in the test process itself.
+    Gettext.put_locale("ru")
+    conn = download(conn, scope_for(carol), row)
+
+    assert conn.status == 404
+    assert conn.resp_body == "Не найдено"
   end
 
   test "no scope, no inbox permission: 404", %{conn: conn, bob: bob, row: row} do

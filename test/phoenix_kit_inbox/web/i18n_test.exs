@@ -33,7 +33,7 @@ defmodule PhoenixKitInbox.Web.I18nTest do
   test "the mailbox page is in Estonian under et", %{conn: conn} do
     {:ok, _view, html} = conn |> put_test_locale("et") |> live("/et/admin/inbox")
 
-    assert html =~ "Postkast"
+    assert html =~ "Saabunud"
     assert html =~ "Saadetud"
     assert html =~ "Mustandid"
     refute html =~ "Drafts"
@@ -65,6 +65,6 @@ defmodule PhoenixKitInbox.Web.I18nTest do
 
   test "the mailboxes and settings pages are translated", %{conn: conn} do
     {:ok, _view, html} = conn |> put_test_locale("et") |> live("/et/admin/inbox/mailboxes")
-    assert html =~ "Jagatud meilikastid"
+    assert html =~ "Jagatud postkastid"
   end
 end
