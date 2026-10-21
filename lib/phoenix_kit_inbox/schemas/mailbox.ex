@@ -19,10 +19,10 @@ defmodule PhoenixKitInbox.Schemas.Mailbox do
   user's login email (`PhoenixKitInbox.Mailboxes` checks the latter on save).
 
   `address` is the mailbox's identity inside the app (`"support@example.com"`,
-  or the owner's login email for a user mailbox). Inbox is an **internal**
-  messaging system — nothing is sent to the outside world through this
-  address, it is a display/lookup handle only. Outbound delivery to a real
-  inbox happens, if at all, through `PhoenixKitInbox.Notify`.
+  or the owner's login email for a user mailbox). Nothing is sent *from*
+  this address — external mail goes out as a sending identity, through
+  `PhoenixKitInbox.Outbound` — it is a display/lookup handle, a Reply-To
+  choice, and where a shared mailbox's email nudge goes.
 
   Tables are created by `PhoenixKitInbox.Migrations`, never by this schema.
   """

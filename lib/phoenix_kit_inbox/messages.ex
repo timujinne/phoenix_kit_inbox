@@ -10,12 +10,14 @@ defmodule PhoenixKitInbox.Messages do
        send — silently dropping a recipient is worse than refusing)
     2. insert or update the message with `status: "sent"` and a `sent_at` stamp
     3. fan out one `Delivery` per recipient into their `"inbox"`, plus the
-       sender's own copy into `"sent"`
+       sender's own copy into `"sent"`, and one `"pending"` row per external
+       recipient (`PhoenixKitInbox.External`)
 
   Notifications are fired *after* the transaction commits, by
-  `PhoenixKitInbox.Notify` — a notification for a message that got rolled back
-  would be a lie, and an outbound-email failure must never roll back a
-  successfully delivered internal message.
+  `PhoenixKitInbox.Notify`, and so is the email to external recipients — a
+  notification for a message that got rolled back would be a lie, and an
+  outbound-email failure must never roll back a successfully delivered
+  internal message.
 
   ## Reads
 
@@ -486,8 +488,16 @@ defmodule PhoenixKitInbox.Messages do
   Both forms check that the sender holds at least `"write"` on `mailbox`
   (`{:error, :mailbox_access_denied}`) — the context is the boundary, not the
   compose form. The scope form also requires the `"inbox"` permission
-  (`{:error, :forbidden}`). Recipients are internal only: a term that names no
-  member or shared mailbox is an unknown recipient.
+  (`{:error, :forbidden}`). A term that names no member or shared mailbox is
+  an unknown recipient — unless it is an email address and the scope may
+  write externally (`inbox.send_external`, or a personal identity): then it
+  is an **external recipient**, which needs an `"identity_uuid"`
+  (`{:error, :external_needs_identity}`) and external sending open
+  (`{:error, :external_disabled}`, see `PhoenixKitInbox.Outbound`), and whose
+  attachments must fit `PhoenixKitInbox.external_max_bytes/0`
+  (`{:error, {:external_too_large, max}}`). The email to them goes after the
+  commit; the returned message's `external_status` is `:pending`, else
+  `:none`. See `PhoenixKitInbox.External`.
 
   Attachments need the scope form; the three-argument form refuses them with
   `{:error, :attachments_need_scope}` (also when promoting a draft that has
@@ -506,7 +516,7 @@ defmodule PhoenixKitInbox.Messages do
       `Identities.resolve/3` against the sending mailbox
       (`{:error, {:identity_unusable, reason}}`) and recorded in the
       message's `metadata["identity"]` (uuid, kind, integration, From name and
-      address). Nothing is sent outside the application by this.
+      address) — what external recipients are sent as.
     * `"reply_to"` — one of `Identities.reply_to_options/2`
       (`{:error, :reply_to_not_allowed}`), recorded in `metadata["reply_to"]`
     * `"uuid"` — promotes an existing draft instead of creating a new message
@@ -525,7 +535,8 @@ defmodule PhoenixKitInbox.Messages do
       `"reply_to"` are likewise only ever written by the send.
 
   The three-argument form takes neither an identity nor a Reply-To
-  (`{:error, :sender_options_need_scope}`).
+  (`{:error, :sender_options_need_scope}`), and for it an email address
+  outside the application is an unknown recipient.
 
   `opts` — server-side only, never filled from a form:
 
