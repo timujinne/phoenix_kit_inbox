@@ -1,6 +1,6 @@
 defmodule PhoenixKitInbox.MigrationsTest do
   @moduledoc """
-  V02 and V03 against a real database: the suite's own schema (migrated by
+  V02, V03 and V04 against a real database: the suite's own schema (migrated by
   `test_helper.exs` through the coordinator) and a scratch named schema, so
   the prefix-anchored changes are exercised outside `public`.
   """
@@ -35,13 +35,65 @@ defmodule PhoenixKitInbox.MigrationsTest do
     def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 2)
   end
 
-  test "the coordinator expects version 3" do
-    assert PhoenixKitInbox.Migrations.current_version() == 3
+  defmodule ProbeToV4 do
+    @moduledoc false
+    use Ecto.Migration
+    def up, do: PhoenixKitInbox.Migrations.up(prefix: "inbox_v02_probe", version: 4)
+    def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 3)
+  end
+
+  test "the coordinator expects version 4" do
+    assert PhoenixKitInbox.Migrations.current_version() == 4
   end
 
   describe "the suite's schema (public)" do
-    test "is recorded at version 3" do
-      assert version_comment("public") == "3"
+    test "is recorded at version 4" do
+      assert version_comment("public") == "4"
+    end
+
+    test "identities go with their mailbox or owner and name no integration by FK" do
+      assert fk_delete_rule("public", "phoenix_kit_inbox_identities", "mailbox_uuid") == "c"
+      assert fk_delete_rule("public", "phoenix_kit_inbox_identities", "owner_uuid") == "c"
+      assert fk_count("public", "phoenix_kit_inbox_identities", "integration_uuid") == 0
+      assert column_nullable?("public", "phoenix_kit_inbox_identities", "mailbox_uuid")
+      assert column_nullable?("public", "phoenix_kit_inbox_identities", "owner_uuid")
+      refute column_nullable?("public", "phoenix_kit_inbox_identities", "integration_uuid")
+    end
+
+    test "an identity is either shared (no owner) or personal (an owner, no mailbox)" do
+      owner = user_fixture()
+      mailbox = insert_mailbox!("public", owner.uuid, "shared", "desk-ident", nil)
+
+      insert_identity!("public", "shared", mailbox, nil)
+      insert_identity!("public", "shared", nil, nil)
+      insert_identity!("public", "personal", nil, owner.uuid)
+
+      for {kind, mailbox_uuid, owner_uuid} <- [
+            {"shared", nil, owner.uuid},
+            {"personal", nil, nil},
+            {"personal", mailbox, owner.uuid},
+            {"other", nil, nil}
+          ] do
+        assert_raise Postgrex.Error, ~r/phoenix_kit_inbox_identities_kind_check/, fn ->
+          TestRepo.transaction(fn ->
+            insert_identity!("public", kind, mailbox_uuid, owner_uuid)
+          end)
+        end
+      end
+    end
+
+    test "signatures go with their mailbox, one default each" do
+      assert fk_delete_rule("public", "phoenix_kit_inbox_signatures", "mailbox_uuid") == "c"
+      assert index_exists?("public", "phoenix_kit_inbox_signatures_default_index")
+
+      owner = user_fixture()
+      mailbox = insert_mailbox!("public", owner.uuid, "shared", "desk-sig", nil)
+      insert_signature!("public", mailbox, true)
+      insert_signature!("public", mailbox, false)
+
+      assert_raise Postgrex.Error, ~r/phoenix_kit_inbox_signatures_default_index/, fn ->
+        TestRepo.transaction(fn -> insert_signature!("public", mailbox, true) end)
+      end
     end
 
     test "attachments go with their message and are looked up by file" do
@@ -186,6 +238,31 @@ defmodule PhoenixKitInbox.MigrationsTest do
       assert table_exists?("public", "phoenix_kit_inbox_attachments")
     end
 
+    test "V04 adds identities and signatures to the prefixed schema" do
+      Ecto.Migrator.up(TestRepo, 4, ProbeToV4, @migrator_opts)
+
+      assert version_comment(@probe) == "4"
+      assert table_exists?(@probe, "phoenix_kit_inbox_identities")
+      assert table_exists?(@probe, "phoenix_kit_inbox_signatures")
+      assert fk_delete_rule(@probe, "phoenix_kit_inbox_identities", "mailbox_uuid") == "c"
+      assert fk_delete_rule(@probe, "phoenix_kit_inbox_identities", "owner_uuid") == "c"
+      assert fk_delete_rule(@probe, "phoenix_kit_inbox_signatures", "mailbox_uuid") == "c"
+      assert index_exists?(@probe, "phoenix_kit_inbox_signatures_default_index")
+      assert index_exists?(@probe, "phoenix_kit_inbox_identities_mailbox_uuid_index")
+      assert index_exists?(@probe, "phoenix_kit_inbox_identities_owner_uuid_index")
+    end
+
+    test "down to V03 drops identities and signatures and nothing else" do
+      Ecto.Migrator.up(TestRepo, 4, ProbeToV4, @migrator_opts)
+      Ecto.Migrator.down(TestRepo, 4, ProbeToV4, @migrator_opts)
+
+      assert version_comment(@probe) == "3"
+      refute table_exists?(@probe, "phoenix_kit_inbox_identities")
+      refute table_exists?(@probe, "phoenix_kit_inbox_signatures")
+      assert table_exists?(@probe, "phoenix_kit_inbox_attachments")
+      assert table_exists?("public", "phoenix_kit_inbox_identities")
+    end
+
     test "down refuses while a mailbox has lost its owner" do
       Ecto.Migrator.up(TestRepo, 2, ProbeToV2, @migrator_opts)
       insert_mailbox!(@probe, nil, "user", "u-orphan", nil)
@@ -279,6 +356,34 @@ defmodule PhoenixKitInbox.MigrationsTest do
     )
 
     uuid
+  end
+
+  defp insert_identity!(schema, kind, mailbox_uuid, owner_uuid) do
+    TestRepo.query!(
+      """
+      INSERT INTO #{schema}.phoenix_kit_inbox_identities
+        (uuid, kind, mailbox_uuid, owner_uuid, label, integration_uuid, inserted_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'Desk', $5, now(), now())
+      """,
+      [
+        dump(Ecto.UUID.generate()),
+        kind,
+        mailbox_uuid && dump(mailbox_uuid),
+        owner_uuid && dump(owner_uuid),
+        dump(Ecto.UUID.generate())
+      ]
+    )
+  end
+
+  defp insert_signature!(schema, mailbox_uuid, default?) do
+    TestRepo.query!(
+      """
+      INSERT INTO #{schema}.phoenix_kit_inbox_signatures
+        (uuid, mailbox_uuid, label, body, is_default, inserted_at, updated_at)
+      VALUES ($1, $2, 'Sig', 'Body', $3, now(), now())
+      """,
+      [dump(Ecto.UUID.generate()), dump(mailbox_uuid), default?]
+    )
   end
 
   defp dump(uuid), do: Ecto.UUID.dump!(uuid)
