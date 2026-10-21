@@ -19,10 +19,13 @@ defmodule PhoenixKitInbox.External do
   integration and owner) and so is the right to write externally — by
   `send_message/4` before the transaction, and again in the task, just
   before the email is built, with the sender's scope; the email goes out as
-  that second check returns (From name, integration). A sender broken or
-  a right withdrawn in between fails the rows, and nothing is sent. A
-  retry checks the same way, for the user who retries, and the email log
-  names them (`user_uuid`).
+  that second check returns (From name, integration). An identity or
+  integration broken in between fails the rows, and nothing is sent. The
+  right is checked against that same `%Scope{}`, whose permissions were
+  read when the scope was built (`cached_permissions`): a `send_external`
+  withdrawn after the send is not seen by the task, only by the next send
+  or retry with a fresh scope. A retry checks the same way, for the user
+  who retries, and the email log names them (`user_uuid`).
 
   A transport that raises, exits or throws is a failed send. An exit after
   the relay took the message would make that a false "failed" — the retry's
