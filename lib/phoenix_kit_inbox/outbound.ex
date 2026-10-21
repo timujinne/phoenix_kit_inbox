@@ -128,13 +128,23 @@ defmodule PhoenixKitInbox.Outbound do
         {:error, {:filter_refused, reason}}
 
       other ->
-        filter_failed("answered #{inspect(other, limit: 5)}")
+        filter_failed(
+          "answered something other than {:ok, email} or {:error, reason}: " <>
+            shape(other)
+        )
     end
   rescue
     e -> filter_failed("raised #{Exception.message(e)}")
   catch
-    kind, reason -> filter_failed("#{kind} #{inspect(reason, limit: 5)}")
+    kind, _reason -> filter_failed("#{kind}")
   end
+
+  # What kind of term a filter answered — never its content, which may
+  # carry addresses.
+  defp shape({tag, _}) when is_atom(tag), do: "{#{inspect(tag)}, …}"
+  defp shape(term) when is_atom(term), do: inspect(term)
+  defp shape(term) when is_map(term), do: "a map"
+  defp shape(_term), do: "another term"
 
   defp filter_failed(what) do
     Logger.warning("[Inbox] outbound_filter #{what}; the email was not sent")
@@ -168,12 +178,19 @@ defmodule PhoenixKitInbox.Outbound do
     ]
   end
 
+  # A transport that raises, exits or throws answers a failed send, so the
+  # caller always gets an answer (see `PhoenixKitInbox.External` on what a
+  # retry does with it).
   defp transport_deliver(email, integration_uuid, opts) do
     transport().deliver_via_integration(email, integration_uuid, opts)
   rescue
     e ->
       Logger.warning("[Inbox] external send raised: #{Exception.message(e)}")
       {:error, {:transport_failed, Exception.message(e)}}
+  catch
+    kind, reason ->
+      Logger.warning("[Inbox] external send #{kind}: #{inspect(reason, limit: 5)}")
+      {:error, {:transport_exited, kind}}
   end
 
   defp transport,

@@ -15,6 +15,16 @@ defmodule PhoenixKitInbox.External do
   mailbox's topic (`subscribe/1`). A failure there never touches the
   internal part, which is already delivered.
 
+  The sending identity is checked (`Identities.resolve/3`, with its
+  integration and owner) by `send_message/4` just before the transaction,
+  and the task sends with what that check returned; it does not check it a
+  second time. A retry checks it again, for the user who retries — the
+  email's `user_uuid` stays the message's sender.
+
+  A transport that raises, exits or throws is a failed send. An exit after
+  the relay took the message would make that a false "failed" — the retry's
+  email-log guard is what keeps such a message from going twice.
+
   All external recipients travel in **one** email — To, Cc and Bcc as
   addressed — sent through `PhoenixKitInbox.Outbound` from the message's
   sending identity (its From name and login address), with the message's
@@ -41,6 +51,10 @@ defmodule PhoenixKitInbox.External do
       the email went out);
     * never for a message the host recorded (`Messages.record_sent/4`).
 
+  The guard is only as good as the log: with `phoenix_kit_emails` sampling
+  below 100 %, or not logging this send, a failed message has no log rows
+  and is offered for retry.
+
   Rows are taken from `"failed"` to `"pending"` in one statement, so two
   retries at once send one email. It goes through the same `Outbound` path.
   """
@@ -66,14 +80,22 @@ defmodule PhoenixKitInbox.External do
   @failed_log_statuses ~w(failed rejected)
   @email ~r/\A[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+\z/
   @max_error_length 500
+  @max_address_bytes 254
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
   # ── addresses ───────────────────────────────────────────────────────────────
 
-  @doc "Whether `term` is an email address an external recipient can have."
+  @doc """
+  Whether `term` is an email address an external recipient can have — at
+  most #{@max_address_bytes} bytes (RFC 5321's limit, and within the column).
+  """
   @spec address?(term()) :: boolean()
-  def address?(term) when is_binary(term), do: Regex.match?(@email, String.trim(term))
+  def address?(term) when is_binary(term) do
+    address = String.trim(term)
+    byte_size(address) <= @max_address_bytes and Regex.match?(@email, address)
+  end
+
   def address?(_), do: false
 
   @doc """

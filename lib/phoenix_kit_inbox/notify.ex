@@ -259,7 +259,7 @@ defmodule PhoenixKitInbox.Notify do
 
   @doc """
   Whether the email nudge is wired up — a nudge sender is set and external
-  sending is open — for the admin UI to explain why the toggle does or
+  sending is open — for a host's settings UI to explain why the toggle does or
   doesn't do anything on this host.
   """
   @spec email_nudges_available?() :: boolean()

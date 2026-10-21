@@ -113,6 +113,39 @@ defmodule PhoenixKitInbox.RecordSentTest do
            ) == {:error, :no_recipients}
   end
 
+  test "values longer than their columns: an address or a log id is refused, a name cut", ctx do
+    long_address = String.duplicate("a", 250) <> "@example.com"
+
+    assert Messages.record_sent(
+             scope_for(ctx.alice),
+             ctx.alice_mb,
+             attrs(%{"external_recipients" => [%{"address" => long_address}]})
+           ) == {:error, {:invalid_external_recipients, [long_address]}}
+
+    long_id = %{
+      "address" => "client@example.com",
+      "email_log_message_id" => String.duplicate("x", 256)
+    }
+
+    assert Messages.record_sent(
+             scope_for(ctx.alice),
+             ctx.alice_mb,
+             attrs(%{"external_recipients" => [long_id]})
+           ) == {:error, {:invalid_external_recipients, ["client@example.com"]}}
+
+    long_name = %{"address" => "client@example.com", "name" => String.duplicate("N", 300)}
+
+    assert {:ok, message} =
+             Messages.record_sent(
+               scope_for(ctx.alice),
+               ctx.alice_mb,
+               attrs(%{"external_recipients" => [long_name]})
+             )
+
+    assert [%{name: name}] = External.list(message.uuid)
+    assert String.length(name) == 255
+  end
+
   test "To, Cc and Bcc are not taken — internal mail is send_message's", ctx do
     assert Messages.record_sent(
              scope_for(ctx.alice),

@@ -130,6 +130,17 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       assert [_] = Messages.list_folder(ctx.alice_mb.uuid, "sent")
     end
 
+    test "an address over 254 bytes is not an external address, and nothing is written", ctx do
+      long = String.duplicate("a", 250) <> "@example.com"
+
+      assert send_mail(ctx, %{"to" => long, "cc" => "", "bcc" => ""}) ==
+               {:error, {:unknown_recipients, [long]}}
+
+      assert Messages.list_folder(ctx.alice_mb.uuid, "sent") == []
+      refute External.address?(long)
+      assert External.address?(String.duplicate("a", 242) <> "@example.com")
+    end
+
     test "the same address twice is one recipient, with the stronger role", ctx do
       assert {:ok, message} =
                send_mail(ctx, %{
@@ -250,6 +261,69 @@ defmodule PhoenixKitInbox.ExternalSendTest do
     end
   end
 
+  describe "a shared mailbox's own sender (bound identity)" do
+    setup ctx do
+      desk = shared_mailbox_fixture(ctx.admin, %{name: "Desk", address: "desk@company.test"})
+      grant_fixture(desk, ctx.alice, "write")
+
+      {:ok, bound} =
+        Identities.create_shared(scope_for(ctx.admin, ["inbox", "inbox.manage_shared"]), %{
+          "label" => "Desk sender",
+          "integration_uuid" => ctx.system_smtp,
+          "mailbox_uuid" => desk.uuid
+        })
+
+      :ok = External.subscribe(desk.uuid)
+      %{desk: desk, bound: bound}
+    end
+
+    defp desk_send(ctx, scope) do
+      send_mail(
+        ctx,
+        %{
+          "to" => "client@example.com",
+          "cc" => "",
+          "bcc" => "",
+          "reply_to" => "",
+          "identity_uuid" => ctx.bound.uuid
+        },
+        scope: scope,
+        mailbox: ctx.desk
+      )
+    end
+
+    test "a writer of the mailbox without inbox.send_external can't go out through it", ctx do
+      assert {:error, {:unknown_recipients, ["client@example.com"]}} =
+               desk_send(ctx, scope_for(ctx.alice))
+
+      assert Messages.list_folder(ctx.desk.uuid, "sent") == []
+      refute_received {:outbound, _, _, _}
+
+      # The same writer with the permission does.
+      assert {:ok, message} = desk_send(ctx, ctx.scope)
+      assert [%{status: "sent"}] = rows(message)
+      assert_received {:outbound, _, _, _}
+    end
+
+    test "a retry checks inbox.send_external again", ctx do
+      outbound_result({:error, :smtp_down})
+      {:ok, message} = desk_send(ctx, ctx.scope)
+      assert_received {:outbound, _, _, _}
+      emails_module_enabled!()
+      email_log_fixture(%{"inbox_message_uuid" => message.uuid}, "failed")
+
+      # resolve/3 lets a writer use the bound identity; only the right to
+      # write externally refuses here.
+      assert {:ok, _} = Identities.resolve(scope_for(ctx.alice), ctx.bound.uuid, ctx.desk)
+
+      assert Messages.retry_external(scope_for(ctx.alice), ctx.desk, message.uuid) ==
+               {:error, :forbidden}
+
+      refute_received {:outbound, _, _, _}
+      assert Enum.all?(rows(message), &(&1.status == "failed"))
+    end
+  end
+
   describe "attachments for external recipients" do
     setup :storage_setup
 
@@ -338,6 +412,20 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       assert {:ok, message} = send_mail(ctx, %{})
       assert [%{status: "failed", error: error, email_log_message_id: nil} | _] = rows(message)
       assert error =~ "550 rejected"
+    end
+
+    test "a transport that exits or throws fails it, and the rows can be retried", ctx do
+      for {fun, kind} <- [
+            {fn _, _, _ -> exit(:smtp_timeout) end, ":exit"},
+            {fn _, _, _ -> throw(:smtp) end, ":throw"}
+          ] do
+        outbound_result(fun)
+
+        assert {:ok, message} = send_mail(ctx, %{})
+        assert [%{status: "failed", error: error} | _] = rows(message)
+        assert error =~ "transport_exited"
+        assert error =~ kind
+      end
     end
 
     test "a sent email links the email log row", ctx do

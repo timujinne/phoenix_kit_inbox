@@ -143,6 +143,14 @@ defmodule PhoenixKitInbox.OutboundTest do
       assert {:error, {:transport_failed, "smtp exploded"}} = Outbound.deliver(email(), context())
     end
 
+    test "a transport that exits or throws is a failed send, not a crash" do
+      outbound_result(fn _, _, _ -> exit(:smtp_timeout) end)
+      assert Outbound.deliver(email(), context()) == {:error, {:transport_exited, :exit}}
+
+      outbound_result(fn _, _, _ -> throw(:smtp) end)
+      assert Outbound.deliver(email(), context()) == {:error, {:transport_exited, :throw}}
+    end
+
     test "without an integration nothing is sent" do
       assert Outbound.deliver(email(), context(%{integration_uuid: nil})) ==
                {:error, :no_integration}

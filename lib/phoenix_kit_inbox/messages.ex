@@ -1139,15 +1139,19 @@ defmodule PhoenixKitInbox.Messages do
     role = Map.get(entry, "role", "to")
     status = Map.get(entry, "status", "sent")
 
-    if External.address?(address) and role in @recipient_roles and status in ~w(sent failed) do
+    log_id = entry |> Map.get("email_log_message_id") |> present()
+
+    if External.address?(address) and role in @recipient_roles and status in ~w(sent failed) and
+         (is_nil(log_id) or String.length(log_id) <= 255) do
       {:ok,
        %{
          role: role,
          address: address,
-         name: entry |> Map.get("name") |> present(),
+         # A display name is cut to the column, as a filename is.
+         name: entry |> Map.get("name") |> present() |> then(&(&1 && String.slice(&1, 0, 255))),
          status: status,
          error: entry |> Map.get("error") |> present(),
-         email_log_message_id: entry |> Map.get("email_log_message_id") |> present()
+         email_log_message_id: log_id
        }}
     else
       {:error, address || inspect(entry, limit: 5)}
