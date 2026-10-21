@@ -40,24 +40,39 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
     socket
     |> assign(:ident_kind, kind)
     |> assign(:identities, identities)
-    |> assign(:ident_integrations, Identities.mail_integrations(scope, kind))
+    # Loaded when "Add sender" is pressed: each choice asks core for the
+    # connection's credentials, which a page load should not do.
+    |> assign(:ident_integrations, [])
     |> assign(:ident_mailboxes, mailboxes)
     |> assign(:ident_form, nil)
+    |> assign_new(:ident_problems, fn -> %{} end)
   end
 
   @doc "Handles the editor's `\"ident_*\"` events."
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("ident_new", _params, socket) do
-    {:noreply,
-     assign(
-       socket,
-       :ident_form,
-       to_form(
-         %{"label" => "", "from_name" => "", "integration_uuid" => "", "mailbox_uuid" => ""},
-         as: :identity
-       )
-     )}
+    case Identities.mail_integrations(socket.assigns.scope, socket.assigns.ident_kind) do
+      [] ->
+        {:noreply,
+         Phoenix.LiveView.put_flash(
+           socket,
+           :error,
+           gettext_str("There is no mail connection with a login address to send from yet.")
+         )}
+
+      integrations ->
+        {:noreply,
+         socket
+         |> assign(:ident_integrations, integrations)
+         |> assign(
+           :ident_form,
+           to_form(
+             %{"label" => "", "from_name" => "", "integration_uuid" => "", "mailbox_uuid" => ""},
+             as: :identity
+           )
+         )}
+    end
   end
 
   def handle_event("ident_cancel", _params, socket) do
@@ -82,7 +97,28 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         {:noreply,
          socket
          |> assign(:ident_form, to_form(params, as: :identity))
+         |> assign(
+           :ident_integrations,
+           Identities.mail_integrations(socket.assigns.scope, socket.assigns.ident_kind)
+         )
          |> Phoenix.LiveView.put_flash(:error, Errors.message(reason))}
+    end
+  end
+
+  # The list shows the stored status; "Check" asks the integration again and
+  # records the outcome (`Identities.recheck/2` checks who may).
+  def handle_event("ident_check", %{"uuid" => uuid}, socket) do
+    case Identities.recheck(socket.assigns.scope, %Identity{uuid: uuid}) do
+      {:ok, outcome} ->
+        problems = Map.put(socket.assigns.ident_problems, uuid, outcome)
+
+        {:noreply,
+         socket
+         |> assign(:ident_problems, problems)
+         |> assign_editor(socket.assigns.ident_kind)}
+
+      {:error, reason} ->
+        {:noreply, Phoenix.LiveView.put_flash(socket, :error, Errors.message(reason))}
     end
   end
 
@@ -106,6 +142,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
   attr(:identities, :list, required: true)
   attr(:integrations, :list, required: true)
   attr(:mailboxes, :list, default: [])
+  attr(:problems, :map, default: %{})
   attr(:form, :any, required: true)
 
   @doc "The identity list with its add form."
@@ -131,20 +168,24 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         <span :if={@kind == :shared} class="badge badge-ghost badge-sm">
           {bound_to(entry.identity, @mailbox_names)}
         </span>
-        <span
-          :if={entry.check != :ok}
-          class="badge badge-error badge-sm gap-1"
-          title={problem_text(entry.check)}
-        >
+        <span :if={entry.identity.status == "broken"} class="badge badge-error badge-sm gap-1">
           <.icon name="hero-exclamation-triangle" class="w-3 h-3" />
           {gettext_str("Broken")}
         </span>
-        <span :if={entry.check != :ok} class="text-xs text-error w-full">
-          {problem_text(entry.check)}
+        <span :if={entry.identity.status == "broken"} class="text-xs text-error w-full">
+          {problem_text(Map.get(@problems, entry.identity.uuid))}
         </span>
         <button
           type="button"
-          class="btn btn-ghost btn-xs text-error ml-auto"
+          class="btn btn-ghost btn-xs ml-auto"
+          phx-click="ident_check"
+          phx-value-uuid={entry.identity.uuid}
+        >
+          <.icon name="hero-arrow-path" class="w-4 h-4" /> {gettext_str("Check")}
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs text-error"
           phx-click="ident_delete"
           phx-value-uuid={entry.identity.uuid}
           data-confirm={gettext_str("Delete this sender?")}
@@ -188,11 +229,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         </div>
       </.form>
 
-      <p :if={is_nil(@form) and @integrations == []} class="text-sm text-base-content/60">
-        {gettext_str("There is no mail connection with a login address to send from yet.")}
-      </p>
-
-      <div :if={is_nil(@form) and @integrations != []}>
+      <div :if={is_nil(@form)}>
         <button type="button" class="btn btn-ghost btn-sm" phx-click="ident_new">
           <.icon name="hero-plus" class="w-4 h-4" /> {gettext_str("Add sender")}
         </button>
@@ -207,7 +244,12 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
   defp bound_to(%Identity{mailbox_uuid: uuid}, names), do: Map.get(names, uuid, "—")
 
   defp problem_text({:error, problem}), do: Errors.message({:integration_unusable, problem})
-  defp problem_text(_), do: nil
+
+  defp problem_text(_),
+    do:
+      gettext_str(
+        "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
+      )
 
   defp gettext_str(msgid), do: Gettext.gettext(PhoenixKitWeb.Gettext, msgid)
 end

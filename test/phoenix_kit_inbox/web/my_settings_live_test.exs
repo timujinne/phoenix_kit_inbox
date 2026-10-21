@@ -1,6 +1,8 @@
 defmodule PhoenixKitInbox.Web.MySettingsLiveTest do
   use PhoenixKitInbox.LiveCase
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKit.Integrations
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
@@ -153,6 +155,62 @@ defmodule PhoenixKitInbox.Web.MySettingsLiveTest do
         })
 
       :ok = Integrations.remove_connection(own, nil, owner: {:user, ctx.alice.uuid})
+
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)
+
+      # Loading the page checks nothing; checking marks it, with the reason.
+      refute has_element?(view, "#identity-#{identity.uuid} .badge-error")
+      assert Repo.get(Identity, identity.uuid).status == "active"
+
+      view
+      |> element("#identity-#{identity.uuid} button[phx-click='ident_check']")
+      |> render_click()
+
+      assert has_element?(view, "#identity-#{identity.uuid} .badge-error", "Broken")
+      assert has_element?(view, "#identity-#{identity.uuid}", "doesn't exist")
+      assert Repo.get(Identity, identity.uuid).status == "broken"
+    end
+
+    test "loading the page writes no status", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid})
+
+      {:ok, identity} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Mine",
+          "integration_uuid" => own
+        })
+
+      # Stored broken while the connection works: only a check or a send heals it.
+      Repo.update_all(from(i in Identity, where: i.uuid == ^identity.uuid),
+        set: [status: "broken"]
+      )
+
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)
+
+      assert has_element?(view, "#identity-#{identity.uuid} .badge-error", "Broken")
+      assert Repo.get(Identity, identity.uuid).status == "broken"
+    end
+
+    test "with no mail connection, adding a sender says so", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)
+
+      view |> element("#my-identities button[phx-click='ident_new']") |> render_click()
+
+      refute has_element?(view, "#my-identities-form")
+      assert has_element?(view, "#flash-error", "no mail connection")
+    end
+
+    test "a sender a send found broken is marked on the next visit", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid})
+
+      {:ok, identity} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Mine",
+          "integration_uuid" => own
+        })
+
+      :ok = Integrations.remove_connection(own, nil, owner: {:user, ctx.alice.uuid})
+      {:error, :broken} = Identities.resolve(scope_for(ctx.alice), identity.uuid)
 
       {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)
 

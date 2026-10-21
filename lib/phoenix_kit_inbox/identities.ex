@@ -32,9 +32,12 @@ defmodule PhoenixKitInbox.Identities do
 
   `check/1` asks core whether the integration still exists, is a mail
   provider with credentials, belongs to the right owner and has a login
-  address. `resolve/2,3` and the listings run it on every call and store the
-  outcome in `status`: a failing identity becomes `"broken"` (refused with
-  `{:error, :broken}`), a passing one `"active"` again.
+  address. Only `resolve/2,3` (every send) and `recheck/2` (the settings
+  pages' "Check") run it *and* store the outcome in `status`: a failing
+  identity becomes `"broken"` (refused with `{:error, :broken}`), a passing
+  one `"active"` again. `list_usable/1` runs it without storing anything;
+  the settings listings (`list_personal/1`, `list_shared/1`) show the stored
+  status and run no check at all.
 
   ## Reply-To
 
@@ -86,7 +89,8 @@ defmodule PhoenixKitInbox.Identities do
   The identities the scope's user can send from right now, each as
   `t:resolved/0`: the personal ones they own, the shared ones bound to an
   active mailbox they can write to, and — with `inbox.send_external` — the
-  shared ones bound to no mailbox. Broken ones are left out (and marked).
+  shared ones bound to no mailbox. Ones whose integration fails `check/1`
+  are left out; nothing is written (a send records it, `resolve/3`).
   Empty without the `"inbox"` permission.
   """
   @spec list_usable(Scope.t()) :: [resolved()]
@@ -117,9 +121,9 @@ defmodule PhoenixKitInbox.Identities do
   def list_usable(_), do: []
 
   defp usable_entry(identity, user) do
-    case checked(identity) do
-      {:ok, identity, from_address} -> [describe(identity, from_address, user)]
-      {:error, _identity, _problem} -> []
+    case check_integration(identity.integration_uuid, expected_owner(identity)) do
+      {:ok, from_address} -> [describe(identity, from_address, user)]
+      {:error, _problem} -> []
     end
   end
 
@@ -139,16 +143,17 @@ defmodule PhoenixKitInbox.Identities do
     |> repo().all()
   end
 
-  @typedoc "An identity with the outcome of its check, for the settings pages."
-  @type listed :: %{
-          identity: Identity.t(),
-          check: :ok | {:error, problem()},
-          from_address: String.t() | nil
-        }
+  @typedoc """
+  An identity as the settings pages list it: its stored `status`, and the
+  login of its integration as the From address (`nil` when the connection
+  is gone or has none).
+  """
+  @type listed :: %{identity: Identity.t(), from_address: String.t() | nil}
 
   @doc """
-  The scope user's personal identities, broken ones included, each checked
-  (`t:listed/0`). For the settings page.
+  The scope user's personal identities, broken ones included (`t:listed/0`).
+  For the settings page: a read — no check is run and nothing is written;
+  the From addresses come from one query over the user's connections.
   """
   @spec list_personal(Scope.t()) :: [listed()]
   def list_personal(%Scope{} = scope) do
@@ -158,22 +163,23 @@ defmodule PhoenixKitInbox.Identities do
         order_by: [asc: i.label, asc: i.uuid]
       )
       |> repo().all()
-      |> Enum.map(&with_check/1)
+      |> with_from_addresses({:user, user.uuid})
     else
       _ -> []
     end
   end
 
   @doc """
-  Every shared identity, broken ones included, each checked (`t:listed/0`).
-  Empty without `inbox.manage_shared`. For the admin settings page.
+  Every shared identity, broken ones included (`t:listed/0`), read like
+  `list_personal/1`. Empty without `inbox.manage_shared`. For the admin
+  settings page.
   """
   @spec list_shared(Scope.t()) :: [listed()]
   def list_shared(%Scope{} = scope) do
     if Scope.can?(scope, @manage_shared) do
       from(i in Identity, where: i.kind == "shared", order_by: [asc: i.label, asc: i.uuid])
       |> repo().all()
-      |> Enum.map(&with_check/1)
+      |> with_from_addresses(:system)
     else
       []
     end
@@ -181,13 +187,39 @@ defmodule PhoenixKitInbox.Identities do
 
   def list_shared(_), do: []
 
-  defp with_check(identity) do
-    case checked(identity) do
-      {:ok, identity, from} ->
-        %{identity: identity, check: :ok, from_address: from}
+  # One query for the owner's mail connections, then the login of each
+  # identity's own — a display value, not a check.
+  defp with_from_addresses(identities, owner) do
+    logins =
+      Providers.with_capability(:email_send)
+      |> Enum.map(& &1.key)
+      |> Integrations.load_all_connections(owner: owner)
+      |> Enum.flat_map(fn {_provider, connections} -> connections end)
+      |> Map.new(fn %{uuid: uuid, data: data} -> {uuid, login_address(data)} end)
 
-      {:error, identity, problem} ->
-        %{identity: identity, check: {:error, problem}, from_address: nil}
+    Enum.map(identities, &%{identity: &1, from_address: Map.get(logins, &1.integration_uuid)})
+  end
+
+  defp login_address(data) do
+    case from_address(data) do
+      {:ok, address} -> address
+      {:error, _} -> nil
+    end
+  end
+
+  @doc """
+  Runs `check/1` on an identity and stores the outcome in its `status` — the
+  settings pages' "Check". Same permissions as changing the identity.
+  """
+  @spec recheck(Scope.t(), Identity.t()) ::
+          {:ok, :ok | {:error, problem()}} | {:error, :forbidden | :not_found}
+  def recheck(%Scope{} = scope, %Identity{uuid: uuid}) do
+    with {:ok, identity} <- fetch(uuid),
+         :ok <- authorize_manage(scope, identity) do
+      case checked(identity) do
+        {:ok, _identity, _from} -> {:ok, :ok}
+        {:error, _identity, problem} -> {:ok, {:error, problem}}
+      end
     end
   end
 
@@ -243,7 +275,12 @@ defmodule PhoenixKitInbox.Identities do
 
   `resolve/3` also requires it to belong to `mailbox`, the one the message
   is sent from (`{:error, :identity_not_for_mailbox}`): a bound identity to
-  its own mailbox, the others to the user's personal one.
+  its own mailbox, the others to the user's personal one. **A send must use
+  `resolve/3`** (`Messages.send_message/4` does): `resolve/2` answers only
+  "may this user send as it at all", and would let a bound identity go out
+  from another mailbox.
+
+  Both store the check's outcome in `status`.
   """
   @spec resolve(Scope.t(), term()) ::
           {:ok, resolved()} | {:error, :forbidden | :broken | :not_found}
@@ -369,7 +406,8 @@ defmodule PhoenixKitInbox.Identities do
     end
   end
 
-  # Checks and stores the outcome in `status` when it changed.
+  # Checks and stores the outcome in `status` when it changed — only for
+  # resolve/2,3 and recheck/2.
   defp checked(identity) do
     case check_integration(identity.integration_uuid, expected_owner(identity)) do
       {:ok, from_address} -> {:ok, put_status(identity, "active"), from_address}

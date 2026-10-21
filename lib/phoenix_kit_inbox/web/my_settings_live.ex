@@ -60,6 +60,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
     |> assign(:identities, [])
     |> assign(:ident_integrations, [])
     |> assign(:ident_form, nil)
+    |> assign(:ident_problems, %{})
   end
 
   defp load(socket, mailbox) do
@@ -185,6 +186,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
               kind={:personal}
               identities={@identities}
               integrations={@ident_integrations}
+              problems={@ident_problems}
               form={@ident_form}
             />
             <.link

@@ -55,6 +55,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
     |> assign(:ident_integrations, [])
     |> assign(:ident_mailboxes, [])
     |> assign(:ident_form, nil)
+    |> assign(:ident_problems, %{})
     |> SignatureEditor.assign_editor(nil)
   end
 
@@ -120,6 +121,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
             identities={@identities}
             integrations={@ident_integrations}
             mailboxes={@ident_mailboxes}
+            problems={@ident_problems}
             form={@ident_form}
           />
         </div>

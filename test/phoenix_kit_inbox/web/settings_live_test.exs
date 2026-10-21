@@ -30,6 +30,21 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
       refute has_element?(view, "#shared-signatures")
     end
 
+    test "a forged check changes no shared sender", ctx do
+      {:ok, identity} =
+        Identities.create_shared(scope_for(ctx.admin, @manage), %{
+          "label" => "Common",
+          "integration_uuid" => ctx.system_smtp
+        })
+
+      :ok = Integrations.remove_connection(ctx.system_smtp, nil, owner: :system)
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
+
+      render_click(view, "ident_check", %{"uuid" => identity.uuid})
+
+      assert Repo.get(Identity, identity.uuid).status == "active"
+    end
+
     test "a forged sender submit creates nothing", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
 
@@ -104,6 +119,11 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
 
       :ok = Integrations.remove_connection(ctx.system_smtp, nil, owner: :system)
       {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+      assert Repo.get(Identity, identity.uuid).status == "active"
+
+      view
+      |> element("#identity-#{identity.uuid} button[phx-click='ident_check']")
+      |> render_click()
 
       assert has_element?(view, "#identity-#{identity.uuid} .badge-error", "Broken")
       assert Repo.get(Identity, identity.uuid).status == "broken"

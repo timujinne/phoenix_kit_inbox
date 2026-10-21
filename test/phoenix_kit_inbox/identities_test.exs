@@ -339,11 +339,15 @@ defmodule PhoenixKitInbox.IdentitiesTest do
       refute ctx.bound.uuid in usable(scope_for(ctx.bob))
     end
 
-    test "a broken identity is left out and marked broken", ctx do
+    test "a broken identity is left out, and listing writes nothing", ctx do
       :ok =
         Integrations.remove_connection(ctx.own_integration, nil, owner: {:user, ctx.alice.uuid})
 
       refute ctx.personal.uuid in usable(scope_for(ctx.alice))
+      assert Repo.get(Identity, ctx.personal.uuid).status == "active"
+
+      # The send's resolve is what records it.
+      assert {:error, :broken} = Identities.resolve(scope_for(ctx.alice), ctx.personal.uuid)
       assert Repo.get(Identity, ctx.personal.uuid).status == "broken"
     end
 
@@ -361,6 +365,87 @@ defmodule PhoenixKitInbox.IdentitiesTest do
       assert entry.mailbox_uuid == ctx.desk.uuid
       assert entry.integration_uuid == ctx.system_smtp
       assert entry.from_address == "desk@company.test"
+    end
+  end
+
+  describe "list_personal/1 and list_shared/1 — the settings pages" do
+    setup ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid}, username: "alice@own.test")
+
+      {:ok, personal} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Mine",
+          "integration_uuid" => own
+        })
+
+      %{own: own, personal: personal}
+    end
+
+    defp set_status!(identity, status) do
+      Repo.update_all(from(i in Identity, where: i.uuid == ^identity.uuid), set: [status: status])
+    end
+
+    test "show the stored status and the From address, and write nothing", ctx do
+      set_status!(ctx.personal, "broken")
+
+      assert [%{identity: %Identity{status: "broken"}, from_address: "alice@own.test"}] =
+               Identities.list_personal(scope_for(ctx.alice))
+
+      # The integration works, yet the listing did not heal the row: no write.
+      assert Repo.get(Identity, ctx.personal.uuid).status == "broken"
+
+      set_status!(ctx.personal, "active")
+      :ok = Integrations.remove_connection(ctx.own, nil, owner: {:user, ctx.alice.uuid})
+
+      assert [%{identity: %Identity{status: "active"}, from_address: nil}] =
+               Identities.list_personal(scope_for(ctx.alice))
+
+      assert Repo.get(Identity, ctx.personal.uuid).status == "active"
+    end
+
+    test "list_shared reads the same way", ctx do
+      shared = shared!(ctx, label: "Common", integration_uuid: ctx.system_smtp)
+      set_status!(shared, "broken")
+
+      assert [%{identity: %Identity{status: "broken"}, from_address: "desk@company.test"}] =
+               Identities.list_shared(scope_for(ctx.admin, @manage))
+
+      assert Repo.get(Identity, shared.uuid).status == "broken"
+      assert Identities.list_shared(scope_for(ctx.admin)) == []
+    end
+  end
+
+  describe "recheck/2" do
+    test "checks and records the status, for whoever manages the identity", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid})
+
+      {:ok, identity} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Mine",
+          "integration_uuid" => own
+        })
+
+      :ok = Integrations.remove_connection(own, nil, owner: {:user, ctx.alice.uuid})
+
+      assert {:error, :forbidden} = Identities.recheck(scope_for(ctx.bob, @manage), identity)
+      assert Repo.get(Identity, identity.uuid).status == "active"
+
+      assert {:ok, {:error, :integration_missing}} =
+               Identities.recheck(scope_for(ctx.alice), identity)
+
+      assert Repo.get(Identity, identity.uuid).status == "broken"
+    end
+
+    test "a working integration makes it active again", ctx do
+      identity = shared!(ctx, label: "Common", integration_uuid: ctx.system_smtp)
+
+      Repo.update_all(from(i in Identity, where: i.uuid == ^identity.uuid),
+        set: [status: "broken"]
+      )
+
+      assert {:error, :forbidden} = Identities.recheck(scope_for(ctx.alice, @external), identity)
+      assert {:ok, :ok} = Identities.recheck(scope_for(ctx.admin, @manage), identity)
+      assert Repo.get(Identity, identity.uuid).status == "active"
     end
   end
 
