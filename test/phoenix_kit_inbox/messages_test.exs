@@ -103,7 +103,14 @@ defmodule PhoenixKitInbox.MessagesTest do
     end
 
     test "an unknown recipient refuses the whole send", ctx do
-      assert {:error, {:unknown_recipients, ["ghost@example.com"]}} =
+      assert {:error, {:unknown_recipients, ["@ghost"]}} =
+               Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+                 "to" => "#{ctx.bob.email}, @ghost",
+                 "subject" => "Partial"
+               })
+
+      # An address outside the application needs the scope form.
+      assert {:error, :external_needs_scope} =
                Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
                  "to" => "#{ctx.bob.email}, ghost@example.com",
                  "subject" => "Partial"
@@ -193,10 +200,10 @@ defmodule PhoenixKitInbox.MessagesTest do
                Messages.send_message(orphan, nil, %{"to" => ctx.bob.email, "subject" => "x"})
     end
 
-    test "a non-member's email is refused like any unknown recipient", ctx do
+    test "a non-member's email is an address outside, which needs the scope form", ctx do
       user_fixture(%{email: "client@example.com", inbox_member: false})
 
-      assert {:error, {:unknown_recipients, ["client@example.com"]}} =
+      assert {:error, :external_needs_scope} =
                Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
                  "to" => "client@example.com",
                  "subject" => "Hello"

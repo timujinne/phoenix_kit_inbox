@@ -109,6 +109,9 @@ defmodule PhoenixKitInbox.Errors do
   def message(:external_disabled),
     do: gettext("Sending to addresses outside this application is turned off.")
 
+  def message(:external_needs_scope),
+    do: gettext("Addresses outside this application need the sender's scope.")
+
   def message(:external_needs_identity),
     do: gettext("Choose a sender under “Send as” to write to addresses outside this application.")
 

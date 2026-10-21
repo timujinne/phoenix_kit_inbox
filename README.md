@@ -185,7 +185,7 @@ External.subscribe(from_mailbox.uuid)       # {:inbox_external_updated, message_
 Messages.retry_external(scope, from_mailbox, message.uuid)            #=> {:ok, :pending}
 ```
 
-An email address that names no member and no shared mailbox is an external recipient — if the sender may write externally (`inbox.send_external`, or sending as their own personal identity); otherwise it is an unknown recipient, as before. External recipients need a sending identity (`{:error, :external_needs_identity}`) and external sending **open**:
+An email address that names no member and no shared mailbox is an external recipient — if the sender may write externally (`inbox.send_external`, or sending as their own personal identity); otherwise it is an unknown recipient, as before; the three-argument `send_message/3` refuses it (`{:error, :external_needs_scope}`). External recipients need a sending identity (`{:error, :external_needs_identity}`) and external sending **open**:
 
 ```elixir
 PhoenixKitInbox.set_external_enabled(true)          # inbox_external_enabled, off by default

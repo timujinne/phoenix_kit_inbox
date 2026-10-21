@@ -251,11 +251,11 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       refute_received {:outbound, _, _, _}
     end
 
-    test "the three-argument form sends nothing outside: an address is unknown", ctx do
+    test "the three-argument form sends nothing outside", ctx do
       assert Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
                "to" => "client@example.com",
                "subject" => "Hi"
-             }) == {:error, {:unknown_recipients, ["client@example.com"]}}
+             }) == {:error, :external_needs_scope}
 
       refute_received {:outbound, _, _, _}
     end

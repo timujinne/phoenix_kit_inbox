@@ -535,8 +535,8 @@ defmodule PhoenixKitInbox.Messages do
       `"reply_to"` are likewise only ever written by the send.
 
   The three-argument form takes neither an identity nor a Reply-To
-  (`{:error, :sender_options_need_scope}`), and for it an email address
-  outside the application is an unknown recipient.
+  (`{:error, :sender_options_need_scope}`), nor an address outside the
+  application (`{:error, :external_needs_scope}`).
 
   `opts` — server-side only, never filled from a form:
 
@@ -622,11 +622,12 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
-  # External addresses need the right to write externally — without it
-  # (and always in the three-argument form, which has no scope) they are
-  # unknown recipients, as before there was external mail — a sending
-  # identity to go out as, and external sending open.
+  # External addresses need a scope (the three-argument form has none), the
+  # right to write externally — without it they are unknown recipients, as
+  # before there was external mail — a sending identity to go out as, and
+  # external sending open.
   defp admit_externals(_scope, _sender_record, []), do: {:ok, []}
+  defp admit_externals(nil, _sender_record, _externals), do: {:error, :external_needs_scope}
 
   defp admit_externals(scope, sender_record, externals) do
     identity = Map.get(sender_record, "identity")
