@@ -23,9 +23,9 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   narrowed as the viewer types. `Mailboxes.grant_access/4` checks the grant.
 
   The "Signatures" panel (`Web.SignatureEditor`) writes a mailbox's
-  signatures; it is offered on a mailbox the viewer administers when they
-  hold `inbox.manage_shared` too — what `PhoenixKitInbox.Signatures` checks
-  on every write.
+  signatures; it is offered on an active mailbox the viewer administers
+  when they hold `inbox.manage_shared` too — what `PhoenixKitInbox.Signatures`
+  checks on every write.
   """
 
   use PhoenixKitWeb, :live_view
@@ -178,10 +178,10 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     |> assign(:grant_form, grant_form(term))
   end
 
-  # A listed mailbox whose signatures the viewer may write, or nil.
+  # A listed active mailbox whose signatures the viewer may write, or nil.
   defp signing_mailbox(%{assigns: %{can_manage_shared: true, mailboxes: mailboxes}}, uuid) do
     Enum.find_value(mailboxes, fn
-      %{mailbox: %{uuid: ^uuid} = mailbox, access: "admin"} -> mailbox
+      %{mailbox: %{uuid: ^uuid, status: "active"} = mailbox, access: "admin"} -> mailbox
       _ -> nil
     end)
   end
@@ -348,7 +348,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
                       {gettext("Access")}
                     </button>
                     <button
-                      :if={access == "admin" and @can_create}
+                      :if={access == "admin" and @can_create and mailbox.status == "active"}
                       class="btn btn-ghost btn-xs"
                       phx-click="toggle_signatures"
                       phx-value-uuid={mailbox.uuid}

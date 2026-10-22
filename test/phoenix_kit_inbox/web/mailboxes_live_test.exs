@@ -172,10 +172,30 @@ defmodule PhoenixKitInbox.Web.MailboxesLiveTest do
              )
 
       render_hook(view, "toggle_signatures", %{"uuid" => other.uuid})
+      refute has_element?(view, "#mailbox-signatures")
       render_hook(view, "sig_new", %{})
       render_hook(view, "sig_save", %{"signature" => %{"label" => "Forged"}})
 
       assert Signatures.list(other.uuid) == []
+    end
+
+    test "an archived mailbox offers none, and archiving the open one closes it", ctx do
+      conn = as(ctx.conn, ctx.alice, ["inbox", "inbox.manage_shared"])
+      {:ok, view, _html} = live(conn, "/en/admin/inbox/mailboxes")
+      button = "button[phx-click='toggle_signatures'][phx-value-uuid='#{ctx.desk.uuid}']"
+
+      view |> element(button) |> render_click()
+      assert has_element?(view, "#mailbox-signatures")
+
+      view
+      |> element("button[phx-click='archive'][phx-value-uuid='#{ctx.desk.uuid}']")
+      |> render_click()
+
+      refute has_element?(view, "#mailbox-signatures")
+      refute has_element?(view, button)
+
+      render_hook(view, "toggle_signatures", %{"uuid" => ctx.desk.uuid})
+      refute has_element?(view, "#mailbox-signatures")
     end
   end
 
