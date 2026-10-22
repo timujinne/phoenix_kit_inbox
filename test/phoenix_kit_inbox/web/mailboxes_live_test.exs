@@ -2,6 +2,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLiveTest do
   use PhoenixKitInbox.LiveCase
 
   alias PhoenixKitInbox.Mailboxes
+  alias PhoenixKitInbox.Signatures
 
   setup %{conn: conn} do
     enable_inbox!()
@@ -109,6 +110,72 @@ defmodule PhoenixKitInbox.Web.MailboxesLiveTest do
       |> render_click()
 
       assert Mailboxes.access_level(ctx.desk, ctx.colleague.uuid) == nil
+    end
+  end
+
+  describe "signatures of a shared mailbox" do
+    setup ctx do
+      desk = shared_mailbox_fixture(ctx.alice, %{name: "Desk"})
+      %{desk: desk}
+    end
+
+    test "are written from its row by an admin with inbox.manage_shared", ctx do
+      conn = as(ctx.conn, ctx.alice, ["inbox", "inbox.manage_shared"])
+      {:ok, view, _html} = live(conn, "/en/admin/inbox/mailboxes")
+
+      view
+      |> element("button[phx-click='toggle_signatures'][phx-value-uuid='#{ctx.desk.uuid}']")
+      |> render_click()
+
+      view |> element("#mailbox-signatures button[phx-click='sig_new']") |> render_click()
+
+      view
+      |> form("#mailbox-signatures-form", %{
+        "signature" => %{"label" => "Desk", "body" => "The Desk", "is_default" => "true"}
+      })
+      |> render_submit()
+
+      assert [%{label: "Desk", is_default: true}] = Signatures.list(ctx.desk.uuid)
+      assert has_element?(view, "#mailbox-signatures", "The Desk")
+
+      view
+      |> element("button[phx-click='toggle_signatures'][phx-value-uuid='#{ctx.desk.uuid}']")
+      |> render_click()
+
+      refute has_element?(view, "#mailbox-signatures")
+    end
+
+    test "are not offered without inbox.manage_shared, and a forged submit writes nothing",
+         ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), "/en/admin/inbox/mailboxes")
+
+      refute has_element?(view, "button[phx-click='toggle_signatures']")
+
+      render_hook(view, "toggle_signatures", %{"uuid" => ctx.desk.uuid})
+      refute has_element?(view, "#mailbox-signatures")
+
+      render_hook(view, "sig_new", %{})
+      render_hook(view, "sig_save", %{"signature" => %{"label" => "Forged"}})
+
+      assert Signatures.list(ctx.desk.uuid) == []
+    end
+
+    test "a mailbox the viewer only writes to can't be opened, even when forged", ctx do
+      other = shared_mailbox_fixture(user_fixture(), %{name: "Elsewhere"})
+      grant_fixture(other, ctx.alice, "write")
+      conn = as(ctx.conn, ctx.alice, ["inbox", "inbox.manage_shared"])
+      {:ok, view, _html} = live(conn, "/en/admin/inbox/mailboxes")
+
+      refute has_element?(
+               view,
+               "button[phx-click='toggle_signatures'][phx-value-uuid='#{other.uuid}']"
+             )
+
+      render_hook(view, "toggle_signatures", %{"uuid" => other.uuid})
+      render_hook(view, "sig_new", %{})
+      render_hook(view, "sig_save", %{"signature" => %{"label" => "Forged"}})
+
+      assert Signatures.list(other.uuid) == []
     end
   end
 

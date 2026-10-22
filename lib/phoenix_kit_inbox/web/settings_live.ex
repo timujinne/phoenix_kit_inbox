@@ -1,19 +1,16 @@
 defmodule PhoenixKitInbox.Web.SettingsLive do
   @moduledoc """
   "Shared mail" — Inbox settings for holders of `inbox.manage_shared`
-  (`/admin/settings/inbox`, a page of core's Settings section):
-
-    * **Shared mail** — identities on system mail integrations that people
-      send *as* (nobody reads them here): added, changed and deleted here,
-      each open to the roles ticked (Owner always); one bound to a shared
-      mailbox through the API is listed by its mailbox. With their From
-      address and a "Broken" mark when the integration no longer works
-      (`Web.IdentityEditor`)
-    * **Signatures of shared mailboxes** the viewer administers
-      (`Web.SignatureEditor`)
+  (`/admin/settings/inbox`, a page of core's Settings section): identities
+  on system mail integrations that people send *as* (nobody reads them
+  here), added, changed and deleted here, each open to the roles ticked
+  (Owner always); one bound to a shared mailbox through the API is listed by
+  its mailbox. With their From address and a "Broken" mark when the
+  integration no longer works (`Web.IdentityEditor`).
 
   Without `inbox.manage_shared` the page says so and renders no form; the
-  contexts refuse a forged event anyway. A user's own signatures, Reply-To
+  contexts refuse a forged event anyway. A shared mailbox's signatures are
+  on `Web.MailboxesLive`, by the mailbox; a user's own signatures, Reply-To
   and personal senders are on `Web.MySettingsLive`.
   """
 
@@ -25,7 +22,6 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Web.IdentityEditor
-  alias PhoenixKitInbox.Web.SignatureEditor
 
   @impl true
   def mount(_params, _session, socket) do
@@ -39,18 +35,9 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
       |> assign(:scope, scope)
       |> assign(:module_access, module_access)
       |> assign(:can_manage_shared, manage)
-      |> assign(:admin_mailboxes, if(manage, do: admin_mailboxes(scope), else: []))
       |> load(manage)
 
     {:ok, socket}
-  end
-
-  # Shared mailboxes whose signatures the viewer may write: "admin" on them.
-  defp admin_mailboxes(scope) do
-    {:ok, user_uuid} = Mailboxes.scope_user_uuid(scope)
-
-    Mailboxes.list_shared_mailboxes()
-    |> Enum.filter(&(&1.status == "active" and Mailboxes.access_level(&1, user_uuid) == "admin"))
   end
 
   defp load(socket, false) do
@@ -62,28 +49,13 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
     |> assign(:ident_form, nil)
     |> assign(:ident_editing, nil)
     |> assign(:ident_problems, %{})
-    |> SignatureEditor.assign_editor(nil)
   end
 
-  defp load(socket, true) do
-    socket
-    |> IdentityEditor.assign_editor(:shared)
-    |> SignatureEditor.assign_editor(List.first(socket.assigns.admin_mailboxes))
-  end
+  defp load(socket, true), do: IdentityEditor.assign_editor(socket, :shared)
 
   # ── Events ──────────────────────────────────────────────────────────────────
 
   @impl true
-  def handle_event("sig_mailbox", %{"mailbox" => uuid}, socket) do
-    case Enum.find(socket.assigns.admin_mailboxes, &(&1.uuid == uuid)) do
-      nil -> {:noreply, socket}
-      mailbox -> {:noreply, SignatureEditor.assign_editor(socket, mailbox)}
-    end
-  end
-
-  def handle_event("sig_" <> _ = event, params, socket),
-    do: SignatureEditor.handle_event(event, params, socket)
-
   def handle_event(
         "ident_" <> _ = event,
         params,
@@ -108,7 +80,7 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
       <div :if={@module_access and not @can_manage_shared} class="alert alert-info">
         <.icon name="hero-information-circle" class="w-5 h-5" />
         <span>
-          {gettext("Shared senders and signatures are managed by holders of “Manage shared mailboxes”.")}
+          {gettext("Shared mail is managed by holders of “Manage shared mailboxes”.")}
         </span>
         <.link navigate={Paths.my_settings()} class="link">{gettext("Your mail settings")}</.link>
       </div>
@@ -135,38 +107,6 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
         </div>
       </section>
 
-      <section :if={@can_manage_shared} class="card bg-base-100 shadow max-w-4xl">
-        <div class="card-body gap-3">
-          <h2 class="card-title text-base">{gettext("Signatures of shared mailboxes")}</h2>
-
-          <p :if={@admin_mailboxes == []} class="text-sm text-base-content/60">
-            {gettext("You don't administer any shared mailbox.")}
-          </p>
-
-          <form
-            :if={@admin_mailboxes != []}
-            id="signature-mailbox-form"
-            phx-change="sig_mailbox"
-            class="flex items-center gap-2"
-          >
-            <span class="text-sm">{gettext("Mailbox")}</span>
-            <.select
-              name="mailbox"
-              value={@sig_mailbox && @sig_mailbox.uuid}
-              options={Enum.map(@admin_mailboxes, &{&1.name, &1.uuid})}
-              class="select-sm"
-            />
-          </form>
-
-          <SignatureEditor.editor
-            :if={@sig_mailbox}
-            id="shared-signatures"
-            signatures={@signatures}
-            editing={@sig_editing}
-            form={@sig_form}
-          />
-        </div>
-      </section>
     </div>
     """
   end

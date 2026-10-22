@@ -10,8 +10,8 @@ Four admin pages:
 
 - **Inbox** (`Web.InboxLive`) — three-pane webmail: folder sidebar, message list, reading pane
 - **Compose** (`Web.ComposeLive`) — new / reply / forward / drafts (hidden tab, reached from the New message button)
-- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them; the Access panel picks colleagues from `Mailboxes.search_users/3` (members, not the viewer) and lists grants by name (`list_grant_holders/1`)
-- **Settings** (`Web.SettingsLive`, "Mail" in core's Settings section, `/admin/settings/inbox`, from `settings_tabs/0`) — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields) and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
+- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them; the Access panel picks colleagues from `Mailboxes.search_users/3` (members, not the viewer) and lists grants by name (`list_grant_holders/1`); the Signatures panel writes a mailbox's signatures (`Web.SignatureEditor`, offered on a mailbox the viewer administers when they hold `inbox.manage_shared`)
+- **Settings** (`Web.SettingsLive`, "Mail" in core's Settings section, `/admin/settings/inbox`, from `settings_tabs/0`) — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields)
 
 And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLive`, `/dashboard/inbox-settings`) — the user's signatures, default Reply-To and personal senders. It is a `user_dashboard_tabs/0` entry with a `live_view`, so core generates its route in the authenticated session; the page checks access itself and draws its own layout (`LayoutWrapper.app_layout`). A second entry, **Mail**, is an absolute path (`/admin/inbox`) with no `live_view` — core leaves absolute paths as they are and generates no route for it. Both are in the avatar menu (`user_menu: &PhoenixKitInbox.user_menu?/1` — the `"inbox"` permission).
 
@@ -164,7 +164,7 @@ lib/phoenix_kit_inbox/
 ├── migrations/v01.ex … v06.ex            # immutable
 ├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,identity_role,signature,external_recipient}.ex
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
-    web/{signature_editor,identity_editor}.ex   # shared by the two settings pages
+    web/{signature_editor,identity_editor}.ex   # editors the pages share
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.

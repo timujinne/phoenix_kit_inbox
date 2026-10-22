@@ -8,7 +8,6 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Schemas.Identity
   alias PhoenixKitInbox.Schemas.IdentityRole
-  alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Test.Repo
 
   @path "/en/admin/settings/inbox"
@@ -103,20 +102,17 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
       assert has_element?(view, "#flash-error")
       assert Repo.aggregate(Identity, :count) == 0
     end
-
-    test "a forged signature submit for a shared mailbox writes nothing", ctx do
-      grant_fixture(ctx.desk, ctx.alice, "admin")
-      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
-
-      render_click(view, "sig_mailbox", %{"mailbox" => ctx.desk.uuid})
-      render_click(view, "sig_new", %{})
-      render_submit(view, "sig_save", %{"signature" => %{"label" => "Forged"}})
-
-      assert Signatures.list(ctx.desk.uuid) == []
-    end
   end
 
   describe "with inbox.manage_shared" do
+    test "shared mail is all the page holds: no mailbox signatures", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+
+      assert has_element?(view, "#shared-identities")
+      refute has_element?(view, "#shared-signatures")
+      refute has_element?(view, "#signature-mailbox-form")
+    end
+
     test "shared mail is added with the roles it is open to, and listed", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
 
@@ -339,32 +335,6 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
 
       assert has_element?(view, "#identity-#{identity.uuid} .badge-error", "Broken")
       assert Repo.get(Identity, identity.uuid).status == "broken"
-    end
-
-    test "signatures of an administered shared mailbox are written here", ctx do
-      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
-
-      view |> element("#shared-signatures button[phx-click='sig_new']") |> render_click()
-
-      view
-      |> form("#shared-signatures-form", %{
-        "signature" => %{"label" => "Desk", "body" => "The Desk", "is_default" => "true"}
-      })
-      |> render_submit()
-
-      assert [%{label: "Desk", is_default: true}] = Signatures.list(ctx.desk.uuid)
-    end
-
-    test "a mailbox the viewer does not administer can't be picked", ctx do
-      other = shared_mailbox_fixture(ctx.alice, %{name: "Alice's"})
-      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
-
-      refute has_element?(view, "#signature-mailbox-form option[value='#{other.uuid}']")
-      render_click(view, "sig_mailbox", %{"mailbox" => other.uuid})
-      render_click(view, "sig_new", %{})
-      render_submit(view, "sig_save", %{"signature" => %{"label" => "Forged"}})
-
-      assert Signatures.list(other.uuid) == []
     end
   end
 end

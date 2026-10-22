@@ -1,7 +1,7 @@
 defmodule PhoenixKitInbox.Web.SignatureEditor do
   @moduledoc """
-  The signature list and form of one mailbox, shared by the two settings
-  pages (`Web.MySettingsLive` for the personal mailbox, `Web.SettingsLive` for
+  The signature list and form of one mailbox, shared by two pages
+  (`Web.MySettingsLive` for the personal mailbox, `Web.MailboxesLive` for
   shared ones). A host LiveView calls `assign_editor/2` and routes every
   `"sig_*"` event to `handle_event/3`; `editor/1` renders.
 

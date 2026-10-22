@@ -35,7 +35,7 @@ Neighbouring modules, so you pick the right one:
 - **Signatures** — per mailbox, Markdown, one default; put at the end of a message after a `-- ` line and swapped while untouched
 - **Sending identities and Reply-To** — who a message may go out *as* (a mail integration whose login is the From address) and which addresses replies may go to, both checked on every send
 - **External recipients** — email addresses in To/Cc/Bcc next to internal ones: one email through the sender's integration after the message is committed, real attachments up to a size limit, a status per address, a retry that never sends twice
-- **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; a "Mail" page in the admin Settings section for the shared senders (added, changed, opened to roles) and signatures
+- **Mail settings** — "Mail" and "Mail settings" in the avatar menu on every page; a "Mail" page in the admin Settings section for the shared senders (added, changed, opened to roles); a shared mailbox's signatures are written by its row on the Mailboxes page
 - **Notifications** — new messages raise an activity event, which core turns into an in-app notification with a deep link
 - **Module-owned migrations** — tables ship and version here, not in core
 - **Auto-discovery** — implements `PhoenixKit.Module`; PhoenixKit finds it at startup with zero config

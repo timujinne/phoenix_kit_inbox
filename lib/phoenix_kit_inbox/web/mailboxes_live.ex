@@ -21,6 +21,11 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   The "Access" panel lists who holds a grant by name and offers colleagues
   to pick from (`Mailboxes.search_users/3`: members only, not the viewer),
   narrowed as the viewer types. `Mailboxes.grant_access/4` checks the grant.
+
+  The "Signatures" panel (`Web.SignatureEditor`) writes a mailbox's
+  signatures; it is offered on a mailbox the viewer administers when they
+  hold `inbox.manage_shared` too — what `PhoenixKitInbox.Signatures` checks
+  on every write.
   """
 
   use PhoenixKitWeb, :live_view
@@ -31,6 +36,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Mailbox
+  alias PhoenixKitInbox.Web.SignatureEditor
 
   @impl true
   def mount(_params, _session, socket) do
@@ -50,6 +56,7 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
       |> assign(:grants, [])
       |> assign(:candidates, [])
       |> assign(:grant_form, grant_form(""))
+      |> SignatureEditor.assign_editor(nil)
       |> load_mailboxes()
 
     {:ok, socket}
@@ -136,11 +143,22 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     end
   end
 
+  def handle_event("toggle_signatures", %{"uuid" => uuid}, socket) do
+    case socket.assigns.sig_mailbox do
+      %{uuid: ^uuid} -> {:noreply, SignatureEditor.assign_editor(socket, nil)}
+      _ -> {:noreply, SignatureEditor.assign_editor(socket, signing_mailbox(socket, uuid))}
+    end
+  end
+
+  def handle_event("sig_" <> _ = event, params, socket),
+    do: SignatureEditor.handle_event(event, params, socket)
+
   def handle_event("archive", %{"uuid" => uuid}, socket) do
     with {:ok, mailbox} <- Mailboxes.fetch_mailbox(uuid),
          {:ok, _} <- Mailboxes.archive_mailbox(socket.assigns.scope, mailbox) do
       {:noreply,
        socket
+       |> close_signatures(uuid)
        |> load_mailboxes()
        |> put_flash(:info, gettext("Mailbox archived."))}
     else
@@ -159,6 +177,21 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
     |> assign(:candidates, candidates)
     |> assign(:grant_form, grant_form(term))
   end
+
+  # A listed mailbox whose signatures the viewer may write, or nil.
+  defp signing_mailbox(%{assigns: %{can_manage_shared: true, mailboxes: mailboxes}}, uuid) do
+    Enum.find_value(mailboxes, fn
+      %{mailbox: %{uuid: ^uuid} = mailbox, access: "admin"} -> mailbox
+      _ -> nil
+    end)
+  end
+
+  defp signing_mailbox(_socket, _uuid), do: nil
+
+  defp close_signatures(%{assigns: %{sig_mailbox: %{uuid: uuid}}} = socket, uuid),
+    do: SignatureEditor.assign_editor(socket, nil)
+
+  defp close_signatures(socket, _uuid), do: socket
 
   defp grant_form(term), do: to_form(%{"q" => term, "user_uuid" => "", "access" => "read"})
 
@@ -197,6 +230,10 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
           grants={@grants}
           candidates={@candidates}
           grant_form={@grant_form}
+          sig_mailbox={@sig_mailbox}
+          signatures={@signatures}
+          sig_editing={@sig_editing}
+          sig_form={@sig_form}
         />
       </div>
     </div>
@@ -255,6 +292,10 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   attr(:grants, :list, required: true)
   attr(:candidates, :list, required: true)
   attr(:grant_form, :any, required: true)
+  attr(:sig_mailbox, :any, required: true)
+  attr(:signatures, :list, required: true)
+  attr(:sig_editing, :any, required: true)
+  attr(:sig_form, :any, required: true)
 
   defp mailbox_table(assigns) do
     ~H"""
@@ -307,6 +348,14 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
                       {gettext("Access")}
                     </button>
                     <button
+                      :if={access == "admin" and @can_create}
+                      class="btn btn-ghost btn-xs"
+                      phx-click="toggle_signatures"
+                      phx-value-uuid={mailbox.uuid}
+                    >
+                      {gettext("Signatures")}
+                    </button>
+                    <button
                       :if={access == "admin"}
                       class="btn btn-ghost btn-xs text-error"
                       phx-click="archive"
@@ -320,6 +369,16 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
                 <tr :if={@expanded == mailbox.uuid}>
                   <td colspan="4" class="bg-base-200">
                     <.grant_panel grants={@grants} candidates={@candidates} grant_form={@grant_form} />
+                  </td>
+                </tr>
+                <tr :if={@sig_mailbox && @sig_mailbox.uuid == mailbox.uuid}>
+                  <td colspan="4" class="bg-base-200">
+                    <SignatureEditor.editor
+                      id="mailbox-signatures"
+                      signatures={@signatures}
+                      editing={@sig_editing}
+                      form={@sig_form}
+                    />
                   </td>
                 </tr>
               <% end %>
