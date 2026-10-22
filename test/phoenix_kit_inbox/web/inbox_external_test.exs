@@ -27,6 +27,8 @@ defmodule PhoenixKitInbox.Web.InboxExternalTest do
     {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(alice)
     {:ok, bob_mb} = Mailboxes.ensure_user_mailbox(bob)
     smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+    # The role that sends externally; the common sender is opened to it.
+    senders = grant_role!(alice, @external)
 
     {:ok, common} =
       Identities.create_shared(scope_for(admin, ["inbox", "inbox.manage_shared"]), %{
@@ -38,7 +40,7 @@ defmodule PhoenixKitInbox.Web.InboxExternalTest do
     outbound_result({:error, :smtp_down})
 
     {:ok, message} =
-      Messages.send_message(scope_for(alice, @external), alice_mb, %{
+      Messages.send_message(scope_for(alice, @external, [senders]), alice_mb, %{
         "to" => "@#{bob.username}, client@example.com",
         "bcc" => "hidden@example.com",
         "subject" => "Offer",
@@ -56,16 +58,14 @@ defmodule PhoenixKitInbox.Web.InboxExternalTest do
       bob: bob,
       alice_mb: alice_mb,
       bob_mb: bob_mb,
+      senders: senders,
       message: message
     }
   end
 
   defp open(ctx, user, mailbox, folder, permissions \\ @external) do
     conn =
-      put_test_scope(
-        ctx.conn,
-        fake_scope(user_uuid: user.uuid, email: user.email, permissions: permissions)
-      )
+      put_test_scope(ctx.conn, scope_for(user, permissions, [ctx.senders]))
 
     {:ok, view, _html} =
       live(

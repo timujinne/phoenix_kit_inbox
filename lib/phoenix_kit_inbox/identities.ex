@@ -23,10 +23,31 @@ defmodule PhoenixKitInbox.Identities do
     * bound to a shared mailbox it is used by everyone with `"write"` on that
       mailbox, from that mailbox; bound to none it is the common sender for
       personal mailboxes, used from one's own personal mailbox with
-      `inbox.send_external`
+      `inbox.send_external` **and** one of its roles in effect (see below)
     * a **personal** identity uses the owner's own integration
       (`owner: {:user, uuid}`); only the owner creates, changes, deletes and
       uses it, from their personal mailbox
+
+  ## The roles of a common sender
+
+  A shared identity bound to no mailbox is open to a list of roles
+  (`"role_uuids"` in `create_shared/2` and `update_identity/3`, listed by
+  `list_shared/1`, the form's choices from `role_choices/1`). The roles only
+  narrow: the user still needs `inbox.send_external`, and one of the roles
+  *in effect* for the scope (`Scope.user_roles/1` — a user acting as one of
+  their roles has only that one) must be on the list. Owner
+  (`Scope.owner?/1`) is never on it and may always send. An empty list
+  opens it to nobody else. A role on the list that does not itself give
+  `inbox.send_external` is kept: the right is the user's, checked at send
+  time. Only `create_shared/2` without `"role_uuids"` chooses for the
+  caller — the roles holding `inbox.send_external` or `"*"`, Owner aside, as
+  the V06 migration did for the senders that existed then.
+
+  The list is read on every `resolve/2,3` and `list_usable/1,2`, so a role
+  taken off stops a send not yet gone. A sender bound to a mailbox keeps no
+  roles — it goes by the mailbox — and one unbound again starts with none.
+  The email nudge (`resolve_system/1`) sends as the module, not as a user,
+  and ignores the roles.
 
   ## Broken identities
 
@@ -52,13 +73,19 @@ defmodule PhoenixKitInbox.Identities do
   alias PhoenixKit.Integrations.Providers
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
+  alias PhoenixKit.Users.Permissions
+  alias PhoenixKit.Users.Role
+  alias PhoenixKit.Users.RolePermission
+  alias PhoenixKit.Users.Roles
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Schemas.Identity
+  alias PhoenixKitInbox.Schemas.IdentityRole
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.MailboxGrant
 
   @manage_shared "inbox.manage_shared"
   @send_external "inbox.send_external"
+  @superadmin "*"
   @reply_to_setting "reply_to"
   @email ~r/\A[^\s@<>",]+@[^\s@<>",]+\.[^\s@<>",]+\z/
 
@@ -89,7 +116,8 @@ defmodule PhoenixKitInbox.Identities do
   The identities the scope's user can send from right now, each as
   `t:resolved/0`: the personal ones they own, the shared ones bound to an
   active mailbox they can write to, and — with `inbox.send_external` — the
-  shared ones bound to no mailbox. Ones whose integration fails `check/1`
+  shared ones bound to no mailbox that are open to one of their roles in
+  effect (all of them for Owner). Ones whose integration fails `check/1`
   are left out; nothing is written (a send records it, `resolve/3`).
   Empty without the `"inbox"` permission.
   """
@@ -107,7 +135,7 @@ defmodule PhoenixKitInbox.Identities do
 
       usable =
         if Scope.can?(scope, @send_external),
-          do: dynamic([i], ^usable or (i.kind == "shared" and is_nil(i.mailbox_uuid))),
+          do: dynamic([i], ^usable or ^common_for(scope)),
           else: usable
 
       from(i in Identity, where: ^usable, order_by: [asc: i.label, asc: i.uuid])
@@ -119,6 +147,56 @@ defmodule PhoenixKitInbox.Identities do
   end
 
   def list_usable(_), do: []
+
+  @doc """
+  `list_usable/1` narrowed to the identities a message from `mailbox` may go
+  out as — what `resolve/3` would accept from it: one bound to that
+  mailbox, or, from the user's own personal mailbox, the personal and
+  common ones.
+  """
+  @spec list_usable(Scope.t(), Mailbox.t()) :: [resolved()]
+  def list_usable(scope, %Mailbox{} = mailbox) do
+    personal? =
+      mailbox.kind == "user" and Mailboxes.scope_user_uuid(scope) == {:ok, mailbox.owner_uuid}
+
+    scope
+    |> list_usable()
+    |> Enum.filter(&fits_mailbox?(&1, mailbox, personal?))
+  end
+
+  defp fits_mailbox?(%{mailbox_uuid: nil}, _mailbox, personal?), do: personal?
+  defp fits_mailbox?(%{mailbox_uuid: bound}, mailbox, _personal?), do: bound == mailbox.uuid
+
+  # The common senders (shared, bound to no mailbox) the scope may use, with
+  # `inbox.send_external` already checked: all for Owner, else those open to
+  # a role in effect.
+  defp common_for(scope) do
+    common = dynamic([i], i.kind == "shared" and is_nil(i.mailbox_uuid))
+
+    if Scope.owner?(scope) do
+      common
+    else
+      opened = select(open_rows(scope), [r], r.identity_uuid)
+      dynamic([i], ^common and i.uuid in subquery(opened))
+    end
+  end
+
+  # Identity-role rows of the roles in effect for the scope — names from the
+  # scope, never re-read from the user (that would lose "acting as").
+  defp open_rows(scope) do
+    names = Scope.user_roles(scope)
+
+    from(r in IdentityRole,
+      join: role in Role,
+      on: role.uuid == r.role_uuid,
+      where: role.name in ^names
+    )
+  end
+
+  defp open_to?(scope, identity_uuid) do
+    Scope.owner?(scope) or
+      scope |> open_rows() |> where([r], r.identity_uuid == ^identity_uuid) |> repo().exists?()
+  end
 
   defp usable_entry(identity, user) do
     case check_integration(identity.integration_uuid, expected_owner(identity)) do
@@ -146,9 +224,13 @@ defmodule PhoenixKitInbox.Identities do
   @typedoc """
   An identity as the settings pages list it: its stored `status`, and the
   login of its integration as the From address (`nil` when the connection
-  is gone or has none).
+  is gone or has none). `list_shared/1` adds the `roles` it is open to.
   """
-  @type listed :: %{identity: Identity.t(), from_address: String.t() | nil}
+  @type listed :: %{
+          required(:identity) => Identity.t(),
+          required(:from_address) => String.t() | nil,
+          optional(:roles) => [%{uuid: binary(), name: String.t()}]
+        }
 
   @doc """
   The scope user's personal identities, broken ones included (`t:listed/0`).
@@ -171,21 +253,74 @@ defmodule PhoenixKitInbox.Identities do
 
   @doc """
   Every shared identity, broken ones included (`t:listed/0`), read like
-  `list_personal/1`. Empty without `inbox.manage_shared`. For the admin
-  settings page.
+  `list_personal/1`, each with the `roles` it is open to (`%{uuid, name}`,
+  one query for all; none for one bound to a mailbox). Empty without
+  `inbox.manage_shared`. For the admin settings page.
   """
   @spec list_shared(Scope.t()) :: [listed()]
   def list_shared(%Scope{} = scope) do
     if Scope.can?(scope, @manage_shared) do
-      from(i in Identity, where: i.kind == "shared", order_by: [asc: i.label, asc: i.uuid])
-      |> repo().all()
+      identities =
+        from(i in Identity, where: i.kind == "shared", order_by: [asc: i.label, asc: i.uuid])
+        |> repo().all()
+
+      roles = roles_by_identity(Enum.map(identities, & &1.uuid))
+
+      identities
       |> with_from_addresses(:system)
+      |> Enum.map(&Map.put(&1, :roles, Map.get(roles, &1.identity.uuid, [])))
     else
       []
     end
   end
 
   def list_shared(_), do: []
+
+  defp roles_by_identity(identity_uuids) do
+    from(r in IdentityRole,
+      join: role in Role,
+      on: role.uuid == r.role_uuid,
+      where: r.identity_uuid in ^identity_uuids,
+      order_by: [asc: role.position, asc: role.name],
+      select: {r.identity_uuid, %{uuid: role.uuid, name: role.name}}
+    )
+    |> repo().all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  @doc """
+  The roles a common sender can be opened to, for the form: every role of
+  the site but Owner (who may always send), in the site's order, each as
+  `%{uuid, name, sends_external}` — `sends_external` when the role itself
+  gives the right to write externally as core counts it (`"inbox"` and
+  `inbox.send_external`, or `"*"`). One with `false` is still a choice: the
+  right is checked per user. Empty without `inbox.manage_shared`.
+  """
+  @spec role_choices(Scope.t()) :: [
+          %{uuid: binary(), name: String.t(), sends_external: boolean()}
+        ]
+  def role_choices(%Scope{} = scope) do
+    if Scope.can?(scope, @manage_shared) do
+      matrix = Permissions.get_permissions_matrix()
+      owner = Role.system_roles().owner
+
+      Roles.list_roles()
+      |> Enum.reject(&(&1.name == owner))
+      |> Enum.map(fn role ->
+        keys = Map.get(matrix, role.uuid, MapSet.new())
+        %{uuid: role.uuid, name: role.name, sends_external: sends_external?(keys)}
+      end)
+    else
+      []
+    end
+  end
+
+  def role_choices(_), do: []
+
+  defp sends_external?(keys) do
+    MapSet.member?(keys, @superadmin) or
+      (MapSet.member?(keys, "inbox") and MapSet.member?(keys, @send_external))
+  end
 
   # One query for the owner's mail connections, then the login of each
   # identity's own — a display value, not a check.
@@ -368,8 +503,8 @@ defmodule PhoenixKitInbox.Identities do
           %Identity{kind: "personal", owner_uuid: owner} ->
             owner == user.uuid
 
-          %Identity{kind: "shared", mailbox_uuid: nil} ->
-            Scope.can?(scope, @send_external)
+          %Identity{kind: "shared", mailbox_uuid: nil, uuid: uuid} ->
+            Scope.can?(scope, @send_external) and open_to?(scope, uuid)
 
           %Identity{kind: "shared", mailbox_uuid: mailbox_uuid} ->
             mailbox_uuid in writable_mailbox_uuids(user.uuid)
@@ -540,9 +675,14 @@ defmodule PhoenixKitInbox.Identities do
 
   `attrs`: `"label"`, `"from_name"`, `"integration_uuid"` and optionally
   `"mailbox_uuid"` — an existing shared mailbox (`{:error,
-  :mailbox_not_found}` otherwise). The integration must pass `check/1`
+  :mailbox_not_found}` otherwise) — and `"role_uuids"`, the roles a sender
+  bound to no mailbox is open to (see the moduledoc): Owner, `nil` and
+  unknown uuids are dropped, `[]` opens it to nobody; without the key it is
+  opened to the roles holding `inbox.send_external` or `"*"`, Owner aside.
+  A bound one takes no roles. The integration must pass `check/1`
   (`{:error, {:integration_unusable, problem}}`). Anything else in `attrs`
-  (kind, owner, status) is ignored.
+  (kind, owner, status) is ignored. The identity and its roles are written
+  in one transaction.
   """
   @spec create_shared(Scope.t(), map()) ::
           {:ok, Identity.t()}
@@ -557,15 +697,14 @@ defmodule PhoenixKitInbox.Identities do
     with :ok <- authorize_manage_shared(scope),
          {:ok, mailbox_uuid} <- shared_mailbox_uuid(Map.get(attrs, "mailbox_uuid")),
          {:ok, integration_uuid} <- usable_integration(attrs["integration_uuid"], :system) do
-      %Identity{
-        kind: "shared",
-        mailbox_uuid: mailbox_uuid,
-        integration_uuid: integration_uuid
-      }
+      %Identity{kind: "shared", mailbox_uuid: mailbox_uuid, integration_uuid: integration_uuid}
       |> Identity.changeset(attrs)
-      |> repo().insert()
+      |> write_with_roles(&insert/1, &put_roles(&1, initial_roles(attrs)))
     end
   end
+
+  defp initial_roles(%{"role_uuids" => role_uuids}), do: known_role_uuids(role_uuids)
+  defp initial_roles(_attrs), do: external_role_uuids()
 
   @doc """
   Creates a personal identity on the scope user's own mail integration.
@@ -592,8 +731,10 @@ defmodule PhoenixKitInbox.Identities do
 
   @doc """
   Changes an identity's `"label"`, `"from_name"`, `"integration_uuid"` (checked
-  again) and, for a shared one, `"mailbox_uuid"`. Same permissions as
-  creating it, judged on the stored row.
+  again) and, for a shared one, `"mailbox_uuid"` and `"role_uuids"` (as in
+  `create_shared/2`; without the key the roles stay). Binding a shared one
+  to a mailbox drops its roles. Same permissions as creating it, judged on
+  the stored row; the fields and the roles change in one transaction.
   """
   @spec update_identity(Scope.t(), Identity.t(), map()) ::
           {:ok, Identity.t()}
@@ -612,8 +753,86 @@ defmodule PhoenixKitInbox.Identities do
       identity
       |> Ecto.Changeset.change(changes)
       |> Identity.changeset(attrs)
-      |> repo().update()
+      |> write_with_roles(&update/1, &update_roles(&1, attrs))
     end
+  end
+
+  defp update_roles(%Identity{kind: "shared", mailbox_uuid: bound} = identity, _attrs)
+       when is_binary(bound),
+       do: put_roles(identity, [])
+
+  defp update_roles(%Identity{kind: "shared"} = identity, %{"role_uuids" => role_uuids}),
+    do: put_roles(identity, known_role_uuids(role_uuids))
+
+  defp update_roles(_identity, _attrs), do: :ok
+
+  # Replaces the identity's roles; a bound one keeps none.
+  defp put_roles(%Identity{uuid: uuid, mailbox_uuid: bound}, role_uuids) do
+    {_count, _} = from(r in IdentityRole, where: r.identity_uuid == ^uuid) |> repo().delete_all()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    rows = if is_nil(bound), do: role_uuids, else: []
+
+    {_count, _} =
+      repo().insert_all(
+        IdentityRole,
+        Enum.map(rows, &%{identity_uuid: uuid, role_uuid: &1, inserted_at: now}),
+        on_conflict: :nothing
+      )
+
+    :ok
+  end
+
+  # The roles named that exist, Owner aside; anything else is dropped. A
+  # form may send the list as a map of index => uuid.
+  defp known_role_uuids(values) do
+    uuids =
+      values
+      |> then(&if(is_map(&1), do: Map.values(&1), else: List.wrap(&1)))
+      |> Enum.flat_map(fn value ->
+        case Ecto.UUID.cast(value) do
+          {:ok, uuid} -> [uuid]
+          :error -> []
+        end
+      end)
+      |> Enum.uniq()
+
+    owner = Role.system_roles().owner
+
+    from(r in Role, where: r.uuid in ^uuids and r.name != ^owner, select: r.uuid)
+    |> repo().all()
+  end
+
+  # The roles holding `inbox.send_external` or `"*"`, Owner aside — who could
+  # use a common sender before it had roles of its own.
+  defp external_role_uuids do
+    owner = Role.system_roles().owner
+
+    from(r in Role,
+      join: p in RolePermission,
+      on: p.role_uuid == r.uuid,
+      where: p.module_key in [@send_external, @superadmin] and r.name != ^owner,
+      distinct: true,
+      select: r.uuid
+    )
+    |> repo().all()
+  end
+
+  defp insert(changeset), do: repo().insert(changeset)
+  defp update(changeset), do: repo().update(changeset)
+
+  # The identity (`write` of its changeset) and then its roles, in one
+  # transaction.
+  defp write_with_roles(changeset, write, put_roles) do
+    repo().transaction(fn ->
+      case write.(changeset) do
+        {:ok, identity} ->
+          :ok = put_roles.(identity)
+          identity
+
+        {:error, reason} ->
+          repo().rollback(reason)
+      end
+    end)
   end
 
   defp structural_changes(identity, attrs) do

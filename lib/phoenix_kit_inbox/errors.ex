@@ -121,6 +121,9 @@ defmodule PhoenixKitInbox.Errors do
   def message(:external_needs_identity),
     do: gettext("Choose a sender under “Send as” to write to addresses outside this application.")
 
+  def message(:external_not_allowed),
+    do: gettext("No mail is open to you for writing to addresses outside this application.")
+
   def message({:external_too_large, max}),
     do:
       gettext(

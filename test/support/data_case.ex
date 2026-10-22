@@ -126,15 +126,24 @@ defmodule PhoenixKitInbox.DataCase do
   `permissions` — what the context functions that take a scope check with
   `Scope.can?/2`. Pair with `enable_inbox!/0`: `can?/2` also requires the
   module to be enabled.
+
+  `roles` are the roles in effect (`%Role{}` or names) — what
+  `Scope.user_roles/1` and `Scope.owner?/1` read; none by default.
+  `held_roles` are all the roles the user holds (`Scope.held_roles/1`),
+  `roles` unless given — a user acting as one of them holds more.
   """
-  def scope_for(user, permissions \\ ["inbox"]) do
+  def scope_for(user, permissions \\ ["inbox"], roles \\ [], held_roles \\ nil) do
     %Scope{
       user: user,
       authenticated?: true,
-      cached_roles: [],
+      cached_roles: Enum.map(roles, &role_name/1),
+      held_roles: Enum.map(held_roles || roles, &role_name/1),
       cached_permissions: MapSet.new(permissions)
     }
   end
+
+  defp role_name(%Role{name: name}), do: name
+  defp role_name(name) when is_binary(name), do: name
 
   @doc "Enables the module, which `Scope.can?/2` requires for every inbox key."
   def enable_inbox! do

@@ -16,8 +16,18 @@ defmodule PhoenixKitInbox.IdentitiesTest do
     bob = user_fixture(%{first_name: "Bob", last_name: "Jones"})
     desk = shared_mailbox_fixture(admin, %{name: "Desk", address: "desk@company.test"})
     system_smtp = mail_integration_fixture(:system, username: "desk@company.test")
+    # The role that sends externally; common senders are opened to it.
+    senders = grant_role!(alice, @external)
+    grant_role!(bob, [], name: senders.name)
 
-    %{admin: admin, alice: alice, bob: bob, desk: desk, system_smtp: system_smtp}
+    %{
+      admin: admin,
+      alice: alice,
+      bob: bob,
+      desk: desk,
+      system_smtp: system_smtp,
+      senders: senders
+    }
   end
 
   defp shared!(ctx, attrs) do
@@ -341,7 +351,7 @@ defmodule PhoenixKitInbox.IdentitiesTest do
 
     test "the common sender needs inbox.send_external", ctx do
       refute ctx.common.uuid in usable(scope_for(ctx.bob))
-      assert ctx.common.uuid in usable(scope_for(ctx.bob, @external))
+      assert ctx.common.uuid in usable(scope_for(ctx.bob, @external, [ctx.senders]))
     end
 
     test "a personal identity is listed for its owner only", ctx do
@@ -504,10 +514,10 @@ defmodule PhoenixKitInbox.IdentitiesTest do
       bare = shared!(ctx, label: "Bare", integration_uuid: ctx.system_smtp)
 
       assert {:ok, %{from_name: "Alice Smith | Company"}} =
-               Identities.resolve(scope_for(ctx.alice, @external), common.uuid)
+               Identities.resolve(scope_for(ctx.alice, @external, [ctx.senders]), common.uuid)
 
       assert {:ok, %{from_name: "Alice Smith"}} =
-               Identities.resolve(scope_for(ctx.alice, @external), bare.uuid)
+               Identities.resolve(scope_for(ctx.alice, @external, [ctx.senders]), bare.uuid)
     end
 
     test "a personal identity sends as its from_name, else the owner's name", ctx do
@@ -589,7 +599,7 @@ defmodule PhoenixKitInbox.IdentitiesTest do
       )
 
       assert {:error, :broken} =
-               Identities.resolve(scope_for(ctx.alice, @external), identity.uuid)
+               Identities.resolve(scope_for(ctx.alice, @external, [ctx.senders]), identity.uuid)
 
       assert {:error, :owner_mismatch} = Identities.check(Repo.get(Identity, identity.uuid))
     end
@@ -616,7 +626,7 @@ defmodule PhoenixKitInbox.IdentitiesTest do
           "integration_uuid" => own
         })
 
-      scope = scope_for(ctx.alice, @external)
+      scope = scope_for(ctx.alice, @external, [ctx.senders])
 
       assert {:ok, _} = Identities.resolve(scope, bound.uuid, ctx.desk)
       assert {:error, :identity_not_for_mailbox} = Identities.resolve(scope, bound.uuid, other)

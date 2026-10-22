@@ -39,6 +39,10 @@ defmodule PhoenixKitInbox.RecipientFilterTest do
     handles = user_fixture().uuid |> Mailboxes.search_recipients("_") |> Enum.map(& &1.handle)
     assert "@ok_guest" in handles
     refute "@no_staff" in handles
+
+    usernames = user_fixture().uuid |> Mailboxes.search_users("_") |> Enum.map(& &1.username)
+    assert "ok_guest" in usernames
+    refute "no_staff" in usernames
   end
 
   test "a filter that raises shuts the user out rather than letting them in" do

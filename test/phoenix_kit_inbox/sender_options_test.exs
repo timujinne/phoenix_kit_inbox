@@ -25,6 +25,8 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
     {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(alice)
     {:ok, bob_mb} = Mailboxes.ensure_user_mailbox(bob)
     system_smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+    # The role that sends externally; the common sender is opened to it.
+    senders = grant_role!(alice, @external)
 
     {:ok, common} =
       Identities.create_shared(scope_for(admin, ["inbox", "inbox.manage_shared"]), %{
@@ -40,6 +42,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
       alice_mb: alice_mb,
       bob_mb: bob_mb,
       common: common,
+      senders: senders,
       system_smtp: system_smtp
     }
   end
@@ -55,7 +58,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
   describe "identity_uuid" do
     test "a usable identity is recorded on the message", ctx do
       assert {:ok, message} =
-               send(ctx, scope_for(ctx.alice, @external), ctx.alice_mb, %{
+               send(ctx, scope_for(ctx.alice, @external, [ctx.senders]), ctx.alice_mb, %{
                  "identity_uuid" => ctx.common.uuid
                })
 
@@ -74,7 +77,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
 
     test "only the sending mailbox sees the identity; recipients keep the Reply-To", ctx do
       {:ok, message} =
-        send(ctx, scope_for(ctx.alice, @external), ctx.alice_mb, %{
+        send(ctx, scope_for(ctx.alice, @external, [ctx.senders]), ctx.alice_mb, %{
           "identity_uuid" => ctx.common.uuid,
           "reply_to" => ctx.alice.email
         })
@@ -106,7 +109,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
 
     test "an identity of another mailbox refuses the send", ctx do
       assert {:error, {:identity_unusable, :identity_not_for_mailbox}} =
-               send(ctx, scope_for(ctx.alice, @external), ctx.desk, %{
+               send(ctx, scope_for(ctx.alice, @external, [ctx.senders]), ctx.desk, %{
                  "identity_uuid" => ctx.common.uuid
                })
     end
@@ -115,7 +118,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
       :ok = Integrations.remove_connection(ctx.system_smtp, nil, owner: :system)
 
       assert {:error, {:identity_unusable, :broken}} =
-               send(ctx, scope_for(ctx.alice, @external), ctx.alice_mb, %{
+               send(ctx, scope_for(ctx.alice, @external, [ctx.senders]), ctx.alice_mb, %{
                  "identity_uuid" => ctx.common.uuid
                })
 
@@ -124,7 +127,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
 
     test "an unknown identity refuses the send", ctx do
       assert {:error, {:identity_unusable, :not_found}} =
-               send(ctx, scope_for(ctx.alice, @external), ctx.alice_mb, %{
+               send(ctx, scope_for(ctx.alice, @external, [ctx.senders]), ctx.alice_mb, %{
                  "identity_uuid" => Ecto.UUID.generate()
                })
     end
@@ -185,7 +188,7 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
 
   describe "drafts" do
     test "keep the chosen identity and Reply-To unchecked until the send", ctx do
-      scope = scope_for(ctx.alice, @external)
+      scope = scope_for(ctx.alice, @external, [ctx.senders])
 
       {:ok, draft} =
         Messages.save_draft(scope, ctx.alice_mb, %{

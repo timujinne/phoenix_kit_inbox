@@ -653,6 +653,64 @@ defmodule PhoenixKitInbox.MailboxesTest do
     end
   end
 
+  describe "search_users/3 (granting access to a shared mailbox)" do
+    test "members only, each with uuid, name and username; never the searcher" do
+      me = user_fixture(%{username: "grantor", email: "grantor@example.com"})
+
+      them =
+        user_fixture(%{
+          username: "zzgrantee",
+          email: "zzgrantee@example.com",
+          first_name: "Gran",
+          last_name: "Tee"
+        })
+
+      _outsider =
+        user_fixture(%{username: "zzoutsider", email: "zzout@example.com", inbox_member: false})
+
+      _ = shared_mailbox_fixture(me, %{name: "zz desk"})
+
+      assert [%{uuid: uuid, name: "Gran Tee", username: "zzgrantee"}] =
+               Mailboxes.search_users(me.uuid, "zz")
+
+      assert uuid == them.uuid
+      assert Mailboxes.search_users(me.uuid, "grantor") == []
+    end
+
+    test "finds by username, email and name, and respects the limit" do
+      me = user_fixture()
+
+      them =
+        user_fixture(%{username: "yyfind", email: "yyfind@example.com", first_name: "Yolanda"})
+
+      for term <- ["yyfind", "yyfind@exam", "Yolanda"] do
+        assert [%{uuid: uuid}] = Mailboxes.search_users(me.uuid, term)
+        assert uuid == them.uuid
+      end
+
+      for _ <- 1..3, do: user_fixture()
+      assert me.uuid |> Mailboxes.search_users("", limit: 2) |> length() == 2
+    end
+  end
+
+  describe "list_grant_holders/1" do
+    test "the grants of a mailbox with their users' names" do
+      owner = user_fixture()
+      desk = shared_mailbox_fixture(owner, %{name: "Desk"})
+      ada = user_fixture(%{first_name: "Ada", last_name: "Byron", username: "ada"})
+      bob = user_fixture(%{first_name: "Bob", last_name: "Stone", username: nil})
+      grant_fixture(desk, ada, "write")
+      grant_fixture(desk, bob, "read")
+
+      assert [
+               %{user_uuid: ada_uuid, access: "write", name: "Ada Byron", username: "ada"},
+               %{user_uuid: bob_uuid, access: "read", name: "Bob Stone", username: nil}
+             ] = desk.uuid |> Mailboxes.list_grant_holders() |> Enum.sort_by(& &1.name)
+
+      assert {ada_uuid, bob_uuid} == {ada.uuid, bob.uuid}
+    end
+  end
+
   describe "user_display_name/1" do
     test "prefers the full name, then username, then the email local part" do
       assert Mailboxes.user_display_name(%{first_name: "Ada", last_name: "Lovelace"}) ==

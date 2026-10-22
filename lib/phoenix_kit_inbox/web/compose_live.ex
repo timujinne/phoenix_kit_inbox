@@ -45,9 +45,9 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   ## Sender and external recipients
 
   The "Send as" picker offers the sending identities the user may use from
-  the chosen mailbox (`Identities.list_usable/1`, narrowed to that
-  mailbox), plus "inside the application only" — while external sending is
-  open (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
+  the chosen mailbox (`Identities.list_usable/2`), plus "inside the
+  application only" — while external sending is open
+  (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
   no member's or shared mailbox's goes to that address outside the
   application — it needs a chosen identity, and the send checks the rest
   (`Messages.send_message/4`). The external part goes after the send, so
@@ -170,20 +170,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   defp usable_identities(_scope, nil), do: []
 
   defp usable_identities(scope, mailbox) do
-    if Outbound.open?() do
-      personal? =
-        mailbox.kind == "user" and Mailboxes.scope_user_uuid(scope) == {:ok, mailbox.owner_uuid}
-
-      scope
-      |> Identities.list_usable()
-      |> Enum.filter(&fits_mailbox?(&1, mailbox, personal?))
-    else
-      []
-    end
+    if Outbound.open?(), do: Identities.list_usable(scope, mailbox), else: []
   end
-
-  defp fits_mailbox?(%{mailbox_uuid: nil}, _mailbox, personal?), do: personal?
-  defp fits_mailbox?(%{mailbox_uuid: bound}, mailbox, _personal?), do: bound == mailbox.uuid
 
   defp mailbox_signatures(nil), do: []
   defp mailbox_signatures(mailbox), do: Signatures.list(mailbox.uuid)

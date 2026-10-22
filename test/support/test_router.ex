@@ -47,7 +47,21 @@ defmodule PhoenixKitInbox.Test.Router do
         live("/", InboxLive, :index)
         live("/compose", ComposeLive, :new)
         live("/mailboxes", MailboxesLive, :index)
-        live("/settings", SettingsLive, :index)
+      end
+    end
+
+    # The shared-mail settings live in core's Settings section, from
+    # `settings_tabs/0`.
+    for base <- [
+          "/en/admin/settings",
+          "/ru/admin/settings",
+          "/et/admin/settings",
+          "/admin/settings"
+        ] do
+      scope base, PhoenixKitInbox.Web do
+        pipe_through(:browser)
+
+        live("/inbox", SettingsLive, :index)
       end
     end
   end

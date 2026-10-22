@@ -48,6 +48,14 @@ defmodule PhoenixKitInbox.Web.MySettingsLiveTest do
     assert has_element?(view, "#open-inbox[href*='/admin/inbox']")
   end
 
+  test "a holder of inbox.manage_shared gets a link to the shared mail", ctx do
+    {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)
+    refute has_element?(view, "#manage-shared-mail")
+
+    {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox", "inbox.manage_shared"]), @path)
+    assert has_element?(view, "#manage-shared-mail[href*='/admin/settings/inbox']")
+  end
+
   describe "signatures" do
     test "a signature is added, made default, and deleted", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.alice), @path)

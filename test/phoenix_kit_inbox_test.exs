@@ -54,7 +54,7 @@ defmodule PhoenixKitInboxTest do
 
   test "migration_module points at this module's own coordinator" do
     assert PhoenixKitInbox.migration_module() == PhoenixKitInbox.Migrations
-    assert PhoenixKitInbox.Migrations.current_version() == 5
+    assert PhoenixKitInbox.Migrations.current_version() == 6
   end
 
   describe "admin_tabs/0" do
@@ -63,7 +63,7 @@ defmodule PhoenixKitInboxTest do
     end
 
     test "every tab is a Tab struct with a live_view and our permission", %{tabs: tabs} do
-      assert length(tabs) == 5
+      assert length(tabs) == 4
 
       for tab <- tabs do
         assert %Tab{} = tab
@@ -95,15 +95,29 @@ defmodule PhoenixKitInboxTest do
     test "subtabs hang off the parent tab", %{tabs: tabs} do
       subtabs = Enum.filter(tabs, &(&1.parent != nil))
 
-      assert length(subtabs) == 4
+      assert length(subtabs) == 3
       assert Enum.all?(subtabs, &(&1.parent == :admin_inbox))
     end
 
-    test "the settings tab is the admin settings page", %{tabs: tabs} do
-      settings = Enum.find(tabs, &(&1.id == :admin_inbox_settings))
+    test "the settings page is no longer a tab of the module's menu", %{tabs: tabs} do
+      refute Enum.any?(tabs, &(&1.id == :admin_inbox_settings))
+      refute Enum.any?(tabs, &(&1.live_view == {PhoenixKitInbox.Web.SettingsLive, :index}))
+    end
+  end
 
-      assert settings.path == "inbox/settings"
-      assert settings.live_view == {PhoenixKitInbox.Web.SettingsLive, :index}
+  describe "settings_tabs/0" do
+    test "the mail settings are a page of core's Settings section" do
+      assert [%Tab{} = tab] = PhoenixKitInbox.settings_tabs()
+
+      assert tab.id == :admin_settings_inbox
+      assert tab.parent == :admin_settings
+      assert tab.path == "inbox"
+      assert tab.permission == "inbox.manage_shared"
+      assert tab.live_view == {PhoenixKitInbox.Web.SettingsLive, :index}
+    end
+
+    test "Paths.settings/0 points at the Settings section" do
+      assert PhoenixKitInbox.Paths.settings() =~ "/admin/settings/inbox"
     end
   end
 

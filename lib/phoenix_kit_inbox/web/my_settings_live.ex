@@ -12,6 +12,8 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
     * **Senders** — personal identities on their own mail integrations
       (`Web.IdentityEditor`), with a link to core's personal integrations
       page for those who may add one
+    * a link to the **shared mail** page (`Web.SettingsLive`) for holders of
+      `inbox.manage_shared`
 
   Everything is checked again in the contexts with the session scope.
   """
@@ -41,6 +43,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
       |> assign(:scope, scope)
       |> assign(:module_access, access)
       |> assign(:integrations_access, Scope.has_module_access?(scope, "integrations"))
+      |> assign(:can_manage_shared, access && Mailboxes.can_manage_shared?(scope))
       |> load(access && personal_mailbox(scope))
 
     {:ok, socket}
@@ -126,6 +129,14 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
         <div :if={@module_access} class="flex flex-wrap gap-2">
           <.link navigate={Paths.inbox()} id="open-inbox" class="btn btn-primary btn-sm">
             <.icon name="hero-envelope" class="w-4 h-4" /> {gettext("Open Inbox")}
+          </.link>
+          <.link
+            :if={@can_manage_shared}
+            navigate={Paths.settings()}
+            id="manage-shared-mail"
+            class="btn btn-ghost btn-sm"
+          >
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" /> {gettext("Manage shared mail")}
           </.link>
         </div>
 

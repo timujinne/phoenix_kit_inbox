@@ -141,7 +141,7 @@ defmodule PhoenixKitInbox do
   def permission_metadata do
     %{
       key: module_key(),
-      label: gettext_noop("Inbox"),
+      label: gettext_noop("Mail"),
       icon: "hero-inbox-arrow-down",
       description: gettext_noop("Internal mailboxes — send and receive messages between users"),
       gettext_backend: PhoenixKitInbox.Gettext,
@@ -165,9 +165,10 @@ defmodule PhoenixKitInbox do
   @doc """
   Admin sidebar tabs.
 
-  Four visible pages plus one hidden route for the compose view. Settings
-  (shared senders, shared-mailbox signatures) is shown only to holders of
-  `inbox.manage_shared`; the page checks it again. Folder
+  "Mail", with three visible pages ("Inbox" — the messages, "Mailboxes")
+  plus one hidden route for the compose view. The shared-mail settings
+  (shared senders, shared-mailbox signatures) are not here but in core's
+  Settings section: see `settings_tabs/0`. Folder
   navigation is **not** a tab per folder — the mailbox is a single LiveView and
   folders are query params, so switching folders is a `push_patch` rather than
   a remount (see `PhoenixKitInbox.Paths.inbox/1`).
@@ -176,7 +177,7 @@ defmodule PhoenixKitInbox do
     [
       %Tab{
         id: :admin_inbox,
-        label: gettext_noop("Inbox"),
+        label: gettext_noop("Mail"),
         gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-inbox-arrow-down",
         path: "inbox",
@@ -191,7 +192,7 @@ defmodule PhoenixKitInbox do
       },
       %Tab{
         id: :admin_inbox_messages,
-        label: gettext_noop("Messages"),
+        label: gettext_noop("Inbox"),
         gettext_backend: PhoenixKitInbox.Gettext,
         icon: "hero-envelope",
         path: "inbox",
@@ -227,20 +228,26 @@ defmodule PhoenixKitInbox do
         permission: module_key(),
         parent: :admin_inbox,
         live_view: {PhoenixKitInbox.Web.MailboxesLive, :index}
-      },
-      %Tab{
-        id: :admin_inbox_settings,
-        label: gettext_noop("Settings"),
-        gettext_backend: PhoenixKitInbox.Gettext,
-        icon: "hero-cog-6-tooth",
-        path: "inbox/settings",
-        priority: 649,
-        level: :admin,
-        permission: module_key(),
-        parent: :admin_inbox,
-        visible: &PhoenixKitInbox.Mailboxes.can_manage_shared?/1,
-        live_view: {PhoenixKitInbox.Web.SettingsLive, :index}
       }
+    ]
+  end
+
+  @impl PhoenixKit.Module
+  def settings_tabs do
+    [
+      Tab.new!(
+        id: :admin_settings_inbox,
+        label: gettext_noop("Mail"),
+        gettext_backend: PhoenixKitInbox.Gettext,
+        icon: "hero-envelope",
+        path: "inbox",
+        priority: 927,
+        level: :admin,
+        parent: :admin_settings,
+        permission: "inbox.manage_shared",
+        match: :exact,
+        live_view: {PhoenixKitInbox.Web.SettingsLive, :index}
+      )
     ]
   end
 

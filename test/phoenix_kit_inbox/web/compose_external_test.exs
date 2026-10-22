@@ -27,6 +27,8 @@ defmodule PhoenixKitInbox.Web.ComposeExternalTest do
     grant_fixture(desk, alice, "write")
     manage = scope_for(admin, ["inbox", "inbox.manage_shared"])
     smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+    # The role that sends externally; the common sender is opened to it.
+    senders = grant_role!(alice, @external)
 
     {:ok, common} =
       Identities.create_shared(manage, %{
@@ -60,15 +62,13 @@ defmodule PhoenixKitInbox.Web.ComposeExternalTest do
       common: common,
       desk_identity: desk_identity,
       other_identity: other_identity,
+      senders: senders,
       smtp: smtp
     }
   end
 
   defp as_alice(ctx, permissions \\ @external) do
-    put_test_scope(
-      ctx.conn,
-      fake_scope(user_uuid: ctx.alice.uuid, email: ctx.alice.email, permissions: permissions)
-    )
+    put_test_scope(ctx.conn, scope_for(ctx.alice, permissions, [ctx.senders]))
   end
 
   defp submit(view, params) do

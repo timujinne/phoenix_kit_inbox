@@ -10,8 +10,8 @@ Four admin pages:
 
 - **Inbox** (`Web.InboxLive`) — three-pane webmail: folder sidebar, message list, reading pane
 - **Compose** (`Web.ComposeLive`) — new / reply / forward / drafts (hidden tab, reached from the New message button)
-- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them
-- **Settings** (`Web.SettingsLive`) — shared senders and shared-mailbox signatures (shown to `inbox.manage_shared` holders)
+- **Mailboxes** (`Web.MailboxesLive`) — shared mailboxes and who can use them; the Access panel picks colleagues from `Mailboxes.search_users/3` (members, not the viewer) and lists grants by name (`list_grant_holders/1`); the Signatures panel writes a mailbox's signatures (`Web.SignatureEditor`, offered on a mailbox the viewer administers when they hold `inbox.manage_shared`)
+- **Settings** (`Web.SettingsLive`, "Mail" in core's Settings section, `/admin/settings/inbox`, from `settings_tabs/0`) — shared senders (add, edit, roles; the form never binds a mailbox and passes on only its own fields)
 
 And one user page, outside the admin area: **Mail settings** (`Web.MySettingsLive`, `/dashboard/inbox-settings`) — the user's signatures, default Reply-To and personal senders. It is a `user_dashboard_tabs/0` entry with a `live_view`, so core generates its route in the authenticated session; the page checks access itself and draws its own layout (`LayoutWrapper.app_layout`). A second entry, **Mail**, is an absolute path (`/admin/inbox`) with no `live_view` — core leaves absolute paths as they are and generates no route for it. Both are in the avatar menu (`user_menu: &PhoenixKitInbox.user_menu?/1` — the `"inbox"` permission).
 
@@ -45,7 +45,7 @@ The **email nudge** in `PhoenixKitInbox.Notify` goes the same way, from the shar
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures; `V05` — external recipients with their status. **Immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures; `V05` — external recipients with their status; `V06` — the roles of a common sender (seeded once, on 5 → 6, from the roles holding `inbox.send_external` or `"*"`, Owner aside). **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
@@ -78,6 +78,7 @@ phoenix_kit_inbox_messages           body stored ONCE; thread_uuid, parent_uuid,
  └─ phoenix_kit_inbox_attachments     file_uuid → a snapshot in the module's hidden Storage library
 
 phoenix_kit_inbox_identities          kind: "shared" (system integration, mailbox or none) | "personal" (owner)
+ └─ phoenix_kit_inbox_identity_roles  roles a common sender is open to (both FKs cascade)
 phoenix_kit_inbox_signatures          per mailbox, Markdown, at most one is_default
 ```
 
@@ -109,7 +110,7 @@ Consequences worth remembering before changing anything:
 `PhoenixKitInbox.Identities` and `PhoenixKitInbox.Signatures`; every write takes the caller's `%Scope{}` and checks the **stored** row.
 
 - **The From address is never typed or stored**: it is the integration's login (SMTP `username`, an email). A mail integration without one is unusable (`:no_from_address`).
-- **Shared** identity = a `:system` integration, written by `inbox.manage_shared` holders. Bound to a shared mailbox → usable by `write` holders, from that mailbox only. Unbound → the common sender for personal mailboxes: `inbox.send_external`, from one's own personal mailbox, From name `"<user> | <from_name>"`. **Personal** identity = the owner's `{:user, uuid}` integration, owner only, personal mailbox only. A CHECK constraint keeps the shapes apart; both FKs cascade (an identity outliving its mailbox would become an unbound one).
+- **Shared** identity = a `:system` integration, written by `inbox.manage_shared` holders. Bound to a shared mailbox → usable by `write` holders, from that mailbox only. Unbound → the common sender for personal mailboxes: `inbox.send_external` **and** one of its roles (`phoenix_kit_inbox_identity_roles`) in effect for the scope — names from `Scope.user_roles/1`, never a re-read user (that loses "acting as"); Owner by `Scope.owner?/1` always — from one's own personal mailbox, From name `"<user> | <from_name>"`. The roles only narrow; `External.allowed?/2` is unchanged. Bound identities keep no roles; the nudge (`resolve_system/1`) ignores them. **Personal** identity = the owner's `{:user, uuid}` integration, owner only, personal mailbox only. A CHECK constraint keeps the shapes apart; both FKs cascade (an identity outliving its mailbox would become an unbound one).
 - `check/1` (exists, `:email_send` provider, credentials, owner, login) is stored in `status` (`broken` ↔ `active`) only by `resolve/2,3` (every send) and `recheck/2` (the settings pages' "Check"). `list_usable/1` checks without writing; the settings listings show the stored status and check nothing (one connections query for the From addresses); the "Add sender" choices are loaded when the button is pressed. **A send uses `resolve/3`** — `resolve/2` has no mailbox fit. Integrations are core's `phoenix_kit_settings` rows, so `integration_uuid` has no FK.
 - **Reply-To** options: the user's email + `address` of active shared mailboxes they own or hold `write`/`admin` on. Default: the sending shared mailbox's address (none without one — so an internal reply still goes to the mailbox), else the personal mailbox's `settings["reply_to"]` while allowed, else the email. A reply in compose goes to the message's `reply_to` when set.
 - **Signatures**: personal mailbox → owner; shared → `admin` on it **and** `inbox.manage_shared`. `Signatures.list/1` takes a mailbox uuid the caller has authorized (like `list_grants/1`). Compose inserts `Signatures.block/1` (`"\n\n-- \n" <> body`) and swaps it with `swap_block/3` only while the body still ends with what it inserted; a reopened draft is left as saved; only the sending mailbox's signatures can be chosen.
@@ -161,10 +162,10 @@ lib/phoenix_kit_inbox/
 ├── external.ex                           # external recipients: rows, task, status, retry
 ├── email_log.ex                          # reads phoenix_kit_emails' log (soft dependency)
 ├── migrations.ex                         # version coordinator
-├── migrations/v01.ex … v05.ex            # immutable
-├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,signature,external_recipient}.ex
+├── migrations/v01.ex … v06.ex            # immutable
+├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,identity_role,signature,external_recipient}.ex
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
-    web/{signature_editor,identity_editor}.ex   # shared by the two settings pages
+    web/{signature_editor,identity_editor}.ex   # editors the pages share
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.
@@ -174,7 +175,7 @@ lib/phoenix_kit_inbox/
 ## Critical Conventions
 
 - **Module key** `"inbox"` — consistent across `module_key/0`, `permission_metadata/0`, tab `:permission`, notification type key, and settings prefix
-- **Tab IDs** prefixed `:admin_inbox`
+- **Tab IDs** prefixed `:admin_inbox`; the sidebar reads "Mail" › "Inbox" (`:admin_inbox_messages`), "Mailboxes"; the settings tab is `:admin_settings_inbox` (parent `:admin_settings`, permission `inbox.manage_shared`). msgid "Inbox" is shared with the folder and the page title, so its translation stays as it is
 - **URL paths** use hyphens, never underscores
 - **Navigation** always via `PhoenixKitInbox.Paths`, never a relative or hardcoded path. Notification links are the exception: store the **raw** path (`Paths.raw_message_path/2`) because core prefixes stored links itself — a pre-prefixed one double-prefixes.
 - **`enabled?/0`** rescues and returns `false`; it runs before the DB is guaranteed up

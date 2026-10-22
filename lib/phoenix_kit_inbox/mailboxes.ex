@@ -322,9 +322,36 @@ defmodule PhoenixKitInbox.Mailboxes do
   end
 
   # The sender is excluded — a To field offering you yourself is noise, and
-  # messaging yourself is still possible by typing the handle. A host rule
-  # can't be expressed in SQL, so with one the limit applies after it.
+  # messaging yourself is still possible by typing the handle.
   defp user_suggestions(user_uuid, term, limit) do
+    user_uuid
+    |> other_members(term, limit)
+    |> Enum.map(&%{handle: user_handle(&1), label: suggestion_label(&1)})
+    |> Enum.reject(&is_nil(&1.handle))
+  end
+
+  @doc """
+  Members (`PhoenixKitInbox.Members`) other than `user_uuid` matching `term`
+  (username, email, first or last name; blank lists everyone, up to the
+  limit), as `%{uuid, name, username}` — for picking whom to grant a shared
+  mailbox to. Users only: no shared mailboxes. `opts`: `limit:` (20).
+  """
+  @spec search_users(binary(), String.t(), keyword()) :: [
+          %{uuid: binary(), name: String.t(), username: String.t() | nil}
+        ]
+  def search_users(user_uuid, term \\ "", opts \\ [])
+
+  def search_users(user_uuid, term, opts) when is_binary(user_uuid) do
+    user_uuid
+    |> other_members(term, Keyword.get(opts, :limit, 20))
+    |> Enum.map(&%{uuid: &1.uuid, name: user_display_name(&1), username: &1.username})
+  end
+
+  def search_users(_, _, _), do: []
+
+  # A host rule can't be expressed in SQL, so with one the limit applies
+  # after it.
+  defp other_members(user_uuid, term, limit) do
     query =
       from(u in User,
         where: u.uuid != ^user_uuid,
@@ -346,8 +373,6 @@ defmodule PhoenixKitInbox.Mailboxes do
     |> repo().all()
     |> Members.keep()
     |> Enum.take(limit)
-    |> Enum.map(&%{handle: user_handle(&1), label: suggestion_label(&1)})
-    |> Enum.reject(&is_nil(&1.handle))
   end
 
   defp suggestion_label(%{username: username} = user)
@@ -657,6 +682,32 @@ defmodule PhoenixKitInbox.Mailboxes do
       order_by: [asc: g.inserted_at]
     )
     |> repo().all()
+  end
+
+  @doc """
+  The grants on a mailbox with their users, in one query, for the access
+  panel: `[%{user_uuid, access, name, username}]` oldest grant first (to the second).
+  """
+  @spec list_grant_holders(binary()) :: [
+          %{user_uuid: binary(), access: access(), name: String.t(), username: String.t() | nil}
+        ]
+  def list_grant_holders(mailbox_uuid) when is_binary(mailbox_uuid) do
+    from(g in MailboxGrant,
+      join: u in User,
+      on: u.uuid == g.user_uuid,
+      where: g.mailbox_uuid == ^mailbox_uuid,
+      order_by: [asc: g.inserted_at, asc: g.uuid],
+      select: {g, u}
+    )
+    |> repo().all()
+    |> Enum.map(fn {grant, user} ->
+      %{
+        user_uuid: grant.user_uuid,
+        access: grant.access,
+        name: user_display_name(user),
+        username: user.username
+      }
+    end)
   end
 
   @doc """

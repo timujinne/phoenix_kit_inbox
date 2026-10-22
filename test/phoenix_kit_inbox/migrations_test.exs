@@ -1,6 +1,6 @@
 defmodule PhoenixKitInbox.MigrationsTest do
   @moduledoc """
-  V02–V05 against a real database: the suite's own schema (migrated by
+  V02–V06 against a real database: the suite's own schema (migrated by
   `test_helper.exs` through the coordinator) and a scratch named schema, so
   the prefix-anchored changes are exercised outside `public`.
   """
@@ -49,13 +49,53 @@ defmodule PhoenixKitInbox.MigrationsTest do
     def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 4)
   end
 
-  test "the coordinator expects version 5" do
-    assert PhoenixKitInbox.Migrations.current_version() == 5
+  defmodule ProbeToV6 do
+    @moduledoc false
+    use Ecto.Migration
+    def up, do: PhoenixKitInbox.Migrations.up(prefix: "inbox_v02_probe", version: 6)
+    def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 5)
+  end
+
+  test "the coordinator expects version 6" do
+    assert PhoenixKitInbox.Migrations.current_version() == 6
   end
 
   describe "the suite's schema (public)" do
-    test "is recorded at version 5" do
-      assert version_comment("public") == "5"
+    test "is recorded at version 6" do
+      assert version_comment("public") == "6"
+    end
+
+    test "identity roles go with their identity and with their role" do
+      table = "phoenix_kit_inbox_identity_roles"
+      assert fk_delete_rule("public", table, "identity_uuid") == "c"
+      assert fk_delete_rule("public", table, "role_uuid") == "c"
+
+      assert index_exists?(
+               "public",
+               "phoenix_kit_inbox_identity_roles_identity_uuid_role_uuid_index"
+             )
+
+      assert index_exists?("public", "phoenix_kit_inbox_identity_roles_role_uuid_index")
+
+      identity = insert_identity!("public", "shared", nil, nil)
+
+      role =
+        TestRepo.insert!(%PhoenixKit.Users.Role{
+          name: "v06-role-#{System.unique_integer([:positive])}"
+        })
+
+      insert_identity_role!("public", identity, role.uuid)
+
+      assert_raise Postgrex.Error,
+                   ~r/phoenix_kit_inbox_identity_roles_identity_uuid_role_uuid_index/,
+                   fn ->
+                     TestRepo.transaction(fn ->
+                       insert_identity_role!("public", identity, role.uuid)
+                     end)
+                   end
+
+      TestRepo.delete!(role)
+      assert identity_roles("public") == []
     end
 
     test "external recipients go with their message and keep role and status in range" do
@@ -178,6 +218,14 @@ defmodule PhoenixKitInbox.MigrationsTest do
     setup do
       TestRepo.query!("CREATE SCHEMA #{@probe}")
       TestRepo.query!("CREATE TABLE #{@probe}.phoenix_kit_users (uuid uuid PRIMARY KEY)")
+
+      TestRepo.query!(
+        "CREATE TABLE #{@probe}.phoenix_kit_user_roles (uuid uuid PRIMARY KEY, name varchar NOT NULL)"
+      )
+
+      TestRepo.query!(
+        "CREATE TABLE #{@probe}.phoenix_kit_role_permissions (role_uuid uuid NOT NULL, module_key varchar NOT NULL)"
+      )
 
       Ecto.Migrator.up(TestRepo, 1, ProbeToV1, @migrator_opts)
       :ok
@@ -321,6 +369,71 @@ defmodule PhoenixKitInbox.MigrationsTest do
       assert table_exists?("public", "phoenix_kit_inbox_external_recipients")
     end
 
+    test "V06 adds identity roles, given to the roles that may send externally" do
+      Ecto.Migrator.up(TestRepo, 5, ProbeToV5, @migrator_opts)
+
+      owner = Ecto.UUID.generate()
+      TestRepo.query!("INSERT INTO #{@probe}.phoenix_kit_users (uuid) VALUES ($1)", [dump(owner)])
+      desk = insert_mailbox!(@probe, owner, "shared", "desk-v06", nil)
+
+      common = insert_identity!(@probe, "shared", nil, nil)
+      bound = insert_identity!(@probe, "shared", desk, nil)
+      personal = insert_identity!(@probe, "personal", nil, owner)
+
+      sender = insert_probe_role!("Sender", ["inbox", "inbox.send_external"])
+      super = insert_probe_role!("Super", ["*"])
+      _reader = insert_probe_role!("Reader", ["inbox"])
+      _owner = insert_probe_role!("Owner", ["inbox.send_external", "*"])
+
+      Ecto.Migrator.up(TestRepo, 6, ProbeToV6, @migrator_opts)
+
+      table = "phoenix_kit_inbox_identity_roles"
+      assert version_comment(@probe) == "6"
+      assert table_exists?(@probe, table)
+      assert fk_delete_rule(@probe, table, "identity_uuid") == "c"
+      assert fk_delete_rule(@probe, table, "role_uuid") == "c"
+      assert index_exists?(@probe, "phoenix_kit_inbox_identity_roles_role_uuid_index")
+
+      assert Enum.sort(identity_roles(@probe)) == Enum.sort([{common, sender}, {common, super}])
+
+      refute Enum.any?(identity_roles(@probe), fn {identity, _} ->
+               identity in [bound, personal]
+             end)
+    end
+
+    test "V06 seeds once: an up at version 6 gives back no role that was taken away" do
+      Ecto.Migrator.up(TestRepo, 5, ProbeToV5, @migrator_opts)
+      common = insert_identity!(@probe, "shared", nil, nil)
+      sender = insert_probe_role!("Sender", ["inbox.send_external"])
+      Ecto.Migrator.up(TestRepo, 6, ProbeToV6, @migrator_opts)
+      assert identity_roles(@probe) == [{common, sender}]
+
+      TestRepo.query!("DELETE FROM #{@probe}.phoenix_kit_inbox_identity_roles")
+      # The coordinator's up again (a later host migration), already at 6.
+      Ecto.Migrator.up(TestRepo, 7, ProbeToV6, @migrator_opts)
+
+      assert version_comment(@probe) == "6"
+      assert identity_roles(@probe) == []
+    end
+
+    test "down to V05 drops identity roles; up again seeds from today's permissions" do
+      Ecto.Migrator.up(TestRepo, 5, ProbeToV5, @migrator_opts)
+      common = insert_identity!(@probe, "shared", nil, nil)
+      sender = insert_probe_role!("Sender", ["inbox.send_external"])
+      Ecto.Migrator.up(TestRepo, 6, ProbeToV6, @migrator_opts)
+
+      Ecto.Migrator.down(TestRepo, 6, ProbeToV6, @migrator_opts)
+      assert version_comment(@probe) == "5"
+      refute table_exists?(@probe, "phoenix_kit_inbox_identity_roles")
+      assert table_exists?(@probe, "phoenix_kit_inbox_identities")
+      assert table_exists?("public", "phoenix_kit_inbox_identity_roles")
+
+      other = insert_probe_role!("Other", ["inbox.send_external"])
+      Ecto.Migrator.up(TestRepo, 6, ProbeToV6, @migrator_opts)
+
+      assert Enum.sort(identity_roles(@probe)) == Enum.sort([{common, sender}, {common, other}])
+    end
+
     test "down refuses while a mailbox has lost its owner" do
       Ecto.Migrator.up(TestRepo, 2, ProbeToV2, @migrator_opts)
       insert_mailbox!(@probe, nil, "user", "u-orphan", nil)
@@ -417,6 +530,8 @@ defmodule PhoenixKitInbox.MigrationsTest do
   end
 
   defp insert_identity!(schema, kind, mailbox_uuid, owner_uuid) do
+    uuid = Ecto.UUID.generate()
+
     TestRepo.query!(
       """
       INSERT INTO #{schema}.phoenix_kit_inbox_identities
@@ -424,13 +539,51 @@ defmodule PhoenixKitInbox.MigrationsTest do
       VALUES ($1, $2, $3, $4, 'Desk', $5, now(), now())
       """,
       [
-        dump(Ecto.UUID.generate()),
+        dump(uuid),
         kind,
         mailbox_uuid && dump(mailbox_uuid),
         owner_uuid && dump(owner_uuid),
         dump(Ecto.UUID.generate())
       ]
     )
+
+    uuid
+  end
+
+  defp insert_identity_role!(schema, identity_uuid, role_uuid) do
+    TestRepo.query!(
+      """
+      INSERT INTO #{schema}.phoenix_kit_inbox_identity_roles (identity_uuid, role_uuid)
+      VALUES ($1, $2)
+      """,
+      [dump(identity_uuid), dump(role_uuid)]
+    )
+  end
+
+  defp identity_roles(schema) do
+    TestRepo.query!(
+      "SELECT identity_uuid, role_uuid FROM #{schema}.phoenix_kit_inbox_identity_roles"
+    ).rows
+    |> Enum.map(fn [identity, role] -> {Ecto.UUID.load!(identity), Ecto.UUID.load!(role)} end)
+  end
+
+  # A role of the probe schema's stand-in roles table, with permission rows.
+  defp insert_probe_role!(name, keys) do
+    uuid = Ecto.UUID.generate()
+
+    TestRepo.query!("INSERT INTO #{@probe}.phoenix_kit_user_roles (uuid, name) VALUES ($1, $2)", [
+      dump(uuid),
+      name
+    ])
+
+    for key <- keys do
+      TestRepo.query!(
+        "INSERT INTO #{@probe}.phoenix_kit_role_permissions (role_uuid, module_key) VALUES ($1, $2)",
+        [dump(uuid), key]
+      )
+    end
+
+    uuid
   end
 
   defp insert_signature!(schema, mailbox_uuid, default?) do

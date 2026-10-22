@@ -495,7 +495,8 @@ defmodule PhoenixKitInbox.Messages do
   an unknown recipient — unless it is an email address and the scope may
   write externally (`inbox.send_external`, or a personal identity): then it
   is an **external recipient**, which needs an `"identity_uuid"`
-  (`{:error, :external_needs_identity}`) and external sending open
+  (`{:error, :external_needs_identity}`, or `{:error, :external_not_allowed}`
+  when the user may send as none from this mailbox) and external sending open
   (`{:error, :external_disabled}`, see `PhoenixKitInbox.Outbound`), and whose
   attachments must fit `PhoenixKitInbox.external_max_bytes/0`
   (`{:error, {:external_too_large, max}}`). The email to them goes after the
@@ -597,7 +598,7 @@ defmodule PhoenixKitInbox.Messages do
     with :ok <- ensure_active(mailbox),
          {:ok, sender_record} <- sender_options(scope, mailbox, attrs),
          {:ok, recipients, externals} <- resolve_recipients(attrs),
-         {:ok, externals} <- admit_externals(scope, sender_record, externals),
+         {:ok, externals} <- admit_externals(scope, mailbox, sender_record, externals),
          :ok <- ensure_any_recipient(recipients ++ externals),
          existing = draft_from_attrs(mailbox, attrs),
          {:ok, items} <- plan_attachments(scope, sender_user_uuid, existing, attrs, opts),
@@ -627,17 +628,23 @@ defmodule PhoenixKitInbox.Messages do
 
   # External addresses need a scope (the three-argument form has none), the
   # right to write externally — without it they are unknown recipients, as
-  # before there was external mail — a sending identity to go out as, and
+  # before there was external mail — a sending identity to go out as (none
+  # the user may use from this mailbox is `:external_not_allowed`), and
   # external sending open.
-  defp admit_externals(_scope, _sender_record, []), do: {:ok, []}
-  defp admit_externals(nil, _sender_record, _externals), do: {:error, :external_needs_scope}
+  defp admit_externals(_scope, _mailbox, _sender_record, []), do: {:ok, []}
 
-  defp admit_externals(scope, sender_record, externals) do
+  defp admit_externals(nil, _mailbox, _sender_record, _externals),
+    do: {:error, :external_needs_scope}
+
+  defp admit_externals(scope, mailbox, sender_record, externals) do
     identity = Map.get(sender_record, "identity")
 
     cond do
       not External.allowed?(scope, identity) ->
         {:error, {:unknown_recipients, Enum.map(externals, & &1.address)}}
+
+      is_nil(identity) and Identities.list_usable(scope, mailbox) == [] ->
+        {:error, :external_not_allowed}
 
       is_nil(identity) ->
         {:error, :external_needs_identity}
