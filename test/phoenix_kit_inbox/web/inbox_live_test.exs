@@ -163,6 +163,16 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
     assert_patched(view, PhoenixKitInbox.Paths.inbox(mailbox: alice_mb.uuid, folder: "sent"))
   end
 
+  test "picking another mailbox in the sidebar switches to it", ctx do
+    desk = shared_mailbox_fixture(ctx.alice, %{name: "Desk"})
+    {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox")
+
+    # The browser sends a change only from an input inside a form.
+    view |> element("#mailbox-switch-form") |> render_change(%{"mailbox" => desk.uuid})
+
+    assert_patched(view, PhoenixKitInbox.Paths.inbox(mailbox: desk.uuid, folder: "inbox"))
+  end
+
   test "a message can be trashed from the reading pane", %{conn: conn, alice: alice, bob: bob} do
     {:ok, bob_mb} = Mailboxes.ensure_user_mailbox(bob)
     {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(alice)

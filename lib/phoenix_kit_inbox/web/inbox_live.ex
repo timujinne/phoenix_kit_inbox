@@ -522,14 +522,19 @@ defmodule PhoenixKitInbox.Web.InboxLive do
     ~H"""
     <div class="card bg-base-100 shadow">
       <div class="card-body p-3 gap-3">
-        <.select
+        <%!-- In a form: LiveView sends a change only from an input inside one --%>
+        <form
           :if={length(@mailboxes) > 1}
-          name="mailbox"
-          value={@mailbox && @mailbox.uuid}
-          options={Enum.map(@mailboxes, &{&1.name, &1.uuid})}
-          class="select-sm"
+          id="mailbox-switch-form"
           phx-change="select_mailbox"
-        />
+        >
+          <.select
+            name="mailbox"
+            value={@mailbox && @mailbox.uuid}
+            options={Enum.map(@mailboxes, &{&1.name, &1.uuid})}
+            class="select-sm"
+          />
+        </form>
 
         <ul class="menu menu-sm w-full p-0">
           <li :for={folder <- @folders}>
