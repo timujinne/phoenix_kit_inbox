@@ -165,10 +165,10 @@ defmodule PhoenixKitInbox do
   @doc """
   Admin sidebar tabs.
 
-  "Mail", with three visible pages ("Inbox" — the messages, "Mailboxes")
-  plus one hidden route for the compose view. The shared-mail settings
-  (shared senders, shared-mailbox signatures) are not here but in core's
-  Settings section: see `settings_tabs/0`. Folder
+  "Mail", with two visible pages ("Inbox" — the messages, "Mailboxes", where
+  a shared mailbox's signatures are written too) plus one hidden route for
+  the compose view. The shared senders are not here but in core's Settings
+  section: see `settings_tabs/0`. Folder
   navigation is **not** a tab per folder — the mailbox is a single LiveView and
   folders are query params, so switching folders is a `push_patch` rather than
   a remount (see `PhoenixKitInbox.Paths.inbox/1`).

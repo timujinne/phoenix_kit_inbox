@@ -25,8 +25,8 @@ msgstr "%{sender} отправил(а) вам сообщение."
 #: lib/phoenix_kit_inbox/notify.ex:171
 #: lib/phoenix_kit_inbox/notify.ex:172
 #: lib/phoenix_kit_inbox/notify.ex:294
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:628
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:706
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:633
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:711
 #, elixir-autogen, elixir-format
 msgid "(no subject)"
 msgstr "(без темы)"
@@ -51,22 +51,22 @@ msgstr "В записанном письме получатели указаны
 msgid "A sending identity and a Reply-To need the sender's scope."
 msgstr "Для отправителя и Reply-To нужны права отправителя."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:359
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:364
 #, elixir-autogen, elixir-format
 msgid "Access"
 msgstr "Доступ"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:136
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:141
 #, elixir-autogen, elixir-format
 msgid "Access granted."
 msgstr "Доступ предоставлен."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:148
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:153
 #, elixir-autogen, elixir-format
 msgid "Access revoked."
 msgstr "Доступ отозван."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:337
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:342
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr "Действия"
@@ -91,8 +91,8 @@ msgstr "Добавить подпись"
 msgid "Added at the end of a message you write from your personal mailbox, after a “-- ” line."
 msgstr "Добавляется в конец сообщения, написанного из личного ящика, после строки «-- »."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:284
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:335
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:289
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:340
 #, elixir-autogen, elixir-format
 msgid "Address"
 msgstr "Адрес"
@@ -102,7 +102,7 @@ msgstr "Адрес"
 msgid "Addresses outside this application need the sender's scope."
 msgstr "Для адресов вне приложения нужны права отправителя."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:464
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:469
 #, elixir-autogen, elixir-format
 msgid "Admin"
 msgstr "Администратор"
@@ -112,14 +112,14 @@ msgstr "Администратор"
 msgid "An attachment could not be stored. Try again."
 msgstr "Не удалось сохранить вложение. Попробуйте ещё раз."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:889
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:941
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:376
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:894
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:946
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:381
 #, elixir-autogen, elixir-format
 msgid "Archive"
 msgstr "Архив"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:374
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:379
 #, elixir-autogen, elixir-format
 msgid "Archive this mailbox?"
 msgstr "Архивировать этот ящик?"
@@ -149,7 +149,7 @@ msgstr "Вложения сейчас недоступны. Попробуйте
 msgid "Attachments need the sender's scope."
 msgstr "Для вложений нужны права отправителя."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:233
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:238
 #, elixir-autogen, elixir-format
 msgid "Back to mailbox"
 msgstr "Назад к ящику"
@@ -191,7 +191,7 @@ msgstr "Проверить"
 msgid "Choose a sender under “Send as” to write to addresses outside this application."
 msgstr "Чтобы писать на адреса вне приложения, выберите отправителя в поле «Отправить как»."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:708
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:713
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr "Закрыть"
@@ -206,12 +206,12 @@ msgstr "Написать"
 msgid "Could not identify the current user."
 msgstr "Не удалось определить текущего пользователя."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:291
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:296
 #, elixir-autogen, elixir-format
 msgid "Create mailbox"
 msgstr "Создать ящик"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:323
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:328
 #, elixir-autogen, elixir-format
 msgid "Create one above to let a team share an address."
 msgstr "Создайте ящик выше, чтобы команда пользовалась общим адресом."
@@ -227,12 +227,12 @@ msgstr "По умолчанию"
 msgid "Delete"
 msgstr "Удалить"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:922
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:927
 #, elixir-autogen, elixir-format
 msgid "Delete forever"
 msgstr "Удалить навсегда"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:919
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:924
 #, elixir-autogen, elixir-format
 msgid "Delete this message from your mailbox permanently?"
 msgstr "Удалить это сообщение из вашего ящика навсегда?"
@@ -247,7 +247,7 @@ msgstr "Удалить этого отправителя?"
 msgid "Delete this signature?"
 msgstr "Удалить эту подпись?"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:279
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:284
 #, elixir-autogen, elixir-format
 msgid "Derived from the name when left blank"
 msgstr "Если оставить пустым, берётся из названия"
@@ -262,7 +262,7 @@ msgstr "Отбросить черновик"
 msgid "Discard this draft?"
 msgstr "Отбросить этот черновик?"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:748
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:753
 #, elixir-autogen, elixir-format
 msgid "Download"
 msgstr "Скачать"
@@ -282,7 +282,7 @@ msgstr "Черновик отброшен."
 msgid "Draft saved."
 msgstr "Черновик сохранён."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:938
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:943
 #, elixir-autogen, elixir-format
 msgid "Drafts"
 msgstr "Черновики"
@@ -293,13 +293,13 @@ msgstr "Черновики"
 msgid "Edit"
 msgstr "Изменить"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:595
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:600
 #, elixir-autogen, elixir-format
 msgid "Empty list."
 msgstr "Список пуст."
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:288
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:870
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:875
 #, elixir-autogen, elixir-format
 msgid "Forward"
 msgstr "Переслать"
@@ -309,14 +309,14 @@ msgstr "Переслать"
 msgid "From"
 msgstr "Отправитель"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:469
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:474
 #, elixir-autogen, elixir-format
 msgid "Grant access"
 msgstr "Дать доступ"
 
 #: lib/phoenix_kit_inbox.ex:195
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:73
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:936
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:941
 #, elixir-autogen, elixir-format
 msgid "Inbox"
 msgstr "Входящие"
@@ -356,7 +356,7 @@ msgstr "Почтовое подключение (его логин — адре�
 msgid "Mail settings"
 msgstr "Настройки почты"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:171
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:176
 #, elixir-autogen, elixir-format
 msgid "Mailbox archived."
 msgstr "Ящик архивирован."
@@ -383,12 +383,12 @@ msgstr "Ящики"
 msgid "Manage your mail connections"
 msgstr "Управление вашими почтовыми подключениями"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:878
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:883
 #, elixir-autogen, elixir-format
 msgid "Mark read"
 msgstr "Отметить прочитанным"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:878
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:883
 #, elixir-autogen, elixir-format
 msgid "Mark unread"
 msgstr "Отметить непрочитанным"
@@ -429,8 +429,8 @@ msgid "More than one recipient matches: %{recipients}. Use the full email addres
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
 
 #: lib/phoenix_kit_inbox/web/identity_editor.ex:291
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:272
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:334
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:277
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:339
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:170
 #, elixir-autogen, elixir-format
 msgid "Name"
@@ -452,7 +452,7 @@ msgstr "Новое сообщение"
 msgid "New message: %{subject}"
 msgstr "Новое сообщение: %{subject}"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:260
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:265
 #, elixir-autogen, elixir-format
 msgid "New shared mailbox"
 msgstr "Новый общий ящик"
@@ -472,7 +472,7 @@ msgstr "Получатель не найден: %{recipients}. Укажите @�
 msgid "No senders yet."
 msgstr "Отправителей пока нет."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:320
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:325
 #, elixir-autogen, elixir-format
 msgid "No shared mailboxes yet."
 msgstr "Общих ящиков пока нет."
@@ -507,7 +507,7 @@ msgstr "Не найдено"
 msgid "Not found."
 msgstr "Не найдено."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:596
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:601
 #, elixir-autogen, elixir-format
 msgid "Nothing in this folder yet."
 msgstr "В этой папке пока ничего нет."
@@ -517,12 +517,12 @@ msgstr "В этой папке пока ничего нет."
 msgid "Only shared mailboxes can be shared with others."
 msgstr "Другим можно открыть доступ только к общим ящикам."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:431
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:436
 #, elixir-autogen, elixir-format
 msgid "Only you can use this mailbox so far."
 msgstr "Пока этим ящиком пользуетесь только вы."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:351
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:356
 #, elixir-autogen, elixir-format
 msgid "Open"
 msgstr "Открыть"
@@ -537,7 +537,7 @@ msgstr "Открыть входящие"
 msgid "Personal mailboxes can't be archived."
 msgstr "Личные ящики нельзя архивировать."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:462
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:467
 #, elixir-autogen, elixir-format
 msgid "Read"
 msgstr "Чтение"
@@ -564,7 +564,7 @@ msgid "Remove attachment"
 msgstr "Убрать вложение"
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:265
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:861
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:866
 #, elixir-autogen, elixir-format
 msgid "Reply"
 msgstr "Ответить"
@@ -580,12 +580,12 @@ msgstr "Reply-To"
 msgid "Reply-To saved."
 msgstr "Reply-To сохранён."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:803
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:808
 #, elixir-autogen, elixir-format
 msgid "Retry"
 msgstr "Повторить"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:425
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:430
 #, elixir-autogen, elixir-format
 msgid "Revoke"
 msgstr "Отозвать"
@@ -602,12 +602,12 @@ msgstr "Сохранить"
 msgid "Save draft"
 msgstr "Сохранить черновик"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:586
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:591
 #, elixir-autogen, elixir-format
 msgid "Search"
 msgstr "Поиск"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:693
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:698
 #, elixir-autogen, elixir-format
 msgid "Select any message in the list to view it here."
 msgstr "Выберите сообщение в списке, чтобы прочитать его здесь."
@@ -652,12 +652,12 @@ msgstr "Отправляю повторно."
 msgid "Sending to addresses outside this application is turned off."
 msgstr "Отправка на адреса вне приложения отключена."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:937
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:942
 #, elixir-autogen, elixir-format
 msgid "Sent"
 msgstr "Отправленные"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:315
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:320
 #, elixir-autogen, elixir-format
 msgid "Shared mailboxes"
 msgstr "Общие ящики"
@@ -667,7 +667,7 @@ msgstr "Общие ящики"
 msgid "Shared mailboxes and who can use them"
 msgstr "Общие ящики и кто может ими пользоваться"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:324
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:329
 #, elixir-autogen, elixir-format
 msgid "Shared mailboxes you are given access to appear here."
 msgstr "Здесь появятся общие ящики, к которым вам дали доступ."
@@ -692,24 +692,24 @@ msgstr "Подпись удалена."
 msgid "Signature saved."
 msgstr "Подпись сохранена."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:367
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:372
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:145
 #, elixir-autogen, elixir-format
 msgid "Signatures"
 msgstr "Подписи"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:278
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:283
 #, elixir-autogen, elixir-format
 msgid "Slug"
 msgstr "Короткое имя (slug)"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:900
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:939
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:905
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:944
 #, elixir-autogen, elixir-format
 msgid "Spam"
 msgstr "Спам"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:615
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:620
 #, elixir-autogen, elixir-format
 msgid "Star"
 msgstr "Отметить звёздочкой"
@@ -724,7 +724,7 @@ msgstr "Тема"
 msgid "Subject: %{subject}"
 msgstr "Тема: %{subject}"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:273
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:278
 #, elixir-autogen, elixir-format
 msgid "Support"
 msgstr "Поддержка"
@@ -864,8 +864,8 @@ msgstr "Кому"
 msgid "Too many files."
 msgstr "Слишком много файлов."
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:911
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:940
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:916
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:945
 #, elixir-autogen, elixir-format
 msgid "Trash"
 msgstr "Корзина"
@@ -875,7 +875,7 @@ msgstr "Корзина"
 msgid "Unexpected error: %{reason}"
 msgstr "Непредвиденная ошибка: %{reason}"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:560
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:565
 #, elixir-autogen, elixir-format
 msgid "Unseen only"
 msgstr "Только непрочитанные"
@@ -900,7 +900,7 @@ msgstr "Дождитесь окончания загрузки."
 msgid "Where replies to your messages go by default: your email, or a shared mailbox you write to."
 msgstr "Куда по умолчанию приходят ответы на ваши сообщения: на ваш email или в общий ящик, из которого вы пишете."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:463
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:468
 #, elixir-autogen, elixir-format
 msgid "Write"
 msgstr "Отправка"
@@ -937,14 +937,14 @@ msgstr "У вас нет прав на это действие."
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:616
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:469
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:227
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:232
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:126
 #: lib/phoenix_kit_inbox/web/settings_live.ex:77
 #, elixir-autogen, elixir-format
 msgid "You don't have permission to use Inbox."
 msgstr "У вас нет прав на работу с входящими."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:336
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:341
 #, elixir-autogen, elixir-format
 msgid "Your access"
 msgstr "Ваш доступ"
@@ -959,93 +959,93 @@ msgstr "Ваши настройки почты"
 msgid "a file"
 msgstr "файл"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:815
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:820
 #, elixir-autogen, elixir-format
 msgid "not delivered"
 msgstr "не доставлено"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:816
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:821
 #, elixir-autogen, elixir-format
 msgid "sending…"
 msgstr "отправляется…"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:814
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:819
 #, elixir-autogen, elixir-format
 msgid "sent"
 msgstr "отправлено"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:817
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:822
 #, elixir-autogen, elixir-format
 msgid "unknown — check the email log"
 msgstr "неизвестно — проверьте журнал писем"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:966
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:971
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Apr"
 msgstr "апр"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:970
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:975
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Aug"
 msgstr "авг"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:974
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:979
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Dec"
 msgstr "дек"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:964
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:969
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Feb"
 msgstr "фев"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:963
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:968
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Jan"
 msgstr "янв"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:969
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:974
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Jul"
 msgstr "июл"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:968
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:973
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Jun"
 msgstr "июн"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:965
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:970
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Mar"
 msgstr "мар"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:967
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:972
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "May"
 msgstr "мая"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:973
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:978
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Nov"
 msgstr "ноя"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:972
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:977
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Oct"
 msgstr "окт"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:971
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:976
 #, elixir-autogen, elixir-format
 msgctxt "month, abbreviated"
 msgid "Sep"
@@ -1089,7 +1089,7 @@ msgstr[2] "К сообщению можно прикрепить не более
 msgid "User %{id}"
 msgstr "Пользователь %{id}"
 
-#: lib/phoenix_kit_inbox/web/inbox_live.ex:852
+#: lib/phoenix_kit_inbox/web/inbox_live.ex:857
 #, elixir-autogen, elixir-format
 msgid "Edit draft"
 msgstr "Редактировать черновик"
@@ -1104,12 +1104,12 @@ msgstr "Системное почтовое подключение, от име�
 msgid "Add shared mail"
 msgstr "Добавить общую почту"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:453
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:458
 #, elixir-autogen, elixir-format
 msgid "Colleague"
 msgstr "Коллега"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:444
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:449
 #, elixir-autogen, elixir-format
 msgid "Find a colleague"
 msgstr "Найти коллегу"
@@ -1124,7 +1124,7 @@ msgstr "Оставить текущее подключение (сейчас н�
 msgid "Manage shared mail"
 msgstr "Управление общей почтой"
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:445
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:450
 #, elixir-autogen, elixir-format
 msgid "Name, @username or email"
 msgstr "Имя, @имя_пользователя или email"
@@ -1134,7 +1134,7 @@ msgstr "Имя, @имя_пользователя или email"
 msgid "No mail is open to you for writing to addresses outside this application."
 msgstr "Вам не доступна ни одна почта для отправки на внешние адреса."
 
-#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:454
+#: lib/phoenix_kit_inbox/web/mailboxes_live.ex:459
 #, elixir-autogen, elixir-format
 msgid "Nobody found"
 msgstr "Никого не найдено"

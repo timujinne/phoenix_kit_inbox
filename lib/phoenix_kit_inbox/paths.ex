@@ -80,8 +80,8 @@ defmodule PhoenixKitInbox.Paths do
   def mailboxes, do: Routes.path(@base <> "/mailboxes")
 
   @doc """
-  The mail page of core's Settings section: shared senders and
-  shared-mailbox signatures.
+  The mail page of core's Settings section: shared senders with the roles
+  they are open to.
   """
   @spec settings() :: String.t()
   def settings, do: Routes.path("/admin/settings/inbox")

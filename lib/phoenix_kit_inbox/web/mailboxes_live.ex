@@ -117,6 +117,11 @@ defmodule PhoenixKitInbox.Web.MailboxesLive do
   end
 
   # Fires for the colleague and access selects too; only a new term searches.
+  # Like the panel it fills, only with a mailbox's Access panel open, which
+  # `toggle_grants` opens for its admins alone.
+  def handle_event("grant_search", _params, %{assigns: %{expanded: nil}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("grant_search", params, socket) do
     term = Map.get(params, "q", "")
 

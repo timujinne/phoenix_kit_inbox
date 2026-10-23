@@ -258,6 +258,13 @@ defmodule PhoenixKitInbox.Web.MailboxesLiveTest do
       refute html =~ "Grant access"
     end
 
+    test "a forged colleague search with no panel open finds nobody", ctx do
+      render_hook(ctx.view, "grant_search", %{"q" => ctx.colleague.email})
+
+      # Nothing is drawn without the panel either way: the search must not run.
+      assert :sys.get_state(ctx.view.pid).socket.assigns.candidates == []
+    end
+
     test "a forged toggle on something that is not a mailbox does nothing", ctx do
       assert render_hook(ctx.view, "toggle_grants", %{"uuid" => "not-a-uuid"}) =~
                "Shared mailboxes"

@@ -344,8 +344,8 @@ All navigation goes through `PhoenixKitInbox.Paths`, never a hardcoded string �
 | `/admin/inbox` | `Web.InboxLive` — folders, list, reading pane |
 | `/admin/inbox?folder=sent&message=<uuid>` | same LiveView, patched |
 | `/admin/inbox/compose` | `Web.ComposeLive` (also `?reply_to=`, `?forward=`, `?draft=`) |
-| `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes and grants (colleagues picked by name) |
-| `/admin/settings/inbox` | `Web.SettingsLive` — "Mail" in core's Settings section (`settings_tabs/0`): shared senders with their roles (add, edit, check, delete), shared-mailbox signatures (`inbox.manage_shared`) |
+| `/admin/inbox/mailboxes` | `Web.MailboxesLive` — shared mailboxes, grants (colleagues picked by name) and each active mailbox's signatures (its admins with `inbox.manage_shared`) |
+| `/admin/settings/inbox` | `Web.SettingsLive` — "Mail" in core's Settings section (`settings_tabs/0`): shared senders with their roles (add, edit, check, delete), for `inbox.manage_shared` |
 | `/dashboard/inbox-settings` | `Web.MySettingsLive` — the user's signatures, default Reply-To, personal senders, a link to "Shared mail" for `inbox.manage_shared`; a route core generates from `user_dashboard_tabs/0`, reached from the avatar menu ("Mail settings", next to "Mail" → `/admin/inbox`) |
 | `/admin/inbox/files/<attachment uuid>` | `Web.AttachmentController` — an attachment download (no locale segment) |
 
