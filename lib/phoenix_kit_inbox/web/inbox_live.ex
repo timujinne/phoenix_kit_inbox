@@ -666,14 +666,14 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
         <div class="divider my-0"></div>
 
-        <label class="flex cursor-pointer items-start gap-1.5 px-1">
+        <label class="flex cursor-pointer items-start gap-1.5">
           <input
             type="checkbox"
-            class="checkbox checkbox-sm checkbox-primary shrink-0 mt-0.5"
+            class="checkbox checkbox-xs checkbox-primary shrink-0 mt-px"
             checked={@unseen_only}
             phx-click="toggle_unseen_only"
           />
-          <span class="min-w-0 break-words text-sm">{gettext("Unseen only")}</span>
+          <span class="min-w-0 break-words text-xs">{gettext("Unseen only")}</span>
         </label>
       </div>
     </div>
