@@ -63,6 +63,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   use PhoenixKitWeb, :live_view
   use Gettext, backend: PhoenixKitInbox.Gettext
 
+  require Logger
+
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.Libraries
   alias PhoenixKit.Users.Auth.Scope
@@ -144,6 +146,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     if access do
       {:noreply,
        socket
+       |> ensure_personal_mailbox()
        |> assign_mailbox(params["mailbox"])
        |> prefill(params)
        |> init_sender(Map.has_key?(params, "draft"))}
@@ -151,6 +154,21 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       {:noreply, socket}
     end
   end
+
+  # Compose may be a user's first Inbox page. Without this their personal
+  # mailbox doesn't exist yet and only shared mailboxes would be offered.
+  defp ensure_personal_mailbox(%{assigns: %{current_user: user}} = socket) when is_map(user) do
+    case Mailboxes.ensure_user_mailbox(user) do
+      {:ok, _personal} ->
+        socket
+
+      {:error, reason} ->
+        Logger.warning("[Inbox] could not resolve personal mailbox: #{inspect(reason)}")
+        put_flash(socket, :error, Errors.message(reason))
+    end
+  end
+
+  defp ensure_personal_mailbox(socket), do: socket
 
   defp assign_mailbox(socket, uuid) do
     # The socket can outlive a grant. Re-read before loading messages or
@@ -701,7 +719,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           class="flex flex-col gap-3"
         >
           <div :if={length(@mailboxes) > 1} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext("From")}</span>
+            <span class="text-sm min-w-24 shrink-0 whitespace-nowrap">{gettext("From")}</span>
             <.select
               name="mailbox"
               value={@mailbox.uuid}
@@ -712,7 +730,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           </div>
 
           <div :if={@identities != []} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext("Send as")}</span>
+            <span class="text-sm min-w-24 shrink-0 whitespace-nowrap">{gettext("Send as")}</span>
             <.select
               id="compose-identity"
               name="identity_uuid"
@@ -751,7 +769,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             </option>
           </datalist>
           <div :if={length(@reply_to_options) > 1} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext("Reply-To")}</span>
+            <span class="text-sm min-w-24 shrink-0 whitespace-nowrap">{gettext("Reply-To")}</span>
             <.select
               id="compose-reply-to"
               name="reply_to"
@@ -774,7 +792,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
           </p>
 
           <div :if={@signatures != []} class="flex items-center gap-2">
-            <span class="text-sm w-16 shrink-0">{gettext("Signature")}</span>
+            <span class="text-sm min-w-24 shrink-0 whitespace-nowrap">{gettext("Signature")}</span>
             <.select
               id="compose-signature"
               name="signature"

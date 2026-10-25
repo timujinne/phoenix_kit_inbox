@@ -298,4 +298,10 @@ defmodule PhoenixKitInbox.Web.InboxLiveTest do
     refute html =~ "Must stay hidden"
     refute has_element?(view, "#message-body")
   end
+
+  test "the unseen-only label wraps inside the folder card", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/en/admin/inbox")
+
+    assert has_element?(view, "label span.min-w-0.break-words", "Unseen only")
+  end
 end
