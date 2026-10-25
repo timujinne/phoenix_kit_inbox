@@ -666,7 +666,7 @@ defmodule PhoenixKitInbox.Web.InboxLive do
 
         <div class="divider my-0"></div>
 
-        <label class="flex cursor-pointer items-start gap-2 px-2">
+        <label class="flex cursor-pointer items-start gap-1.5 px-1">
           <input
             type="checkbox"
             class="checkbox checkbox-sm checkbox-primary shrink-0 mt-0.5"
