@@ -3,6 +3,7 @@ defmodule PhoenixKitInbox.Web.ComposeLiveTest do
 
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.MailboxGrant
   alias PhoenixKitInbox.Test.Repo
 
@@ -300,5 +301,46 @@ defmodule PhoenixKitInbox.Web.ComposeLiveTest do
     {:ok, _view, html} = live(conn, "/en/admin/inbox/compose")
 
     assert html =~ "You don&#39;t have permission to use Inbox."
+  end
+
+  defp personal_mailbox(user), do: Repo.get_by(Mailbox, owner_uuid: user.uuid, kind: "user")
+
+  test "opening Compose first creates the personal mailbox and defaults to it", ctx do
+    carol = user_fixture()
+    shared = shared_mailbox_fixture(ctx.bob, %{name: "Front desk"})
+    grant_fixture(shared, carol, "write")
+    refute personal_mailbox(carol)
+
+    conn = put_test_scope(ctx.conn, fake_scope(user_uuid: carol.uuid, email: carol.email))
+    {:ok, view, _html} = live(conn, "/en/admin/inbox/compose")
+
+    personal = personal_mailbox(carol)
+    assert personal
+    assert has_element?(view, "select[name='mailbox'] option[selected][value='#{personal.uuid}']")
+    assert has_element?(view, "select[name='mailbox'] option[value='#{shared.uuid}']")
+  end
+
+  test "Compose without the inbox permission creates no mailbox" do
+    dave = user_fixture()
+
+    conn =
+      put_test_scope(
+        Phoenix.ConnTest.build_conn(),
+        fake_scope(user_uuid: dave.uuid, permissions: [], roles: [])
+      )
+
+    {:ok, _view, _html} = live(conn, "/en/admin/inbox/compose")
+
+    refute personal_mailbox(dave)
+  end
+
+  test "the From, Send as, Reply-To and Signature labels are not cut off", ctx do
+    shared = shared_mailbox_fixture(ctx.bob, %{name: "Front desk"})
+    grant_fixture(shared, ctx.alice, "write")
+
+    {:ok, _view, html} = live(ctx.conn, "/en/admin/inbox/compose")
+
+    refute html =~ "text-sm w-16 shrink-0"
+    assert html =~ "whitespace-nowrap"
   end
 end
