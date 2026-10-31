@@ -414,6 +414,16 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       assert render(view) =~ "strict host"
     end
 
+    test "the hook passes the senders event on to the page and reads nothing for it" do
+      socket = %Phoenix.LiveView.Socket{}
+
+      assert {:cont, ^socket} =
+               PhoenixKitInbox.Web.Components.MailExplorerHooks.handle_info(
+                 {:inbox_access_changed, :senders},
+                 socket
+               )
+    end
+
     test "the same objects in another order are not a new filter", %{conn: conn} = ctx do
       mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
       view = open(ctx, conn, nil, %{filter: [@order, @other], can_link?: counting()})

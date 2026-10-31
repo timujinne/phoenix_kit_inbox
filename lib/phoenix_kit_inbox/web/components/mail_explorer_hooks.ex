@@ -26,10 +26,16 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
   event and `{:inbox_access_changed, :mailboxes}` — a page that attaches an
   explorer does not handle them itself, even if it subscribed to the same
   topics. Every other message, `{:inbox_access_changed, :senders}` included,
-  goes on to the page untouched and makes the explorers read nothing: the
-  page still needs a clause (or a catch-all) for the ones it asked for — and
-  for `{:inbox_access_changed, :senders}`, which the user's topic also brings
-  when one of their personal senders changes.
+  goes on to the page untouched and makes the explorers read nothing.
+
+  **The page must have a catch-all `handle_info/2`.** The user's access topic
+  the hook subscribes to also brings `{:inbox_access_changed, :senders}` (when
+  one of their personal senders changes), which the explorers have no use for
+  but a page may: a host that keeps a `ComposeForm` current subscribes to the
+  senders itself (`PhoenixKitInbox.Web.ScopeRefresh.subscribe/2`) and the hook
+  can not tell its message from its own, so it passes them all on rather than
+  swallow what the host asked for. A page with no clause for the message
+  crashes on it.
 
   `attach/3` is idempotent per explorer `id`: calling it again with another
   filter replaces the explorer's filter, and the page follows the objects
