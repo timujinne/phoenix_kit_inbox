@@ -20,7 +20,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
       files of Storage the host has vouched for, or bytes it made. The person
       may take them away; they cannot be added to
     * `:from` — `:user_default` (the person's own mailbox; with outside
-      recipients, the first of their usable identities), `{:mailbox, uuid}` or
+      recipients, the person's only personal identity, else the only one open
+      to them, else they must choose — never a guess), `{:mailbox, uuid}` or
       `{:identity, uuid}` (an identity of a shared mailbox, or a personal or
       common one from the person's own mailbox). `:from_editable` — whether
       the person may choose another (`true` by default); when `false`
@@ -46,7 +47,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
   A recipient is `%{address: String.t()}` **or** `%{user: uuid}`, plus
   `:label` (a name, optional) and `:route` (`:internal | :email`; `:email`
   when missing). With `:user` the pipeline works out the text: the user's
-  handle for `:internal`, their login email for `:email`.
+  handle for `:internal`, their login email for `:email`. Only the users the
+  draft names this way are the host's to name: the form's own entries, which
+  come from the browser, are believed by uuid only for the inside route and
+  only inside the sender's circle.
 
   An attachment is one of
 
@@ -55,16 +59,26 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
     * `%{id: "b", binary: bytes | path: "/…", filename: "offer.pdf",
       content_type: "application/pdf", flags: %{…}}` — bytes the host made
 
-  `:id` is what the form uses to say "this one stays" (the file uuid by
-  default; a position for bytes). `:name` is what is shown.
+  `:id` is what the form uses to say "this one stays": the host's own, else
+  the file uuid for a Storage file and `"data-<index>"` for bytes, `<index>`
+  being the position in this list (from 0), which is a contract. Ids must be
+  unique (`{:error, :invalid_attachments}` otherwise). `:name` is what is
+  shown (the filename for bytes by default).
 
   ## What the host's wrapper (`around_send/3`) may change
 
-  The pipeline hands the wrapper this struct with the recipients, subject and
-  body as the person left them (recipients normalised: `:address` and `:route`
-  on every one). Through `send_fun.(draft)` the wrapper may replace
-  `:subject`, `:body`, `:html_body` and `:attachments`; everything else it
-  changes is ignored.
+  The pipeline hands the wrapper this struct with what it checked put in:
+  the recipients (normalised: `:address` and `:route` on every one, `:user`
+  and `:label` where there are), the subject and body as the person left them,
+  `:from` as `:user_default`, `{:mailbox, uuid}` or `{:identity, uuid}`,
+  `:reply_to` as the address or `nil`, and `:attachments` as they will go (the
+  draft's that stayed, then the picked ones). Through `send_fun.(draft)` the
+  wrapper may replace `:subject`, `:body`, `:html_body` and `:attachments`;
+  everything else it changes is ignored. `send_fun` sends at most once.
+  The subject, body and labels are human text a person typed, not markup: a
+  host that builds `:html_body` from them escapes them.
+
+  The errors a send can end with are in `PhoenixKitInbox.Web.Components.ComposePipeline`.
   """
 
   @type route :: :internal | :email

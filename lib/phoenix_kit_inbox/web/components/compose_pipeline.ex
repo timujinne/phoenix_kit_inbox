@@ -15,61 +15,140 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   ## What the form may send (string keys; anything else is ignored)
 
-    * `"from"` — `"user_default"`, `"mailbox:<uuid>"` or `"identity:<uuid>"`,
-      only if the draft's `:from_editable`. The sender is worked out again
-      from it: the mailbox must be one the person reaches, the identity one
-      they may use from that mailbox (`Identities.list_usable/1`, then
-      `Identities.resolve/3`) — `{:error, {:identity_unusable, reason}}`
-      otherwise
-    * `"to"`, `"cc"`, `"bcc"` — a list (or an index map, as forms send it) of
-      recipients: `%{"address" => …, "route" => "internal" | "email",
-      "label" => …}`, `%{"user" => uuid, "route" => …}` or just the text
-      typed (route `:email`). Replace the draft's when present
+    * `"from"` — `"user_default"`, `"mailbox:<uuid>"` or `"identity:<uuid>"`
+      (the `identity_uuid` of an entry of `Identities.list_usable/1`), only if
+      the draft's `:from_editable`; otherwise the draft's `:from` stands. The
+      sender is worked out again from it: the mailbox must be one the person
+      reaches (`{:error, :mailbox_access_denied}`), the identity one they may
+      use from that mailbox (`{:error, {:identity_unusable, reason}}`)
+    * `"to"`, `"cc"`, `"bcc"` — a list (or an index map, as forms send it, or
+      a single text) of recipients, replacing the draft's when present:
+      `%{"address" => …, "route" => "internal" | "email", "label" => …}`,
+      `%{"user" => uuid, "route" => …}` or just the text typed (route
+      `:email`). Who an entry names is worked out on the server, see
+      "Recipients" below
     * `"subject"`, `"body"`
     * `"reply_to"` — one of the person's `Identities.reply_to_options/2` or
       the draft's `:reply_to_trusted`; `""` for none
     * `"attachments"` — the ids of the draft's attachments that stay (all when
       absent); `"added_attachments"` — file uuids picked from the host's
-      library, which must pass `authorize_attachments`
+      library (at most 50 listed; doubles are one), which must pass
+      `authorize_attachments`
 
-  Never read from the form: identity uuids, `links`, `html_body`, the
-  conversation (`reply_to_message`), the idempotency key, a trusted Reply-To,
-  attachment contents.
+  Not read from the form at all: `links`, `html_body`, the conversation
+  (`reply_to_message`), the idempotency key, a trusted Reply-To, attachment
+  contents. An identity is read only as the `"identity:<uuid>"` of `"from"`,
+  and is then checked as above.
+
+  ## Recipients
+
+  Each entry is looked up once, so a field with more than twice its limit of
+  entries is refused before the first lookup (`{:too_many_recipients, role,
+  max}`).
+
+    * an entry whose `"user"` and `"address"` are both empty text (an empty
+      field of a form) names nobody and is dropped; an entry with neither key
+      is malformed (`:invalid_recipients`)
+    * a user the **host's draft** names in its `:to`/`:cc`/`:bcc` is the
+      host's to name by any route: the address is worked out from the account
+      (the handle for `:internal`, the login email for `:email`); an account
+      that cannot be used is `{:invalid_recipient, uuid}`
+    * any other user the browser names, with no `"address"` beside, is
+      believed only on the `:internal` route and only if they are in the
+      sender's circle (`Mailboxes.member_recipient_address/1`, the handle
+      only); otherwise `:invalid_recipients`. With an `"address"` beside it
+      the entry is that text and the uuid is not used. A login email address
+      is never looked up for a uuid the host did not name
+    * text must be one address: valid UTF-8, at most 320 characters, no
+      control character, comma or semicolon (`{:invalid_recipient, text}`;
+      the text an error repeats is valid and at most 200 characters)
+    * duplicates within a field are dropped (case-insensitively); at most 20
+      To, 5 Cc, 5 Bcc (`{:too_many_recipients, role, max}`, see also
+      `max_recipients/1` and `valid_address?/1`); at least one address in all
 
   ## Checks, each with a friendly error (an atom or tuple for `PhoenixKitInbox.Errors`)
 
-    * a scope without `inbox` is `{:error, :forbidden}`; nothing runs
-    * recipients: one address to an entry (no comma, semicolon or control
-      character), duplicates within a field dropped, at most 20 To, 5 Cc, 5 Bcc
-      (`{:too_many_recipients, role, max}`), at least one in all
-    * subject at most 500 characters (`:subject_too_long`); text without NUL or
-      invalid UTF-8 (`:invalid_text`); `html_body` at most 256 KiB
+    * a `Scope` without `inbox` is `{:error, :forbidden}`, anything but a
+      `Scope` too; a `Scope` with something that is not a `ComposeDraft` is
+      `{:error, :invalid_draft}`; nothing runs
+    * `callbacks` that are set but invalid: `{:error, :invalid_callbacks}`,
+      nothing runs (see `around_send`)
+    * recipients, as above: `:no_recipients`, `:invalid_recipients`,
+      `{:invalid_recipient, text}`, `{:too_many_recipients, role, max}`
+    * subject at most 500 **code points** (`:subject_too_long`); subject and
+      text without NUL or invalid UTF-8 (`:invalid_text`). The text has no
+      length limit here: that is the host's wrapper's
+    * `html_body` (only the host's) at most 256 KiB (`:html_body_too_large`),
+      valid UTF-8 without NUL (`:invalid_html_body`)
+    * sender: `:invalid_from`, `:mailbox_access_denied`,
+      `{:identity_unusable, reason}`. With a recipient on the `:email` route
+      and no identity named, the identity is the person's own personal one if
+      they have exactly one for that mailbox, else the only one open to them
+      from it, else none when they have none; with several and no clear
+      choice the send stops with `:identity_required`. It is never a guess
     * Reply-To (`:reply_to_not_allowed`)
-    * attachments of the host only from the draft; picked ones through
-      `authorize_attachments.(scope, context, uuids)` (`:ok` or `{:error, term}`),
-      with `context` the draft's `:context` plus its `:links`; no callback,
-      no pick
+    * attachments of the host only from the draft (`:invalid_attachments` for
+      a malformed list, entry or pick); picked ones, those not already held,
+      through `authorize_attachments.(scope, context, uuids)` — `:ok`,
+      `{:ok, [%{file_uuid, name, flags}]}` (the name and flags of the files
+      asked about; an answer about other files adds nothing) or
+      `{:error, term}` (returned as it is); anything else, or no callback, is
+      `{:error, {:attachment_forbidden, uuid}}`. `context` is the draft's
+      `:context` plus its `:links` (`authorize_picks/4` asks the same earlier,
+      at the pick)
     * **route against resolve**, inside the `send_fun` handed to `around_send`
       (see below): a recipient chosen as `:internal` that resolves to an
       outside address is `{:error, {:route_mismatch, [%{address, route,
       resolved}]}}`; one typed as `:email` that resolves to a person or mailbox
       inside is `{:error, {:member_as_email, addresses}}` — "choose them from
-      the list"
+      the list"; a check that cannot be made is `:route_check_failed`
+    * then whatever `Messages.send_message/4` answers (for instance
+      `:idempotency_key_taken`, the `:external_*` errors, `{:attachment_*, …}`);
+      `:send_failed` when nothing sent and the wrapper did not say why
 
   ## `around_send`
+
+  `callbacks` is a map or a keyword list with the keys `:around_send` and
+  `:authorize_attachments`; a key that is absent or `nil` means none, anything
+  but a function of arity 3, an unknown key (a typo), or callbacks that are
+  neither map nor keyword list are `{:error, :invalid_callbacks}`: a wrapper
+  that is set and does not work stops the send, it never becomes a direct one
+  that skips the host's rules.
 
   `callbacks.around_send` is `fn scope, draft, send_fun -> result end`
   (default: `send_fun.(draft)`), the host's wrapper around the send. It is
   called in the process that runs the pipeline and must call `send_fun` in it
   too: `send_fun.(draft')` resolves the recipients' routes **then**, in the
   process context the wrapper set up (a host that lists its clients in the
-  process dictionary, say), and then sends. `draft'` may differ from the draft
-  given in `:subject`, `:body`, `:html_body` and `:attachments` only; the
-  recipients, sender, links, Reply-To, conversation and key are those
-  checked here. The wrapper's answer is the pipeline's: `{:ok, message}` or
-  `{:error, term}`; anything else is `{:error, :send_failed}`.
+  process dictionary, say), and then sends.
 
-  Errors from the host's callbacks are not caught here.
+  `draft'` is the draft with what was checked here put in: `:to`, `:cc`,
+  `:bcc` (each recipient `%{address, route}`, plus `:user` when it is an
+  account and `:label` when it has one), `:subject`, `:body`, `:from` (as
+  `:user_default`, `{:mailbox, uuid}` or `{:identity, uuid}`), `:reply_to`
+  (the address, or `nil`) and `:attachments` (the draft's that stay, then the
+  picked ones, as `%{id, file_uuid, name, flags}`; bytes of the host as
+  `%{id, name, filename, content_type, flags}` with `:binary` or `:path`, their `:id`
+  being the host's own or `"data-<index>"`, the position in the draft's list).
+  What the wrapper hands to `send_fun` counts only in `:subject`, `:body`,
+  `:html_body` and `:attachments` (the subject and text are checked again, the
+  attachments are the wrapper's own responsibility: files it adds go as
+  vouched for); the recipients, sender, links, Reply-To, conversation and key
+  are those checked here.
+
+  `send_fun` sends **at most once**: the first call sends, a second call in
+  the same run answers what the first answered and sends nothing. The
+  pipeline's answer does not follow the wrapper's: a letter that went is
+  `{:ok, stored_message}` whatever the wrapper returns (a different answer is
+  logged); a send that failed is its `{:error, reason}`; with no call to
+  `send_fun` at all the wrapper's `{:error, reason}` is the answer, anything
+  else `{:error, :send_failed}` — success is never claimed for a letter that
+  did not go.
+
+  The subject, text and labels in `draft'` are what a person typed: human text,
+  not markup. A host that builds `html_body` from them escapes them.
+
+  Errors raised by the host's callbacks are not caught here.
   """
 
   alias PhoenixKit.Users.Auth.Scope
