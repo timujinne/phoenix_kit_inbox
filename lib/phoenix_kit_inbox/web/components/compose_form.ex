@@ -153,6 +153,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
     cond do
       not socket.assigns.allowed? -> {:ok, socket}
+      # A letter on its way is not the parent's to take back: its text, its
+      # key and its answer stay until it is over.
+      draft != socket.assigns[:source_draft] and socket.assigns[:sending] == true -> {:ok, socket}
       draft != socket.assigns[:source_draft] -> {:ok, open_draft(socket, draft)}
       scope_changed? -> {:ok, socket |> assign_sender(socket.assigns.from) |> refresh_summary()}
       true -> {:ok, socket}

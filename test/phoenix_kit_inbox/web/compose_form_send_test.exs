@@ -653,6 +653,25 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 0
     end
 
+    test "a new draft from the parent while a send runs is ignored", %{conn: conn} = ctx do
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, %{idempotency_key: key}}, 2000
+
+      send(view.pid, {:test_assigns, %{draft: draft(ctx, subject: "Another letter")}})
+      render(view)
+
+      assert send_button_disabled?(view)
+      assert sending?(view)
+      assert has_element?(view, ~s(input#compose-demo-subject[value="Offer"]))
+
+      send(task, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{subject: "Offer"}}}, 2000
+      assert key
+      assert messages() == 1
+    end
+
     test "a result that is not for the attempt that runs is dropped", %{conn: conn} = ctx do
       mode(:hold)
       view = mount_form(ctx, conn, draft(ctx))
