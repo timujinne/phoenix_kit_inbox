@@ -45,7 +45,7 @@ The **email nudge** in `PhoenixKitInbox.Notify` goes the same way, from the shar
 **This module owns its DDL.** That is the point of the module, architecturally. Older PhoenixKit modules put their tables in core's versioned chain (V90+), which meant a module schema change needed a core release. Inbox follows the newer self-contained pattern used by `phoenix_kit_boards`, `phoenix_kit_web_analytics`, `phoenix_kit_legal`, and `phoenix_kit_stats`.
 
 - `PhoenixKitInbox.Migrations` — coordinator, returned from `migration_module/0`
-- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures; `V05` — external recipients with their status; `V06` — the roles of a common sender (seeded once, on 5 → 6, from the roles holding `inbox.send_external` or `"*"`, Owner aside). **Immutable once shipped**
+- `PhoenixKitInbox.Migrations.V01` — the tables; `V02` — deletion-safe foreign keys and unique shared addresses; `V03` — message attachments; `V04` — sending identities and mailbox signatures; `V05` — external recipients with their status; `V06` — the roles of a common sender (seeded once, on 5 → 6, from the roles holding `inbox.send_external` or `"*"`, Owner aside); `V07` — links from messages to objects of the host, idempotent send keys, and the sender-name flag of a shared identity. **Immutable once shipped**
 - Version tracked via `COMMENT ON TABLE phoenix_kit_inbox_mailboxes` (not a bare "does the table exist?" check — that can't tell "not installed" from "installed at V1")
 - `mix phoenix_kit.update` discovers the coordinator and generates the host migration
 
