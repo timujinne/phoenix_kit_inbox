@@ -950,13 +950,24 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # ── attachments ─────────────────────────────────────────────────────────────
 
+  # The host's files, each under a key of its place in the draft's list. Bytes
+  # the host gave no id get theirs now, from that place ("data-<index>", as the
+  # pipeline names them), so that taking another one off does not move it.
   defp host_files(list) when is_list(list) do
     for {%{} = item, n} <- Enum.with_index(list, 1),
         not is_struct(item),
-        do: %{key: "h-#{n}", item: item}
+        do: %{key: "h-#{n}", item: with_stable_id(item, n - 1)}
   end
 
   defp host_files(_), do: []
+
+  defp with_stable_id(item, index) do
+    id = field(item, :id)
+    named? = is_binary(id) and id != ""
+    file? = is_binary(field(item, :file_uuid))
+
+    if named? or file?, do: item, else: Map.put(item, :id, "data-#{index}")
+  end
 
   defp held_uuids(%{host_files: host, picked: picked}) do
     from_host =

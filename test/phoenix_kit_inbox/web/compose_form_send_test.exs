@@ -787,6 +787,28 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       refute has_element?(view, "#compose-demo-replay-note")
     end
 
+  describe "files the host attached as bytes" do
+    test "keep their ids when another one is taken off", %{conn: conn} = ctx do
+      attachments = [
+        %{binary: "aaa", filename: "a.txt"},
+        %{binary: "bbb", filename: "b.txt"},
+        %{binary: "ccc", filename: "c.txt"}
+      ]
+
+      view = mount_form(ctx, conn, draft(ctx, attachments: attachments))
+
+      view
+      |> element("#compose-demo-file-h-1 button[phx-click=remove_attachment]")
+      |> render_click()
+
+      submit(view)
+
+      assert_receive {:around, _, given}, 2000
+
+      assert [%{filename: "b.txt", id: "data-1"}, %{filename: "c.txt", id: "data-2"}] =
+               given.attachments
+    end
+
   end
 
   def allow(_scope, _context, uuids) do
