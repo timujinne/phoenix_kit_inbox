@@ -257,9 +257,45 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
       end
     end
 
-    answer = around_send.(scope, draft, send_fun)
-    settle(answer, Process.delete(key))
+    case call_wrapper(around_send, scope, draft, send_fun) do
+      {:answered, answer} ->
+        settle(answer, Process.delete(key))
+
+      {:ended, kind, reason, stacktrace} ->
+        ended(kind, reason, stacktrace, Process.delete(key))
+    end
   end
+
+  defp call_wrapper(around_send, scope, draft, send_fun) do
+    {:answered, around_send.(scope, draft, send_fun)}
+  catch
+    kind, reason -> {:ended, kind, reason, __STACKTRACE__}
+  end
+
+  # A wrapper that raises, throws or exits after `send_fun` sent the letter
+  # has not unsent it: the stored message is the answer, and the bug is
+  # logged where to look for it (the kind, the exception's module, the top
+  # frames — never what it carried). Before the send, or after one that
+  # failed, it is the wrapper's failure as it always was.
+  defp ended(kind, reason, stacktrace, {:sent, {:ok, %Message{}} = ok}) do
+    what = if is_struct(reason), do: inspect(reason.__struct__), else: "a #{kind}"
+    frames = stacktrace |> Enum.take(3) |> Enum.map_join(" < ", &frame/1)
+
+    Logger.error(
+      "[Inbox] the host's wrapper ended with #{what} after the letter went, " <>
+        "so the send is answered as sent; look at: #{frames}"
+    )
+
+    ok
+  end
+
+  defp ended(kind, reason, stacktrace, _sent), do: :erlang.raise(kind, reason, stacktrace)
+
+  defp frame({module, function, arity, _location}) when is_atom(module) and is_atom(function),
+    do: "#{inspect(module)}.#{function}/#{if is_list(arity), do: length(arity), else: arity}"
+
+  defp frame({fun, _args, _location}) when is_function(fun), do: inspect(fun)
+  defp frame(_other), do: "?"
 
   defp settle({:error, _reason} = refusal, nil), do: refusal
   defp settle(_answer, nil), do: {:error, :send_failed}

@@ -783,6 +783,66 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       assert message_count() == 1
     end
 
+    test "a wrapper that raises, throws or exits after the send has not undone it", ctx do
+      stops = [
+        raise: fn -> raise "boom with secret-token" end,
+        throw: fn -> throw({:secret, "secret-token"}) end,
+        exit: fn -> exit({:secret, "secret-token"}) end
+      ]
+
+      for {kind, stop} <- stops do
+        before = message_count()
+
+        wrapper = fn _scope, draft, send_fun ->
+          send_fun.(draft)
+          stop.()
+        end
+
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert {:ok, %Message{} = message} =
+                     run(ctx, %{}, draft(ctx), %{around_send: wrapper})
+
+            assert Repo.get!(Message, message.uuid).subject == "Hello"
+          end)
+
+        assert message_count() == before + 1, "#{kind} undid the send"
+        assert log =~ "wrapper"
+        # Where to look, never what it carried.
+        assert log =~ "ComposePipelineTest"
+        refute log =~ "secret-token"
+        refute log =~ "Body text"
+      end
+    end
+
+    test "before the send they are not swallowed", ctx do
+      assert_raise RuntimeError, "boom", fn ->
+        run(ctx, %{}, draft(ctx), %{around_send: fn _, _, _ -> raise "boom" end})
+      end
+
+      assert catch_throw(
+               run(ctx, %{}, draft(ctx), %{around_send: fn _, _, _ -> throw(:oops) end})
+             ) == :oops
+
+      assert catch_exit(run(ctx, %{}, draft(ctx), %{around_send: fn _, _, _ -> exit(:gone) end})) ==
+               :gone
+
+      assert message_count() == 0
+    end
+
+    test "a send that failed, then a wrapper that raises, is the wrapper's failure", ctx do
+      wrapper = fn _scope, draft, send_fun ->
+        send_fun.(%{draft | subject: String.duplicate("x", 501)})
+        raise "after the failed send"
+      end
+
+      assert_raise RuntimeError, "after the failed send", fn ->
+        run(ctx, %{}, draft(ctx), %{around_send: wrapper})
+      end
+
+      assert message_count() == 0
+    end
+
     test "a send that failed is not turned into a success by the wrapper", ctx do
       liar = fn _scope, draft, send_fun ->
         send_fun.(%{draft | subject: String.duplicate("x", 501)})

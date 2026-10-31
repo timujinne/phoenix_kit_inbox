@@ -36,6 +36,16 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     defp act(:exit, _draft, _send_fun), do: exit(:wrapper_died)
     defp act(:kill, _draft, _send_fun), do: Process.exit(self(), :kill)
 
+    defp act(:raise_after, draft, send_fun) do
+      send_fun.(draft)
+      raise "wrapper bug after the send, secret-token"
+    end
+
+    defp act(:exit_after, draft, send_fun) do
+      send_fun.(draft)
+      exit(:wrapper_died_after)
+    end
+
     defp hold(draft, send_fun) do
       receive do
         :go -> send_fun.(draft)
@@ -285,6 +295,24 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       end
 
       assert messages() == 0
+    end
+
+    test "a wrapper that fails after the letter went does not make it a failure",
+         %{conn: conn} = ctx do
+      for {mode, n} <- [raise_after: 1, exit_after: 2] do
+        mode(mode)
+        view = mount_form(ctx, conn, draft(ctx))
+        submit(view)
+
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert_receive {:inbox_compose, "demo", {:sent, %Message{} = message}}, 2000
+          assert Repo.get!(Message, message.uuid).subject == "Offer"
+        end)
+
+        assert messages() == n
+        refute has_element?(view, "[role=alert]")
+        refute render(view) =~ "secret-token"
+      end
     end
 
     test "a task that is killed gives a plain error and an active button",
