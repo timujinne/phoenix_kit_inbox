@@ -186,9 +186,26 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
       AccessEvents.unsubscribe_user(state.user)
     end
 
+    cancel_flush(state)
+
     socket
     |> LiveView.detach_hook(@hook, :handle_info)
     |> assign(@key, nil)
+  end
+
+  # The flush that was coming has no hook to meet any more: a page with no
+  # catch-all `handle_info/2` would crash on it. Stop the timer and take out
+  # the message of one that has already fired.
+  defp cancel_flush(%{timer: nil}), do: :ok
+
+  defp cancel_flush(%{timer: timer}) do
+    Process.cancel_timer(timer)
+
+    receive do
+      @flush -> :ok
+    after
+      0 -> :ok
+    end
   end
 
   defp user_uuid(socket) do

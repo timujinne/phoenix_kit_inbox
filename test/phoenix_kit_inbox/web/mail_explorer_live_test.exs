@@ -12,6 +12,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.Test.ComponentHostLive
   alias PhoenixKitInbox.Test.Repo
   alias PhoenixKitInbox.Web.Components.MailExplorer
 
@@ -390,6 +391,27 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       send(view.pid, {:test_attach, "demo", [@order]})
       settle(view)
       assert object_topic(@order) in topics(view)
+    end
+
+    test "an event just before the last explorer goes does not crash a page with no catch-all",
+         %{conn: conn} = ctx do
+      scope = ComponentHostLive.stash(ctx.alice_scope)
+      on_exit(fn -> ComponentHostLive.unstash(scope) end)
+
+      conn =
+        Plug.Test.init_test_session(conn, %{"scope" => scope, "filter" => [@order]})
+
+      {:ok, view, _html} = live(conn, "/strict-host")
+
+      # The event starts the coalescing timer; the page then drops the explorer.
+      send(view.pid, {:inbox_message_linked, Ecto.UUID.generate()})
+      send(view.pid, {:test_detach, "demo"})
+      render(view)
+
+      # Past the timer (and a flush already in the mailbox): the page lives.
+      ref = Process.monitor(view.pid)
+      refute_receive {:DOWN, ^ref, :process, _, _}, 250
+      assert render(view) =~ "strict host"
     end
 
     test "the same objects in another order are not a new filter", %{conn: conn} = ctx do
