@@ -730,16 +730,18 @@ defmodule PhoenixKitInbox.Messages do
          {:ok, {message, external_rows}} <-
            created
            |> with_snapshots(fn ->
-             do_send(
-               mailbox,
-               sender_user_uuid,
-               attrs,
-               {recipients, externals, sender_record},
-               existing,
-               items,
-               key,
-               Keyword.get(opts, :links, [])
-             )
+             do_send(%{
+               mailbox: mailbox,
+               sender_user_uuid: sender_user_uuid,
+               attrs: attrs,
+               recipients: recipients,
+               externals: externals,
+               sender_record: sender_record,
+               existing: existing,
+               items: items,
+               send_key: key,
+               host_links: Keyword.get(opts, :links, [])
+             })
            end)
            |> finish_attachments(created) do
       if items != [], do: Folders.lay_out_sent(message, mailbox)
@@ -756,7 +758,7 @@ defmodule PhoenixKitInbox.Messages do
       # host's resolvers run here, and a slow or failing one must not hold
       # back the external send or poison the transaction of a message that is
       # otherwise fine. The links of the host and of the conversation are
-      # already stored (in `do_send/8`). `apply_to_new_message/1` never raises.
+      # already stored (in `do_send/1`). `apply_to_new_message/1` never raises.
       Links.apply_to_new_message(message)
 
       {:ok, sent}
@@ -1027,16 +1029,22 @@ defmodule PhoenixKitInbox.Messages do
 
   defp thread_for(%Message{uuid: uuid}, nil), do: uuid
 
-  defp do_send(
-         mailbox,
-         sender_user_uuid,
-         attrs,
-         {recipients, externals, sender_record},
-         existing,
-         items,
-         send_key,
-         host_links
-       ) do
+  # The map carries everything the transaction writes: the sending mailbox and
+  # user, the normalized attrs, the resolved recipients (internal and
+  # external), the sender's recorded options, the draft being promoted (or
+  # nil), the attachment items, the send key and the host's links.
+  defp do_send(%{
+         mailbox: mailbox,
+         sender_user_uuid: sender_user_uuid,
+         attrs: attrs,
+         recipients: recipients,
+         externals: externals,
+         sender_record: sender_record,
+         existing: existing,
+         items: items,
+         send_key: send_key,
+         host_links: host_links
+       }) do
     base = existing || %Message{}
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
