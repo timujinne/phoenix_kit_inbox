@@ -64,6 +64,16 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
     def suggest(_scope, _context, query), do: exit({:gone, query})
   end
 
+  defmodule Slow do
+    @moduledoc false
+    @behaviour PhoenixKitInbox.RecipientSource
+    @impl true
+    def suggest(_scope, _context, _query) do
+      Process.sleep(5_000)
+      [%{address: "late@example.com", route: :email}]
+    end
+  end
+
   defmodule NotAList do
     @moduledoc false
     @behaviour PhoenixKitInbox.RecipientSource
@@ -131,6 +141,36 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
       assert length(kept) == 50
       assert hd(kept).address == "p1@example.com"
       assert List.last(kept).address == "p50@example.com"
+    end
+
+    test "a source that is too slow is skipped and the others answer", ctx do
+      Application.put_env(:phoenix_kit_inbox, :recipient_source_timeout, 100)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :recipient_source_timeout) end)
+      context = %{a: [%{address: "fast@example.com", route: :email}]}
+      started = System.monotonic_time(:millisecond)
+
+      log =
+        capture_log(fn ->
+          assert [%{address: "fast@example.com"}] =
+                   RecipientSource.suggest_all([Slow, SourceA], ctx.scope, context, "zzquery")
+        end)
+
+      assert System.monotonic_time(:millisecond) - started < 2_000
+      assert log =~ "Slow"
+      assert log =~ "too slow"
+      refute log =~ "zzquery"
+    end
+
+    test "sources are asked at once, not one after the other", ctx do
+      Application.put_env(:phoenix_kit_inbox, :recipient_source_timeout, 400)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :recipient_source_timeout) end)
+      started = System.monotonic_time(:millisecond)
+
+      capture_log(fn ->
+        RecipientSource.suggest_all([Slow, Slow, Slow, Slow], ctx.scope, %{}, "q")
+      end)
+
+      assert System.monotonic_time(:millisecond) - started < 1_000
     end
 
     test "merged and deduplicated across sources", ctx do

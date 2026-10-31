@@ -42,6 +42,7 @@ defmodule PhoenixKitInbox.RecipientSource do
   # What a form can use of the answers: a source that returns thousands is
   # not asked to show them all.
   @max_suggestions 50
+  @source_timeout 1_500
 
   @type route :: :internal | :email
 
@@ -81,16 +82,21 @@ defmodule PhoenixKitInbox.RecipientSource do
   * At most 50 suggestions are returned, the first ones in the order of the
     sources.
 
-  The sources are asked one after the other **in the caller's process**: a
-  slow source makes the caller wait, so a source answers from an index or a
-  small query, not from a remote service.
+  The sources are asked **at once**, each in a task of its own (the caller
+  waits for the slowest, but for no longer than 1.5 seconds each: one that has
+  not answered by then is skipped and logged, by its module only), and
+  their answers are put together in the order of `sources`. A task is another
+  process: what a source reads from the caller's process dictionary is not
+  there — it takes what it needs from `scope` and `context`. A source answers
+  from an index or a small query, not from a remote service. Of one source,
+  the first 50 entries are taken.
   """
   @spec suggest_all([module()] | nil, Scope.t(), map(), String.t() | nil) :: [suggestion()]
   def suggest_all(sources, scope, context, query) when is_list(sources) do
     query = if is_binary(query), do: String.trim(query), else: ""
 
     sources
-    |> Enum.flat_map(&ask(&1, scope, context, query))
+    |> ask_all(scope, context, query)
     |> merge()
     |> Enum.take(@max_suggestions)
   end
@@ -99,12 +105,44 @@ defmodule PhoenixKitInbox.RecipientSource do
 
   # ── asking ──────────────────────────────────────────────────────────────────
 
+  # Every source in a task of its own, at most `@source_timeout` each, in the
+  # order they were given. A task that is over time is killed, not waited for.
+  defp ask_all([], _scope, _context, _query), do: []
+
+  defp ask_all(sources, scope, context, query) do
+    timeout = Application.get_env(:phoenix_kit_inbox, :recipient_source_timeout, @source_timeout)
+
+    sources
+    |> Task.async_stream(&ask(&1, scope, context, query),
+      timeout: timeout,
+      on_timeout: :kill_task,
+      max_concurrency: length(sources),
+      ordered: true,
+      zip_input_on_exit: true
+    )
+    |> Enum.flat_map(fn
+      {:ok, entries} ->
+        entries
+
+      {:exit, {source, :timeout}} ->
+        skip(source, "was too slow, so its suggestions are left out")
+
+      {:exit, {source, _reason}} ->
+        skip(source, "ended without an answer")
+    end)
+  end
+
   defp ask(source, scope, context, query) when is_atom(source) and not is_nil(source) do
     if Code.ensure_loaded?(source) and function_exported?(source, :suggest, 3) do
       case safely(source, scope, context, query) do
-        {:ok, list} when is_list(list) -> Enum.flat_map(list, &normalize/1)
-        {:ok, _other} -> skip(source, "did not return a list")
-        :error -> []
+        {:ok, list} when is_list(list) ->
+          list |> Enum.take(@max_suggestions) |> Enum.flat_map(&normalize/1)
+
+        {:ok, _other} ->
+          skip(source, "did not return a list")
+
+        :error ->
+          []
       end
     else
       skip(source, "is not a recipient source")
