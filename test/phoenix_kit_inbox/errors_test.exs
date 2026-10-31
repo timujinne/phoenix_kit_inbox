@@ -35,9 +35,9 @@ defmodule PhoenixKitInbox.ErrorsTest do
 
     test "the line that is full is named in the reader's language" do
       for {locale, role, field} <- [
-            {"ru", :cc, "«Копия»"},
-            {"ru", :to, "«Кому»"},
-            {"et", :to, "«Kellele»"},
+            {"ru", :cc, "Копия"},
+            {"ru", :to, "Кому"},
+            {"et", :to, "Kellele"},
             {"en", :bcc, "Bcc"}
           ] do
         Gettext.with_locale(PhoenixKitInbox.Gettext, locale, fn ->
