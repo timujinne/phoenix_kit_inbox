@@ -149,6 +149,17 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(:nothing_to_retry), do: gettext("There is nothing to send again.")
 
+  def message(:idempotency_key_taken),
+    do: gettext("This send key was already used by someone else. Reopen the form and try again.")
+
+  def message(:invalid_idempotency_key),
+    do: gettext("The send key is not valid. Reopen the form and try again.")
+
+  def message(:links_failed),
+    do: gettext("The links to the related objects could not be saved; the message was not sent.")
+
+  def message(:invalid_link), do: gettext("The link to the related object is not valid.")
+
   def message({:internal_recipients, addresses}),
     do:
       gettext(

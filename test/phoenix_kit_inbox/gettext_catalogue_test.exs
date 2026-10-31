@@ -58,6 +58,18 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
              "Message not found."
   end
 
+  test "the send-key and link errors have their own texts" do
+    for reason <- [:idempotency_key_taken, :invalid_idempotency_key, :links_failed, :invalid_link] do
+      refute Errors.message(reason) =~ "Unexpected error"
+    end
+
+    assert Gettext.with_locale(Backend, "ru", fn -> Errors.message(:invalid_link) end) ==
+             "Связь с объектом недействительна."
+
+    assert Gettext.with_locale(Backend, "et", fn -> Errors.message(:invalid_link) end) ==
+             "Seotud objekti link ei kehti."
+  end
+
   test "a backend with no locale of its own reads the process-wide one" do
     # async test: the locale lives in this test's own process, which ends with it
     Gettext.put_locale("ru")

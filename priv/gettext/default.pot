@@ -1250,3 +1250,23 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The message may not have been sent. Check Sent before trying again."
 msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:153
+#, elixir-autogen, elixir-format
+msgid "This send key was already used by someone else. Reopen the form and try again."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:156
+#, elixir-autogen, elixir-format
+msgid "The send key is not valid. Reopen the form and try again."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:159
+#, elixir-autogen, elixir-format
+msgid "The links to the related objects could not be saved; the message was not sent."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:161
+#, elixir-autogen, elixir-format
+msgid "The link to the related object is not valid."
+msgstr ""

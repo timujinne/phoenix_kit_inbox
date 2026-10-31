@@ -1251,3 +1251,23 @@ msgstr "Не удалось сохранить черновик. Попробу�
 #, elixir-autogen, elixir-format
 msgid "The message may not have been sent. Check Sent before trying again."
 msgstr "Сообщение могло не уйти. Прежде чем пробовать снова, проверьте «Отправленные»."
+
+#: lib/phoenix_kit_inbox/errors.ex:153
+#, elixir-autogen, elixir-format
+msgid "This send key was already used by someone else. Reopen the form and try again."
+msgstr "Этот ключ отправки уже использован другим отправителем. Откройте форму заново и повторите попытку."
+
+#: lib/phoenix_kit_inbox/errors.ex:156
+#, elixir-autogen, elixir-format
+msgid "The send key is not valid. Reopen the form and try again."
+msgstr "Ключ отправки недействителен. Откройте форму заново и повторите попытку."
+
+#: lib/phoenix_kit_inbox/errors.ex:159
+#, elixir-autogen, elixir-format
+msgid "The links to the related objects could not be saved; the message was not sent."
+msgstr "Не удалось сохранить связи с объектами; сообщение не отправлено."
+
+#: lib/phoenix_kit_inbox/errors.ex:161
+#, elixir-autogen, elixir-format
+msgid "The link to the related object is not valid."
+msgstr "Связь с объектом недействительна."
