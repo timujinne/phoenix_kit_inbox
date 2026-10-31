@@ -197,6 +197,26 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
       end
     end
 
+    test "a timeout that is no number does not break the suggestions", ctx do
+      for bad <- ["oops", nil, -5, 0, 1.5] do
+        Application.put_env(:phoenix_kit_inbox, :recipient_source_timeout, bad)
+        on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :recipient_source_timeout) end)
+        context = %{a: [%{address: "fast@example.com", route: :email}]}
+
+        assert [%{address: "fast@example.com"}] =
+                 RecipientSource.suggest_all([SourceA], ctx.scope, context, "x")
+      end
+    end
+
+    test "more sources than are asked at a time are all asked", ctx do
+      context = %{pid: self(), a: [%{address: "x@example.com", route: :email}]}
+
+      assert [%{address: "x@example.com"}] =
+               RecipientSource.suggest_all(List.duplicate(SourceA, 20), ctx.scope, context, "q")
+
+      for _ <- 1..20, do: assert_received({:a, "q"})
+    end
+
     test "sources are asked at once, not one after the other", ctx do
       Application.put_env(:phoenix_kit_inbox, :recipient_source_timeout, 400)
       on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :recipient_source_timeout) end)

@@ -54,6 +54,8 @@ defmodule PhoenixKitInbox.RecipientSource do
   # not asked to show them all.
   @max_suggestions 50
   @source_timeout 1_500
+  # A host may list many sources; no more than this many ask at once.
+  @max_concurrency 8
 
   @type route :: :internal | :email
 
@@ -93,7 +95,7 @@ defmodule PhoenixKitInbox.RecipientSource do
   * At most 50 suggestions are returned, the first ones in the order of the
     sources.
 
-  The sources are asked **at once**, each in a task of its own (the caller
+  The sources are asked **at once** (at most eight at a time), each in a task of its own (the caller
   waits for the slowest, but for no longer than 1.5 seconds each: one that has
   not answered by then is skipped and logged, by its module only), and
   their answers are put together in the order of `sources`. A task is another
@@ -122,7 +124,7 @@ defmodule PhoenixKitInbox.RecipientSource do
   defp ask_all([], _scope, _context, _query), do: []
 
   defp ask_all(sources, scope, context, query) do
-    timeout = Application.get_env(:phoenix_kit_inbox, :recipient_source_timeout, @source_timeout)
+    timeout = timeout()
 
     language = language()
 
@@ -130,7 +132,7 @@ defmodule PhoenixKitInbox.RecipientSource do
     |> Task.async_stream(&ask_in(language, &1, scope, context, query),
       timeout: timeout,
       on_timeout: :kill_task,
-      max_concurrency: length(sources),
+      max_concurrency: min(length(sources), @max_concurrency),
       ordered: true,
       zip_input_on_exit: true
     )
@@ -144,6 +146,15 @@ defmodule PhoenixKitInbox.RecipientSource do
       {:exit, {source, _reason}} ->
         skip(source, "ended without an answer")
     end)
+  end
+
+  # The setting is for tests; anything but a positive whole number of
+  # milliseconds is the default, never a crash of the search.
+  defp timeout do
+    case Application.get_env(:phoenix_kit_inbox, :recipient_source_timeout) do
+      timeout when is_integer(timeout) and timeout > 0 -> timeout
+      _other -> @source_timeout
+    end
   end
 
   # The caller's language is a thing of the caller's process (Gettext keeps
