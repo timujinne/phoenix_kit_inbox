@@ -158,6 +158,7 @@ msgstr "Для вложений нужны права отправителя."
 msgid "Back to mailbox"
 msgstr "Назад к ящику"
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:430
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1033
 #, elixir-autogen, elixir-format
 msgid "Bcc"
@@ -168,6 +169,7 @@ msgstr "Скрытая копия"
 msgid "Broken"
 msgstr "Не работает"
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:497
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1089
 #: lib/phoenix_kit_inbox/web/identity_editor.ex:354
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
@@ -180,6 +182,7 @@ msgstr "Отмена"
 msgid "Cancel upload"
 msgstr "Отменить загрузку"
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:425
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1027
 #, elixir-autogen, elixir-format
 msgid "Cc"
@@ -312,6 +315,8 @@ msgstr "Список пуст."
 msgid "Forward"
 msgstr "Переслать"
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:375
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:382
 #: lib/phoenix_kit_inbox/web/compose_live.ex:995
 #, elixir-autogen, elixir-format
 msgid "From"
@@ -408,6 +413,7 @@ msgstr "Отметить непрочитанным"
 msgid "Markdown: **bold**, _italic_, [link](https://…), - lists."
 msgstr "Markdown: **жирный**, _курсив_, [ссылка](https://…), - списки."
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:471
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1063
 #, elixir-autogen, elixir-format
 msgid "Message"
@@ -492,6 +498,7 @@ msgstr "Отправителей пока нет."
 msgid "No shared mailboxes yet."
 msgstr "Общих ящиков пока нет."
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:446
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1074
 #, elixir-autogen, elixir-format
 msgid "No signature"
@@ -688,6 +695,8 @@ msgstr "Общие ящики и кто может ими пользоватьс
 msgid "Shared mailboxes you are given access to appear here."
 msgstr "Здесь появятся общие ящики, к которым вам дали доступ."
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:419
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:444
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1069
 #, elixir-autogen, elixir-format
 msgid "Signature"
@@ -730,6 +739,7 @@ msgstr "Спам"
 msgid "Star"
 msgstr "Отметить звёздочкой"
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:464
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1062
 #, elixir-autogen, elixir-format
 msgid "Subject"
@@ -815,6 +825,7 @@ msgstr "Не удалось проверить письмо по правила�
 msgid "The email log shows the email may have gone out, so it is not sent again."
 msgstr "По журналу писем письмо могло уйти, поэтому повторно оно не отправляется."
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:341
 #: lib/phoenix_kit_inbox/web/compose_live.ex:387
 #, elixir-autogen, elixir-format
 msgid "The signature in the message was edited, so it was left as it is."
@@ -870,6 +881,7 @@ msgstr "Этот ящик в архиве; отправлять из него н
 msgid "This message can't be sent again from here."
 msgstr "Это сообщение нельзя отправить повторно отсюда."
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:404
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1020
 #, elixir-autogen, elixir-format
 msgid "To"
@@ -1462,3 +1474,49 @@ msgstr "Показаны только %{count} самых новых писем.
 #, elixir-autogen, elixir-format
 msgid "Show more"
 msgstr "Показать ещё"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:183
+#, elixir-autogen, elixir-format
+msgid "%{name} (personal)"
+msgstr "%{name} (личный)"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:411
+#, elixir-autogen, elixir-format
+msgid "+ Bcc"
+msgstr "+ Скрытая копия"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:407
+#, elixir-autogen, elixir-format
+msgid "+ Cc"
+msgstr "+ Копия"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:479
+#, elixir-autogen, elixir-format
+msgid "Attachments"
+msgstr "Вложения"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:554
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:557
+#, elixir-autogen, elixir-format
+msgid "File"
+msgstr "Файл"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:395
+#, elixir-autogen, elixir-format
+msgid "From your personal mailbox: only you will see this letter."
+msgstr "Из личного ящика: письмо увидите только вы."
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:406
+#, elixir-autogen, elixir-format
+msgid "More fields"
+msgstr "Дополнительные поля"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:386
+#, elixir-autogen, elixir-format
+msgid "Replies go to %{address}"
+msgstr "Ответы придут на %{address}"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:232
+#, elixir-autogen, elixir-format
+msgid "Unavailable sender"
+msgstr "Отправитель недоступен"

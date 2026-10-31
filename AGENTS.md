@@ -199,6 +199,7 @@ lib/phoenix_kit_inbox/
     web/scope_refresh.ex                  # scope copy + access-event subscriptions the pages share
     web/components/{mail_explorer,mail_tree,mail_explorer_hooks}.ex   # the embeddable per-object mail component (+ its live updates)
     web/components/{compose_draft,compose_pipeline}.ex   # the host's draft + the server-side recheck of a compose form's send
+    web/components/compose_form.ex   # the embeddable compose form (a thin view over the pipeline)
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.

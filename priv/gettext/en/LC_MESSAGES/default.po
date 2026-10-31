@@ -158,6 +158,7 @@ msgstr ""
 msgid "Back to mailbox"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:430
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1033
 #, elixir-autogen, elixir-format
 msgid "Bcc"
@@ -168,6 +169,7 @@ msgstr ""
 msgid "Broken"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:497
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1089
 #: lib/phoenix_kit_inbox/web/identity_editor.ex:354
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
@@ -180,6 +182,7 @@ msgstr ""
 msgid "Cancel upload"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:425
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1027
 #, elixir-autogen, elixir-format
 msgid "Cc"
@@ -312,6 +315,8 @@ msgstr ""
 msgid "Forward"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:375
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:382
 #: lib/phoenix_kit_inbox/web/compose_live.ex:995
 #, elixir-autogen, elixir-format
 msgid "From"
@@ -408,6 +413,7 @@ msgstr ""
 msgid "Markdown: **bold**, _italic_, [link](https://…), - lists."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:471
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1063
 #, elixir-autogen, elixir-format
 msgid "Message"
@@ -492,6 +498,7 @@ msgstr ""
 msgid "No shared mailboxes yet."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:446
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1074
 #, elixir-autogen, elixir-format
 msgid "No signature"
@@ -688,6 +695,8 @@ msgstr ""
 msgid "Shared mailboxes you are given access to appear here."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:419
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:444
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1069
 #, elixir-autogen, elixir-format
 msgid "Signature"
@@ -730,6 +739,7 @@ msgstr ""
 msgid "Star"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:464
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1062
 #, elixir-autogen, elixir-format
 msgid "Subject"
@@ -815,6 +825,7 @@ msgstr ""
 msgid "The email log shows the email may have gone out, so it is not sent again."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:341
 #: lib/phoenix_kit_inbox/web/compose_live.ex:387
 #, elixir-autogen, elixir-format
 msgid "The signature in the message was edited, so it was left as it is."
@@ -870,6 +881,7 @@ msgstr ""
 msgid "This message can't be sent again from here."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:404
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1020
 #, elixir-autogen, elixir-format
 msgid "To"
@@ -1458,4 +1470,50 @@ msgstr ""
 #: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:547
 #, elixir-autogen, elixir-format
 msgid "Show more"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:183
+#, elixir-autogen, elixir-format
+msgid "%{name} (personal)"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:411
+#, elixir-autogen, elixir-format
+msgid "+ Bcc"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:407
+#, elixir-autogen, elixir-format
+msgid "+ Cc"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:479
+#, elixir-autogen, elixir-format
+msgid "Attachments"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:554
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:557
+#, elixir-autogen, elixir-format
+msgid "File"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:395
+#, elixir-autogen, elixir-format
+msgid "From your personal mailbox: only you will see this letter."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:406
+#, elixir-autogen, elixir-format
+msgid "More fields"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:386
+#, elixir-autogen, elixir-format
+msgid "Replies go to %{address}"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:232
+#, elixir-autogen, elixir-format
+msgid "Unavailable sender"
 msgstr ""

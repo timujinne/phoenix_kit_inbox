@@ -13,7 +13,8 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
 
   A session cannot carry a function (it is signed as a non-executable term),
   so an attribute that must be one is given as `{:capture, module, name,
-  arity}` and turned into the capture here.
+  arity}` and turned into the capture here. A value too big for a cookie is
+  given as `stash/1`'s `{:stash, ref}`.
 
   With `session["attach"]` = `{id, filter}` (or a list of them) the host does what a real page
   does in `mount/3`: it has the viewer's scope as core's
@@ -30,6 +31,20 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   use Phoenix.LiveView
 
   alias PhoenixKitInbox.Web.Components.MailExplorer
+
+  @doc """
+  Keeps `value` for the page and returns what a session can carry for it
+  (`{:stash, ref}`): a signed session is too small for a scope with its
+  user and roles. The caller erases it with `unstash/1`.
+  """
+  def stash(value) do
+    ref = System.unique_integer([:positive])
+    :persistent_term.put({__MODULE__, ref}, value)
+    {:stash, ref}
+  end
+
+  @doc "Forgets what `stash/1` kept."
+  def unstash({:stash, ref}), do: :persistent_term.erase({__MODULE__, ref})
 
   @impl true
   def mount(_params, session, socket) do
@@ -83,6 +98,7 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   defp captures(assigns) do
     Map.new(assigns, fn
       {key, {:capture, module, name, arity}} -> {key, Function.capture(module, name, arity)}
+      {key, {:stash, ref}} -> {key, :persistent_term.get({__MODULE__, ref})}
       pair -> pair
     end)
   end
