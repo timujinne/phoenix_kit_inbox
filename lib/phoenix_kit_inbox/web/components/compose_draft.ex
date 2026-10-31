@@ -44,6 +44,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
 
   ## Recipient and attachment shapes
 
+  **Put only trusted uuids in `:user`.** The pipeline gives a user the draft
+  names its login address and inside handle without asking whether the sender
+  may address them: the draft is the host's word. A caller that fills the
+  draft from something it does not control — an API request, the output of a
+  language model, a form of someone else's — must check those uuids against its
+  own rules first, or the draft hands out the login address of anyone.
+
   A recipient is `%{address: String.t()}` **or** `%{user: uuid}`, plus
   `:label` (a name, optional) and `:route` (`:internal | :email`; `:email`
   when missing). With `:user` the pipeline works out the text: the user's

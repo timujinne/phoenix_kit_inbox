@@ -67,6 +67,41 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   who gets the letter, and — for outside addresses — where the host's
   `outbound_filter` would send it (`Outbound.preview/2`, nothing is sent).
 
+  ## What the host must do
+
+    * **Handle the messages** below in the page's `handle_info/2`. A page with
+      no clause for `{:inbox_compose, id, _}` crashes with a
+      `FunctionClauseError` when the form answers.
+    * **Close the form itself.** After `{:sent, message}` the form stays on the
+      page with its button off (a second send is ignored); hiding it, or
+      handing it a new draft, is the host's. A new draft opens the form afresh.
+    * **Run `PhoenixKitInbox.TaskSupervisor`** (put `PhoenixKitInbox.children/0`
+      in the application's supervision tree): the send is a task under it. If
+      it is not there, "Send" ends with "could not be sent".
+    * **Build the draft where it is made, not in `render`.** A draft that
+      differs from the last one starts the form afresh — new key, the person's
+      text and recipients gone — so a draft rebuilt on every render (a new
+      timestamp, a new `make_ref`) wipes what is being written. A new draft that
+      arrives while a send runs is ignored until the send is over.
+    * **Cover the lost page.** If the page is lost after "Send" (a reconnect,
+      a crash, a closed tab), the form on the new page is a new opening with a
+      new key, and the letter may already have gone. The host shows the mail
+      already sent about the object (the object's mail feed) beside the form
+      and tells the person to look there before sending again. Within one
+      opening a retry is safe: the same key returns the earlier letter and the
+      form says so ("already sent earlier, with its earlier text").
+
+  ## The attachment picker
+
+  The slot `attachment_picker` is rendered with `%{target: target, event:
+  "pick_attachments"}`. The host's picker pushes that event to that target
+  with `%{"uuids" => [file_uuid, ...]}` (at most 50). The files count once
+  `authorize_attachments` has said yes; the name it answers with
+  (`{:ok, [%{file_uuid, name}]}`) is what the person sees. Files the person
+  uploads on the form are, in the draft the wrapper gets, `%{id:
+  "upload-<ref>", path: "/tmp/...", filename: "clean name.ext", name:
+  "clean name.ext", content_type: "type/subtype"}` and have no `flags`.
+
   ## Messages to the parent LiveView
 
     * `{:inbox_compose, id, :cancelled}`
