@@ -316,6 +316,31 @@ defmodule PhoenixKitInbox.ObjectMailTest do
       assert depths[child.uuid] == 3
     end
 
+    test "the oldest of a cycle is the one sent first, by the calendar", ctx do
+      a = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+      b = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "B", "parent_uuid" => a.uuid})
+      c = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "C", "parent_uuid" => b.uuid})
+
+      # A is the first, in March — on the 20th; B the next month, on the 5th.
+      # Compared as plain structures the day would decide, and B would win.
+      for {message, sent_at} <- [
+            {a, ~U[2026-03-20 10:00:00Z]},
+            {b, ~U[2026-04-05 10:00:00Z]},
+            {c, ~U[2026-05-10 10:00:00Z]}
+          ] do
+        Repo.update_all(from(m in Message, where: m.uuid == ^message.uuid),
+          set: [sent_at: sent_at]
+        )
+      end
+
+      Repo.update_all(from(m in Message, where: m.uuid == ^a.uuid), set: [parent_uuid: c.uuid])
+
+      [%{messages: entries}] = threads(ctx.alice_scope)
+      depths = Map.new(entries, &{&1.message.uuid, &1.depth})
+
+      assert depths == %{a.uuid => 0, b.uuid => 1, c.uuid => 2}
+    end
+
     test "the letters of an archived shared mailbox are not read, and come back with it", ctx do
       letter = mail(ctx, :bob, ctx.desk.address, %{"subject" => "To the desk"}, links: [@order])
       assert uuids(threads(ctx.alice_scope)) == [letter.uuid]

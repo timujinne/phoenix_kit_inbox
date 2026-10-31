@@ -385,8 +385,9 @@ defmodule PhoenixKitInbox.ObjectMail do
         []
 
       left ->
-        oldest =
-          Enum.min_by(left, &{&1.message.sent_at || ~U[1970-01-01 00:00:00Z], &1.message.uuid})
+        # By the clock, not by the structure: two DateTimes compared as terms go
+        # by their day before their month.
+        oldest = Enum.min_by(left, &{&1.message.sent_at, &1.message.uuid}, &sent_order/2)
 
         {ordered, seen} = walk([oldest], children, 0, seen)
         ordered ++ unreached(entries, children, seen)
