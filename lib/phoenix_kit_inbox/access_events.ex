@@ -34,6 +34,13 @@ defmodule PhoenixKitInbox.AccessEvents do
 
   def subscribe_user(_user_uuid), do: :ok
 
+  @doc "Undoes `subscribe_user/1` for the caller."
+  @spec unsubscribe_user(binary() | nil) :: :ok | {:error, term()}
+  def unsubscribe_user(user_uuid) when is_binary(user_uuid),
+    do: PubSub.unsubscribe(user_topic(user_uuid))
+
+  def unsubscribe_user(_user_uuid), do: :ok
+
   @doc "Subscribes the caller to changes of the shared senders."
   @spec subscribe_senders() :: :ok | {:error, term()}
   def subscribe_senders, do: PubSub.subscribe(@senders_topic)

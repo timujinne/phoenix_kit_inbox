@@ -15,10 +15,17 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
       subscriptions follow the mailboxes the viewer reaches now.
 
   and a `:handle_info` hook turns these into `Phoenix.LiveView.send_update/3`
-  calls to the explorers: a link or access event reads the list again, a
-  status event only if that letter is on the page. The hook **consumes** the
-  three events (`:halt`): a page that attaches an explorer does not handle
-  them itself.
+  calls to the explorers: an access event reads every list again; a link event
+  reads the list of an explorer whose filter names an object the letter is
+  linked to now, or that has the letter on its page (it may just have lost
+  its link); a status event only if that letter is on the page. The hook
+  **consumes** the three events (`:halt`): a page that attaches an explorer
+  does not handle them itself.
+
+  `attach/3` is idempotent per explorer `id`: calling it again with another
+  filter replaces the explorer's filter, and the page follows the objects
+  now wanted and lets go of the ones no explorer wants. `detach/2` forgets an
+  explorer; the last one takes the hook and every subscription with it.
 
   The viewer is the scope in core's `:phoenix_kit_current_scope` assign, which
   every page of a PhoenixKit application has. Without a scope the page gets
@@ -33,6 +40,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
+  alias PhoenixKitInbox.ObjectMail
   alias PhoenixKitInbox.Web.Components.MailExplorer
 
   @hook :inbox_mail_explorers
@@ -45,13 +53,31 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
   def attach(socket, id, filter) when is_list(filter) do
     socket
     |> ensure_hook()
-    |> register(id, filter)
+    |> register(id, ObjectMail.normalize_filter(filter))
     |> subscribe()
   end
 
-  # The state assign appears with the first `attach/3`, together with the hook.
+  @doc false
+  @spec detach(LiveView.Socket.t(), term()) :: LiveView.Socket.t()
+  def detach(socket, id) do
+    case Map.get(socket.assigns, @key) do
+      nil ->
+        socket
+
+      state ->
+        state = %{state | explorers: Map.delete(state.explorers, id)}
+        socket = assign(socket, @key, state)
+
+        if map_size(state.explorers) == 0,
+          do: teardown(socket, state),
+          else: subscribe(socket)
+    end
+  end
+
+  # The state assign is nil, or absent, until the first `attach/3`, which puts
+  # the hook with it.
   defp ensure_hook(socket) do
-    if Map.has_key?(socket.assigns, @key),
+    if Map.get(socket.assigns, @key),
       do: socket,
       else: LiveView.attach_hook(socket, @hook, :handle_info, &__MODULE__.handle_info/2)
   end
@@ -70,11 +96,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
 
   defp subscribe(socket) do
     if LiveView.connected?(socket) do
-      state = state(socket)
-
       state =
-        state
-        |> subscribe_objects()
+        socket
+        |> state()
+        |> sync_objects()
         |> subscribe_user(socket)
         |> sync_mailboxes(socket)
 
@@ -84,19 +109,20 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
     end
   end
 
-  defp subscribe_objects(state) do
+  # The page follows exactly the objects its explorers' filters name.
+  defp sync_objects(state) do
     wanted =
       state.explorers
       |> Map.values()
       |> List.flatten()
-      |> Enum.flat_map(fn
-        %{kind: kind, ref: ref} when is_binary(kind) and is_binary(ref) -> [{kind, ref}]
-        _ -> []
-      end)
-      |> MapSet.new()
+      |> MapSet.new(&{&1.kind, &1.ref})
 
     for {kind, ref} <- MapSet.difference(wanted, state.objects), do: Links.subscribe(kind, ref)
-    %{state | objects: MapSet.union(state.objects, wanted)}
+
+    for {kind, ref} <- MapSet.difference(state.objects, wanted),
+        do: Links.unsubscribe(kind, ref)
+
+    %{state | objects: wanted}
   end
 
   defp subscribe_user(%{user: nil} = state, socket) do
@@ -127,6 +153,19 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
     %{state | mailboxes: reachable}
   end
 
+  # The last explorer is gone: nothing is followed, the hook is not there.
+  defp teardown(socket, state) do
+    if LiveView.connected?(socket) do
+      sync_objects(state)
+      for uuid <- state.mailboxes, do: External.unsubscribe(uuid)
+      AccessEvents.unsubscribe_user(state.user)
+    end
+
+    socket
+    |> LiveView.detach_hook(@hook, :handle_info)
+    |> assign(@key, nil)
+  end
+
   defp user_uuid(socket) do
     case Mailboxes.scope_user_uuid(socket.assigns[:phoenix_kit_current_scope]) do
       {:ok, uuid} -> uuid
@@ -138,8 +177,15 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
 
   @doc false
   @spec handle_info(term(), LiveView.Socket.t()) :: {:cont | :halt, LiveView.Socket.t()}
-  def handle_info({:inbox_message_linked, _message_uuid}, socket) do
-    update_all(socket, refresh: true)
+  def handle_info({:inbox_message_linked, message_uuid}, socket) do
+    objects = message_uuid |> Links.for_message() |> MapSet.new(&{&1.kind, &1.ref})
+
+    for {id, filter} <- state(socket).explorers do
+      if Enum.any?(filter, &MapSet.member?(objects, {&1.kind, &1.ref})),
+        do: update_explorer(id, refresh: true),
+        else: update_explorer(id, message_changed: message_uuid)
+    end
+
     {:halt, socket}
   end
 
@@ -158,10 +204,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
   def handle_info(_message, socket), do: {:cont, socket}
 
   defp update_all(socket, assigns) do
-    for {id, _filter} <- state(socket).explorers do
-      LiveView.send_update(MailExplorer, [{:id, id} | assigns])
-    end
-
+    for {id, _filter} <- state(socket).explorers, do: update_explorer(id, assigns)
     :ok
   end
+
+  defp update_explorer(id, assigns),
+    do: LiveView.send_update(MailExplorer, [{:id, id} | assigns])
 end

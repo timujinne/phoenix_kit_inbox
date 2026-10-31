@@ -15,13 +15,16 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   so an attribute that must be one is given as `{:capture, module, name,
   arity}` and turned into the capture here.
 
-  With `session["attach"]` = `{id, filter}` the host does what a real page
+  With `session["attach"]` = `{id, filter}` (or a list of them) the host does what a real page
   does in `mount/3`: it has the viewer's scope as core's
   `:phoenix_kit_current_scope` (the component's `:scope` attribute) and calls
   `MailExplorer.attach/3`.
 
   `session["second_assigns"]` puts a second component of the same module on
-  the page (a page may hold several explorers) for the same viewer.
+  the page (a page may hold several explorers) for the same viewer. Messages to the page's pid
+  drive what a page does later: `{:test_attach, id, filter}`,
+  `{:test_detach, id}` and `{:test_assigns, %{...}}` (new attributes of the
+  first component, as a re-render of the host would pass).
   """
 
   use Phoenix.LiveView
@@ -40,10 +43,11 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
       |> assign(:second_assigns, session |> Map.get("second_assigns") |> second_assigns(assigns))
       |> assign(:phoenix_kit_current_scope, assigns[:scope])
 
-    case session do
-      %{"attach" => {id, filter}} -> {:ok, MailExplorer.attach(socket, id, filter)}
-      _ -> {:ok, socket}
-    end
+    session
+    |> Map.get("attach", [])
+    |> List.wrap()
+    |> Enum.reduce(socket, fn {id, filter}, acc -> MailExplorer.attach(acc, id, filter) end)
+    |> then(&{:ok, &1})
   end
 
   @impl true
@@ -55,6 +59,15 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   end
 
   @impl true
+  def handle_info({:test_attach, id, filter}, socket),
+    do: {:noreply, MailExplorer.attach(socket, id, filter)}
+
+  def handle_info({:test_detach, id}, socket),
+    do: {:noreply, MailExplorer.detach(socket, id)}
+
+  def handle_info({:test_assigns, assigns}, socket),
+    do: {:noreply, update(socket, :component_assigns, &Map.merge(&1, captures(assigns)))}
+
   def handle_info(message, socket) when is_tuple(message) and tuple_size(message) > 0 do
     if inbox_message?(message), do: send(socket.assigns.test_pid, message)
 

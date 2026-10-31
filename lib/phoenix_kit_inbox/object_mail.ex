@@ -143,7 +143,14 @@ defmodule PhoenixKitInbox.ObjectMail do
 
   defp viewer_mailboxes(_), do: :none
 
-  defp normalize_filter(filter) when is_list(filter) do
+  @doc """
+  A filter as the module reads it: the valid objects (atom or string keys,
+  text within the limits of `PhoenixKitInbox.Links`), each once, sorted — so
+  two filters naming the same objects in another order compare equal.
+  Anything else in the list is dropped; a filter that is not a list is `[]`.
+  """
+  @spec normalize_filter(term()) :: [object()]
+  def normalize_filter(filter) when is_list(filter) do
     filter
     |> Enum.flat_map(fn
       %{kind: kind, ref: ref} -> object(kind, ref)
@@ -151,9 +158,10 @@ defmodule PhoenixKitInbox.ObjectMail do
       _ -> []
     end)
     |> Enum.uniq()
+    |> Enum.sort_by(&{&1.kind, &1.ref})
   end
 
-  defp normalize_filter(_), do: []
+  def normalize_filter(_), do: []
 
   defp object(kind, ref) do
     if Links.valid_text?(kind, @kind_max) and Links.valid_text?(ref, @ref_max),

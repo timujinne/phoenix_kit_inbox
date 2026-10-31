@@ -43,8 +43,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   ## Live updates
 
-  Call `attach/3` from the host's `mount/3` and the list follows new letters,
-  delivery statuses and changes of access without a reload.
+  Call `attach/3` from the host's `mount/3` (again with the new filter when
+  the page changes it; `detach/2` when it takes the explorer off) and the list
+  follows new letters, delivery statuses and changes of access without a
+  reload.
   """
 
   use PhoenixKitWeb, :live_component
@@ -78,6 +80,15 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   @spec attach(Phoenix.LiveView.Socket.t(), term(), [map()]) :: Phoenix.LiveView.Socket.t()
   defdelegate attach(socket, id, filter), to: MailExplorerHooks
 
+  @doc """
+  The reverse of `attach/3` for the explorer `id`, for a page that takes an
+  explorer off. What only that explorer needed is let go; with the last one
+  the page stops following mail altogether and handles those events itself
+  again. Detaching an explorer that was not attached does nothing.
+  """
+  @spec detach(Phoenix.LiveView.Socket.t(), term()) :: Phoenix.LiveView.Socket.t()
+  defdelegate detach(socket, id), to: MailExplorerHooks
+
   @impl true
   def update(%{refresh: true}, socket), do: {:ok, load(socket)}
 
@@ -89,6 +100,8 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   end
 
   def update(assigns, socket) do
+    assigns = normalize_filter(assigns)
+
     stale? =
       not Map.has_key?(socket.assigns, :threads) or
         Enum.any?(~w(scope filter folders)a, fn key ->
@@ -110,6 +123,13 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
     {:ok, if(stale?, do: load(socket), else: socket)}
   end
+
+  # The objects, once each and in one order: another order of the same objects
+  # is not a change of the filter.
+  defp normalize_filter(%{filter: filter} = assigns),
+    do: %{assigns | filter: ObjectMail.normalize_filter(filter)}
+
+  defp normalize_filter(assigns), do: assigns
 
   defp offered_folder(folder, folders) do
     cond do

@@ -9,6 +9,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
 
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
+  alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Test.Repo
@@ -17,6 +18,14 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
   @order %{kind: "order", ref: "o-1"}
   @other %{kind: "order", ref: "o-2"}
   @external ["inbox", "inbox.send_external"]
+  @pubsub :phoenix_kit_internal_pubsub
+
+  # What the host is asked while a page loads, reported to the test: one
+  # message per question, so a reload of an explorer is visible.
+  def counting(_scope, kind, ref) do
+    send(Application.fetch_env!(:phoenix_kit_inbox, :explorer_test_pid), {:asked, kind, ref})
+    true
+  end
 
   setup do
     enable_inbox!()
@@ -56,18 +65,36 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
 
   defp handle(user), do: "@" <> user.username
 
-  defp open(ctx, conn, scope \\ nil) do
-    conn =
-      Plug.Test.init_test_session(conn, %{
+  defp open(ctx, conn, scope \\ nil, extra \\ %{}, page \\ %{}) do
+    assigns =
+      Map.merge(
+        %{id: "demo", scope: scope || ctx.alice_scope, filter: [@order]},
+        extra
+      )
+
+    session =
+      %{
         "component" => MailExplorer,
-        "assigns" => %{id: "demo", scope: scope || ctx.alice_scope, filter: [@order]},
-        "attach" => {"demo", [@order]},
+        "assigns" => assigns,
+        "attach" => [{"demo", assigns.filter}] ++ second_attach(page),
         "test_pid" => self()
-      })
+      }
+      |> Map.merge(second(page))
+
+    conn = Plug.Test.init_test_session(conn, session)
 
     {:ok, view, _html} = live(conn, "/component-host")
     view
   end
+
+  defp second(%{second_assigns: assigns}), do: %{"second_assigns" => assigns}
+  defp second(_page), do: %{}
+
+  defp second_attach(%{second_assigns: assigns}), do: [{assigns.id, assigns.filter}]
+  defp second_attach(_page), do: []
+
+  def allow(_scope, _kind, _ref), do: true
+  defp counting, do: {:capture, __MODULE__, :counting, 3}
 
   # The update arrives through PubSub and a send_update: wait for it.
   defp eventually(fun, tries \\ 40) do
@@ -268,5 +295,128 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
 
     assert has_element?(view, "#mail-row-demo-#{kept.uuid}")
     assert length(Regex.scan(~r/id="mail-row-demo-/, render(view))) == 1
+  end
+
+  # ── what the page follows ───────────────────────────────────────────────────
+
+  describe "subscriptions of the explorers on a page" do
+    defp topics(view), do: Registry.keys(@pubsub, view.pid)
+
+    # The topic Links uses for an object, learned from a process that
+    # subscribes to it.
+    defp object_topic(%{kind: kind, ref: ref}) do
+      Task.async(fn ->
+        Links.subscribe(kind, ref)
+        Registry.keys(@pubsub, self())
+      end)
+      |> Task.await()
+      |> hd()
+    end
+
+    defp drain_asked(acc \\ []) do
+      receive do
+        {:asked, kind, ref} -> drain_asked([{kind, ref} | acc])
+      after
+        150 -> Enum.reverse(acc)
+      end
+    end
+
+    setup do
+      Application.put_env(:phoenix_kit_inbox, :explorer_test_pid, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :explorer_test_pid) end)
+    end
+
+    test "attaching the same explorer again keeps one subscription per topic",
+         %{conn: conn} = ctx do
+      view = open(ctx, conn)
+      before = topics(view)
+      assert object_topic(@order) in before
+
+      for _ <- 1..3, do: send(view.pid, {:test_attach, "demo", [@order]})
+      settle(view)
+
+      assert Enum.sort(topics(view)) == Enum.sort(before)
+      assert before == Enum.uniq(before)
+    end
+
+    test "a changed filter follows the new objects and drops the departed ones",
+         %{conn: conn} = ctx do
+      view = open(ctx, conn)
+
+      send(view.pid, {:test_attach, "demo", [@other]})
+      settle(view)
+
+      assert object_topic(@other) in topics(view)
+      refute object_topic(@order) in topics(view)
+
+      # An object another explorer still has stays.
+      send(view.pid, {:test_attach, "second", [@other, @order]})
+      send(view.pid, {:test_attach, "demo", [@other]})
+      settle(view)
+      assert object_topic(@order) in topics(view)
+    end
+
+    test "detach drops what the explorer alone needed, the last one everything",
+         %{conn: conn} = ctx do
+      view = open(ctx, conn)
+      send(view.pid, {:test_attach, "second", [@other]})
+      settle(view)
+      assert object_topic(@other) in topics(view)
+
+      send(view.pid, {:test_detach, "second"})
+      settle(view)
+      refute object_topic(@other) in topics(view)
+      assert object_topic(@order) in topics(view)
+
+      send(view.pid, {:test_detach, "demo"})
+      settle(view)
+      assert topics(view) == []
+
+      # Detaching what is not there is harmless, and attaching again works.
+      send(view.pid, {:test_detach, "demo"})
+      send(view.pid, {:test_attach, "demo", [@order]})
+      settle(view)
+      assert object_topic(@order) in topics(view)
+    end
+
+    test "the same objects in another order are not a new filter", %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
+      view = open(ctx, conn, nil, %{filter: [@order, @other], can_link?: counting()})
+      drain_asked()
+
+      send(view.pid, {:test_assigns, %{filter: [@other, @order]}})
+      settle(view)
+      assert drain_asked() == []
+
+      send(view.pid, {:test_assigns, %{filter: [@order]}})
+      settle(view)
+      assert {"order", "o-1"} in drain_asked()
+    end
+
+    test "a link event reloads only the explorers of the object concerned",
+         %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "One"}, links: [@order])
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Two"}, links: [@other])
+
+      view =
+        open(ctx, conn, nil, %{can_link?: counting()}, %{
+          second_assigns: %{
+            id: "second",
+            filter: [@other],
+            can_link?: counting()
+          }
+        })
+
+      drain_asked()
+      fresh = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Three"})
+      settle(view)
+
+      {:ok, _} = Links.link(ctx.alice_scope, fresh.uuid, "order", "o-2", can_link?: &allow/3)
+      eventually(fn -> has_element?(view, "#mail-row-second-#{fresh.uuid}") end)
+
+      asked = drain_asked()
+      assert {"order", "o-2"} in asked
+      refute {"order", "o-1"} in asked
+    end
   end
 end
