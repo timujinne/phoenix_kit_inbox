@@ -333,9 +333,29 @@ defmodule PhoenixKitInbox.Links do
 
     cond do
       not valid?(kind, ref) -> {:error, :invalid_link}
-      can_link?.(scope, kind, ref) == true -> :ok
+      host_allows?(can_link?, scope, kind, ref) -> :ok
       true -> {:error, :forbidden}
     end
+  end
+
+  # The host's answer, and only a plain `true` is a yes. A callback that is no
+  # fun of three, raises, throws or exits is a no: a click on a page must not
+  # crash it. The log names the kind of failure, not the object or the person.
+  defp host_allows?(can_link?, scope, kind, ref) when is_function(can_link?, 3) do
+    can_link?.(scope, kind, ref) == true
+  rescue
+    e ->
+      Logger.warning("[Inbox] can_link? raised #{inspect(e.__struct__)}; link refused")
+      false
+  catch
+    failure, _reason ->
+      Logger.warning("[Inbox] can_link? ended with a #{failure}; link refused")
+      false
+  end
+
+  defp host_allows?(_can_link?, _scope, _kind, _ref) do
+    Logger.warning("[Inbox] can_link? is not a function of three; link refused")
+    false
   end
 
   # The message and the sent messages of its conversation.

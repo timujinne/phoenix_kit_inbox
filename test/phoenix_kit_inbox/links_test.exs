@@ -457,6 +457,34 @@ defmodule PhoenixKitInbox.LinksTest do
                Links.unlink(ctx.alice_scope, ctx.reply.uuid, "order", "o-1", can_link?: &allow/3)
     end
 
+    test "a can_link? that fails is a refusal, not a crash, and the log carries no ref", ctx do
+      failing = [
+        fn _, _, _ -> raise "host bug for o-secret-1" end,
+        fn _, _, _ -> throw(:nope) end,
+        fn _, _, _ -> exit(:gone) end,
+        "not a function",
+        fn _, _ -> true end
+      ]
+
+      log =
+        capture_log(fn ->
+          for can_link? <- failing do
+            assert {:error, :forbidden} =
+                     Links.link(ctx.alice_scope, ctx.root.uuid, "order", "o-secret-1",
+                       can_link?: can_link?
+                     )
+
+            assert {:error, :forbidden} =
+                     Links.unlink(ctx.alice_scope, ctx.root.uuid, "order", "o-secret-1",
+                       can_link?: can_link?
+                     )
+          end
+        end)
+
+      refute log =~ "o-secret-1"
+      assert Links.for_message(ctx.root.uuid) == []
+    end
+
     test "link refuses without can_link?", ctx do
       assert {:error, :forbidden} = Links.link(ctx.alice_scope, ctx.root.uuid, "order", "o-1")
 
