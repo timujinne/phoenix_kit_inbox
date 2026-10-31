@@ -8,7 +8,10 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
 
   use PhoenixKitInbox.LiveCase
 
+  import Ecto.Query, only: [from: 2]
+
   alias PhoenixKitInbox.Mailboxes
+  alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Test.ComponentHostLive
   alias PhoenixKitInbox.Test.OutboundFilters
@@ -599,6 +602,62 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       refute_receive {:around, _, _}, 200
       assert text(view, "[role=alert]") =~ "uploads to finish"
     end
+  end
+
+  describe "a key that was used before" do
+    defp earlier_letter!(ctx, key, ago_seconds) do
+      {:ok, mailbox} = Mailboxes.ensure_user_mailbox(ctx.alice)
+
+      {:ok, message} =
+        Messages.send_message(
+          ctx.scope,
+          mailbox,
+          %{"to" => ["@#{ctx.bob.username}"], "subject" => "Offer", "body" => "Hello there"},
+          idempotency_key: key
+        )
+
+      Repo.update_all(
+        from(m in Message, where: m.uuid == ^message.uuid),
+        set: [
+          inserted_at:
+            DateTime.utc_now()
+            |> DateTime.add(-ago_seconds, :second)
+            |> DateTime.truncate(:second)
+        ]
+      )
+
+      message
+    end
+
+    test "the person is told the earlier letter stood, with its earlier text",
+         %{conn: conn} = ctx do
+      mode(:error)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, _, %{idempotency_key: key}}, 2000
+      eventually(fn -> has_element?(view, "[role=alert]") end)
+      earlier = earlier_letter!(ctx, key, 3600)
+
+      mode(:pass)
+
+      view
+      |> form("#compose-demo-form", %{"subject" => "Changed my mind", "body" => "Other text"})
+      |> render_submit()
+
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{} = message}}, 2000
+      assert message.uuid == earlier.uuid
+      assert messages() == 1
+      assert has_element?(view, "#compose-demo-replay-note[role=status]", "already sent")
+    end
+
+    test "a first send carries no such note", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+      eventually(fn -> send_button_disabled?(view) end)
+      refute has_element?(view, "#compose-demo-replay-note")
+    end
+
   end
 
   def allow(_scope, _context, uuids) do

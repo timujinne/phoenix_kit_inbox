@@ -96,6 +96,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # How long a send may run before the page stops waiting for it. A send that
   # is slow, not lost, still lands; a retry with the same key is the same letter.
   @send_timeout :timer.minutes(5)
+  @replay_margin 2
   @roles ~w(to cc bcc)
   @subject_max 500
   @query_max 320
@@ -193,7 +194,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       idempotency_key: UUIDv7.generate(),
       sending: false,
       sent: false,
+      replayed: false,
       send_ref: nil,
+      send_started: nil,
       summary: nil,
       from_error: nil,
       open: %{cc: recipients.cc != [], bcc: recipients.bcc != [], signature: false},
@@ -672,7 +675,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
     case start_task(scope, id, ref, params, draft, callbacks, links) do
       :ok ->
-        assign(socket, sending: true, send_ref: ref, error: nil)
+        assign(socket, sending: true, send_ref: ref, send_started: DateTime.utc_now(), error: nil)
 
       :error ->
         Enum.each(links, &File.rm/1)
@@ -757,9 +760,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   defp lost(page, id, ref),
     do: Phoenix.LiveView.send_update(page, __MODULE__, id: id, send_lost: ref)
 
+  # The same key answered with a letter that was there before this attempt
+  # started: an earlier attempt went through unseen (the page was lost, the
+  # answer was late), and what the person has just written was not sent. The
+  # stored time has whole seconds, hence the margin.
+  defp replayed?(%Message{inserted_at: %DateTime{} = stored}, %DateTime{} = started),
+    do: DateTime.compare(stored, DateTime.add(started, -@replay_margin, :second)) == :lt
+
+  defp replayed?(_message, _started), do: false
+
   defp finish_send(socket, {:ok, %Message{} = message}) do
     send(self(), {:inbox_compose, socket.assigns.id, {:sent, message}})
-    assign(socket, sending: false, sent: true, send_ref: nil, error: nil)
+
+    assign(socket,
+      sending: false,
+      sent: true,
+      replayed: replayed?(message, socket.assigns[:send_started]),
+      send_ref: nil,
+      error: nil
+    )
   end
 
   defp finish_send(socket, {:error, reason}),
@@ -1239,6 +1258,18 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           <.icon name="hero-eye-slash" class="w-4 h-4" />
           <span>{gettext("From your personal mailbox: only you will see this letter.")}</span>
         </div>
+      </div>
+
+      <div
+        :if={@replayed}
+        id={"compose-#{@id}-replay-note"}
+        role="status"
+        class="alert alert-info alert-soft py-2 text-sm"
+      >
+        <.icon name="hero-information-circle" class="w-5 h-5" />
+        <span>
+          {gettext("This message was already sent earlier, with its earlier text. Nothing was sent again.")}
+        </span>
       </div>
 
       <div :if={@error} role="alert" class="alert alert-error alert-soft py-2 text-sm">
