@@ -405,6 +405,25 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       refute has_element?(view, "#compose-demo-cc")
     end
   end
+  describe "what the draft says, read the way the pipeline reads it" do
+    test "a from_editable that is not true is not editable", %{conn: conn} = ctx do
+      for value <- [nil, false] do
+        view = mount_form(ctx, conn, draft(from_editable: value))
+        refute has_element?(view, "#compose-demo-from-select"), "#{inspect(value)} is editable"
+      end
+
+      view = mount_form(ctx, conn, draft(from_editable: true))
+      assert has_element?(view, "#compose-demo-from-select")
+    end
+
+    test "an empty trusted Reply-To does not hide the draft's own", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(reply_to_trusted: "", reply_to: "desk@company.test"))
+
+      assert render(element(view, "#compose-demo-reply-to")) =~ "desk@company.test"
+    end
+
+  end
+
   describe "outside mail and the sender it will go as" do
     defp summary_text(view),
       do:

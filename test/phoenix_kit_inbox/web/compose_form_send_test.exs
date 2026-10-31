@@ -731,6 +731,17 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 1
     end
 
+    test "a wrapper set to something that is not a function stops the send",
+         %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx), %{around_send: false})
+
+      submit(view)
+
+      refute_receive {:around, _, _}, 200
+      eventually(fn -> has_element?(view, "[role=alert]") end)
+      assert text(view, "[role=alert]") =~ "not set up correctly"
+      assert messages() == 0
+    end
   end
 
   describe "a key that was used before" do

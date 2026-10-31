@@ -404,10 +404,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     assign(socket, signatures: signatures, signature_uuid: selected)
   end
 
-  defp editable?(%{source_draft: %{from_editable: editable}}), do: editable != false
+  # As the pipeline reads them: only `true` lets the person choose the sender,
+  # and a trusted Reply-To that is empty is none.
+  defp editable?(%{source_draft: %{from_editable: editable}}), do: editable == true
 
   defp reply_to(%{source_draft: draft}),
-    do: blank_to_nil(draft.reply_to_trusted || draft.reply_to)
+    do: blank_to_nil(draft.reply_to_trusted) || blank_to_nil(draft.reply_to)
 
   # ── events ──────────────────────────────────────────────────────────────────
 
@@ -669,11 +671,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> Map.put("from", socket.assigns.from)
       |> put_picks(socket.assigns.picked)
 
+    # Only what the host did not set is left out: whatever it did set goes to
+    # the pipeline, which refuses what is not a function — never a send that
+    # skips the host's rules because they were set wrong.
     callbacks =
       for key <- ~w(around_send authorize_attachments)a,
-          fun = socket.assigns[key],
+          not is_nil(socket.assigns[key]),
           into: %{},
-          do: {key, fun}
+          do: {key, socket.assigns[key]}
 
     ref = System.unique_integer([:positive])
 
