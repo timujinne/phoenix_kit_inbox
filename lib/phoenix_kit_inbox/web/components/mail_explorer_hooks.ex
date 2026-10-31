@@ -19,8 +19,14 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
   reads the list of an explorer whose filter names an object the letter is
   linked to now, or that has the letter on its page (it may just have lost
   its link); a status event only if that letter is on the page. The hook
-  **consumes** the three events (`:halt`): a page that attaches an explorer
-  does not handle them itself.
+  **consumes** exactly these three events (`:halt`): a link event, a status
+  event and `{:inbox_access_changed, :mailboxes}` — a page that attaches an
+  explorer does not handle them itself, even if it subscribed to the same
+  topics. Every other message, `{:inbox_access_changed, :senders}` included,
+  goes on to the page untouched and makes the explorers read nothing: the
+  page still needs a clause (or a catch-all) for the ones it asked for — and
+  for `{:inbox_access_changed, :senders}`, which the user's topic also brings
+  when one of their personal senders changes.
 
   `attach/3` is idempotent per explorer `id`: calling it again with another
   filter replaces the explorer's filter, and the page follows the objects
@@ -194,7 +200,9 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
     {:halt, socket}
   end
 
-  def handle_info({:inbox_access_changed, _what}, socket) do
+  # Only a change of the viewer's mailboxes is the explorers' business; the
+  # page may have subscribed to the others itself (the senders, say).
+  def handle_info({:inbox_access_changed, :mailboxes}, socket) do
     state = state(socket)
     socket = assign(socket, @key, sync_mailboxes(state, socket))
     update_all(socket, refresh: true)

@@ -419,4 +419,56 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       refute {"order", "o-1"} in asked
     end
   end
+
+  describe "events the page keeps for itself" do
+    test "senders changes (not the explorer's) pass on to the page, and read nothing",
+         %{conn: conn} = ctx do
+      kept = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Kept"}, links: [@order])
+      view = open(ctx, conn)
+      assert has_element?(view, "#mail-row-demo-#{kept.uuid}")
+
+      {result, queries} =
+        page_queries(view, fn ->
+          send(view.pid, {:inbox_access_changed, :senders})
+          send(view.pid, {:inbox_access_changed, :something_new})
+          settle(view)
+        end)
+
+      assert result
+      assert_receive {:inbox_access_changed, :senders}
+      assert_receive {:inbox_access_changed, :something_new}
+      assert queries == 0
+    end
+
+    test "a change of mailboxes is the explorer's alone", %{conn: conn} = ctx do
+      view = open(ctx, conn)
+      send(view.pid, {:inbox_access_changed, :mailboxes})
+      settle(view)
+
+      refute_receive {:inbox_access_changed, _}, 100
+    end
+  end
+
+  # How many queries the page process ran while `fun` did its work.
+  defp page_queries(view, fun) do
+    counter = :counters.new(1, [])
+    page = view.pid
+    handler = {:count_page_queries, System.unique_integer()}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        Repo.config()[:telemetry_prefix] ++ [:query],
+        fn _event, _measure, _meta, {counter, pid} ->
+          if self() == pid, do: :counters.add(counter, 1, 1)
+        end,
+        {counter, page}
+      )
+
+    try do
+      {fun.(), :counters.get(counter, 1)}
+    after
+      :telemetry.detach(handler)
+    end
+  end
 end
