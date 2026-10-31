@@ -546,7 +546,59 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       end
 
       assert {:error, :send_failed} = run(ctx, %{}, draft(ctx), %{around_send: garbage})
-      assert {:ok, _} = run(ctx, %{}, draft(ctx), %{around_send: "not a function", other: 1})
+      assert {:ok, _} = run(ctx, %{}, draft(ctx), %{around_send: nil})
+    end
+  end
+
+  describe "callbacks" do
+    test "a wrapper that is set but not a fun of three never becomes a direct send", ctx do
+      for bad <- ["not a function", {__MODULE__, :wrap}, fn draft -> draft end, 42] do
+        assert {:error, :invalid_callbacks} = run(ctx, %{}, draft(ctx), %{around_send: bad})
+      end
+
+      assert message_count() == 0
+    end
+
+    test "a mistyped key is refused, not ignored", ctx do
+      wrapper = fn _scope, _draft, _send_fun -> {:error, :host_rule} end
+
+      assert {:error, :invalid_callbacks} =
+               run(ctx, %{}, draft(ctx), %{around_sned: wrapper})
+
+      assert {:error, :invalid_callbacks} =
+               run(ctx, %{}, draft(ctx), around_send: wrapper, other: 1)
+
+      assert message_count() == 0
+    end
+
+    test "authorize_attachments that is set but not a fun of three is refused", ctx do
+      assert {:error, :invalid_callbacks} =
+               run(ctx, %{}, draft(ctx), %{authorize_attachments: "yes"})
+
+      assert message_count() == 0
+    end
+
+    test "callbacks that are not a map or a keyword list are refused, and nothing raises", ctx do
+      for bad <- ["wrapper", [1, 2], [{:around_send}], [:around_send], 42, {:a, :b}] do
+        assert {:error, :invalid_callbacks} = run(ctx, %{}, draft(ctx), bad)
+      end
+
+      assert message_count() == 0
+    end
+
+    test "nothing set, nil, an empty map or list: the direct send", ctx do
+      for ok <- [%{}, [], nil, %{around_send: nil}, [authorize_attachments: nil]] do
+        assert {:ok, _} = run(ctx, %{}, draft(ctx), ok)
+      end
+    end
+
+    test "the refusal comes before any work, even for a draft that would fail", ctx do
+      assert {:error, :invalid_callbacks} =
+               run(ctx, %{}, draft(ctx, to: []), %{around_send: "x"})
+    end
+
+    test "it reads plainly" do
+      assert Errors.message(:invalid_callbacks) =~ "set up"
     end
   end
 

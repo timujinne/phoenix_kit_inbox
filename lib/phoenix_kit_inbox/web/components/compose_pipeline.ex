@@ -80,6 +80,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   alias PhoenixKitInbox.Web.Components.ComposeDraft
 
   @max_per_role %{to: 20, cc: 5, bcc: 5}
+  @callback_keys [:around_send, :authorize_attachments]
   @roles [:to, :cc, :bcc]
   @subject_max 500
   @html_max 256 * 1024
@@ -129,9 +130,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   def valid_address?(_), do: false
 
   defp checked(scope, params, %ComposeDraft{} = draft, callbacks) do
-    callbacks = callbacks(callbacks)
-
-    with {:ok, recipients} <- recipients(draft, params),
+    with {:ok, callbacks} <- callbacks(callbacks),
+         {:ok, recipients} <- recipients(draft, params),
          {:ok, text} <- text(draft, params),
          {:ok, sender} <- sender(scope, draft, params, recipients),
          {:ok, reply_to} <- reply_to(scope, sender.mailbox, draft, params),
@@ -156,17 +156,36 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp callbacks(callbacks) when is_list(callbacks), do: callbacks(Map.new(callbacks))
+  # The host's rules live in its wrapper: one that is set and does not work
+  # must stop the send, never turn it into a direct one that skips them. A key
+  # that is absent or `nil` is "none"; anything else but a fun of three, a key
+  # we do not know (a typo) and callbacks that are not a map or a keyword list
+  # are `:invalid_callbacks`.
+  defp callbacks(nil), do: callbacks(%{})
 
-  defp callbacks(callbacks) when is_map(callbacks) do
-    %{
-      around_send:
-        valid_fun(callbacks[:around_send], 3, fn _scope, draft, send_fun -> send_fun.(draft) end),
-      authorize_attachments: valid_fun(callbacks[:authorize_attachments], 3, nil)
-    }
+  defp callbacks(callbacks) when is_list(callbacks) do
+    if Keyword.keyword?(callbacks),
+      do: callbacks(Map.new(callbacks)),
+      else: {:error, :invalid_callbacks}
   end
 
-  defp callbacks(_), do: callbacks(%{})
+  defp callbacks(callbacks) when is_map(callbacks) and not is_struct(callbacks) do
+    with true <- Enum.all?(Map.keys(callbacks), &(&1 in @callback_keys)),
+         {:ok, around} <- fun_or_none(callbacks[:around_send], &direct/3),
+         {:ok, authorize} <- fun_or_none(callbacks[:authorize_attachments], nil) do
+      {:ok, %{around_send: around, authorize_attachments: authorize}}
+    else
+      _ -> {:error, :invalid_callbacks}
+    end
+  end
+
+  defp callbacks(_), do: {:error, :invalid_callbacks}
+
+  defp fun_or_none(nil, default), do: {:ok, default}
+  defp fun_or_none(fun, _default) when is_function(fun, 3), do: {:ok, fun}
+  defp fun_or_none(_other, _default), do: :error
+
+  defp direct(_scope, draft, send_fun), do: send_fun.(draft)
 
   defp valid_fun(fun, arity, _default) when is_function(fun, arity), do: fun
   defp valid_fun(_fun, _arity, default), do: default
