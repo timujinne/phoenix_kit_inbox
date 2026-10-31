@@ -26,8 +26,8 @@ msgstr "%{sender} отправил(а) вам сообщение."
 #: lib/phoenix_kit_inbox/notify.ex:242
 #: lib/phoenix_kit_inbox/notify.ex:243
 #: lib/phoenix_kit_inbox/notify.ex:365
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:395
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:421
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:412
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:438
 #: lib/phoenix_kit_inbox/web/components/mail_tree.ex:93
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:758
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:836
@@ -195,7 +195,7 @@ msgstr "Проверить"
 msgid "Choose a sender under “Send as” to write to addresses outside this application."
 msgstr "Чтобы писать на адреса вне приложения, выберите отправителя в поле «Отправить как»."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:377
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:394
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:838
 #, elixir-autogen, elixir-format
 msgid "Close"
@@ -321,7 +321,7 @@ msgid "Grant access"
 msgstr "Дать доступ"
 
 #: lib/phoenix_kit_inbox.ex:195
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:502
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:519
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:77
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1077
 #, elixir-autogen, elixir-format
@@ -347,7 +347,7 @@ msgstr "Больше допустимого размера."
 #: lib/phoenix_kit_inbox.ex:180
 #: lib/phoenix_kit_inbox.ex:240
 #: lib/phoenix_kit_inbox.ex:272
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:79
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:96
 #: lib/phoenix_kit_inbox/web/settings_live.ex:31
 #, elixir-autogen, elixir-format
 msgid "Mail"
@@ -576,7 +576,7 @@ msgstr "Обновить"
 msgid "Remove attachment"
 msgstr "Убрать вложение"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:493
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:510
 #: lib/phoenix_kit_inbox/web/compose_live.ex:440
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1002
 #, elixir-autogen, elixir-format
@@ -666,7 +666,7 @@ msgstr "Отправляю повторно."
 msgid "Sending to addresses outside this application is turned off."
 msgstr "Отправка на адреса вне приложения отключена."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:503
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:520
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1078
 #, elixir-autogen, elixir-format
 msgid "Sent"
@@ -915,7 +915,7 @@ msgstr "Дождитесь окончания загрузки."
 msgid "Where replies to your messages go by default: your email, or a shared mailbox you write to."
 msgstr "Куда по умолчанию приходят ответы на ваши сообщения: на ваш email или в общий ящик, из которого вы пишете."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:358
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:375
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:542
 #, elixir-autogen, elixir-format
 msgid "Write"
@@ -975,25 +975,25 @@ msgstr "Ваши настройки почты"
 msgid "a file"
 msgstr "файл"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:518
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:535
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:956
 #, elixir-autogen, elixir-format
 msgid "not delivered"
 msgstr "не доставлено"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:519
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:536
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:957
 #, elixir-autogen, elixir-format
 msgid "sending…"
 msgstr "отправляется…"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:517
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:534
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:955
 #, elixir-autogen, elixir-format
 msgid "sent"
 msgstr "отправлено"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:520
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:537
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:958
 #, elixir-autogen, elixir-format
 msgid "unknown — check the email log"
@@ -1308,12 +1308,12 @@ msgstr[0] "%{count} письмо"
 msgstr[1] "%{count} письма"
 msgstr[2] "%{count} писем"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:501
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:518
 #, elixir-autogen, elixir-format
 msgid "All"
 msgstr "Все"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:288
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:305
 #, elixir-autogen, elixir-format
 msgid "Folder"
 msgstr "Папка"
@@ -1323,22 +1323,22 @@ msgstr "Папка"
 msgid "Incoming"
 msgstr "Входящее"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:310
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:327
 #, elixir-autogen, elixir-format
 msgid "Link a letter"
 msgstr "Привязать письмо"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:385
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:402
 #, elixir-autogen, elixir-format
 msgid "No letters without a link."
 msgstr "Нет писем без привязки."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:326
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:343
 #, elixir-autogen, elixir-format
 msgid "No letters yet."
 msgstr "Писем пока нет."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:348
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:365
 #, elixir-autogen, elixir-format
 msgid "Other people's personal mail is not shown here."
 msgstr "Личные письма других сотрудников здесь не показываются."
@@ -1348,18 +1348,18 @@ msgstr "Личные письма других сотрудников здесь
 msgid "Outgoing"
 msgstr "Исходящее"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:373
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:390
 #, elixir-autogen, elixir-format
 msgid "Pick a letter to link"
 msgstr "Выберите письмо для привязки"
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:332
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:349
 #, elixir-autogen, elixir-format
 msgid "Select a conversation to read it."
 msgstr "Выберите переписку, чтобы прочитать её."
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:466
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:467
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:483
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:484
 #, elixir-autogen, elixir-format
 msgid "Unlink"
 msgstr "Отвязать"
@@ -1386,5 +1386,10 @@ msgstr "по теме"
 #, elixir-autogen, elixir-format
 msgctxt "mail link source"
 msgid "thread"
-
 msgstr "цепочка"
+
+#: lib/phoenix_kit_inbox/recipient_sources/members.ex:24
+#, elixir-autogen, elixir-format
+msgid "People and shared mailboxes"
+
+msgstr "Люди и общие ящики"
