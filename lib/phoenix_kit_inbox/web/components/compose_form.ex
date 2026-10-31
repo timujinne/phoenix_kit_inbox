@@ -75,9 +75,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     * **Close the form itself.** After `{:sent, message}` the form stays on the
       page with its button off (a second send is ignored); hiding it, or
       handing it a new draft, is the host's. A new draft opens the form afresh.
-    * **Run `PhoenixKitInbox.TaskSupervisor`** (put `PhoenixKitInbox.children/0`
-      in the application's supervision tree): the send is a task under it. If
-      it is not there, "Send" ends with "could not be sent".
+    * **Nothing to start for the send's tasks.** The send is a task under
+      `PhoenixKitInbox.TaskSupervisor`, which PhoenixKit starts itself with the
+      module (`PhoenixKitInbox.children/0`); do not add it to the application's
+      tree, a second one is `already_started`.
     * **Build the draft where it is made, not in `render`.** A draft that
       differs from the last one starts the form afresh — new key, the person's
       text and recipients gone — so a draft rebuilt on every render (a new
