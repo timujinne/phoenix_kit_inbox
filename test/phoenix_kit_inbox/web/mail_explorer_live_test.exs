@@ -87,22 +87,22 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
 
   test "new linked message appears without reload", %{conn: conn} = ctx do
     view = open(ctx, conn)
-    refute has_element?(view, "[id^=mail-row-]")
+    refute has_element?(view, "[id^=mail-row-demo-]")
 
     letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Fresh"}, links: [@order])
-    eventually(fn -> has_element?(view, "#mail-row-#{letter.uuid}") end)
+    eventually(fn -> has_element?(view, "#mail-row-demo-#{letter.uuid}") end)
 
     # A letter linked by hand later is picked up the same way.
     plain = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Plain"})
     settle(view)
-    refute has_element?(view, "#mail-row-#{plain.uuid}")
+    refute has_element?(view, "#mail-row-demo-#{plain.uuid}")
 
     {:ok, _} =
       PhoenixKitInbox.Links.link(ctx.alice_scope, plain.uuid, "order", "o-1",
         can_link?: fn _, _, _ -> true end
       )
 
-    eventually(fn -> has_element?(view, "#mail-row-#{plain.uuid}") end)
+    eventually(fn -> has_element?(view, "#mail-row-demo-#{plain.uuid}") end)
 
     # And an unlinked one goes.
     :ok =
@@ -110,7 +110,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
         can_link?: fn _, _, _ -> true end
       )
 
-    eventually(fn -> not has_element?(view, "#mail-row-#{plain.uuid}") end)
+    eventually(fn -> not has_element?(view, "#mail-row-demo-#{plain.uuid}") end)
   end
 
   describe "an external email" do
@@ -146,7 +146,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
 
     defp status_of(view, message) do
       view
-      |> element("#mail-letter-#{message.uuid} [id^=mail-external-]")
+      |> element("#mail-letter-demo-#{message.uuid} [id^=mail-external-demo-]")
       |> render()
     end
 
@@ -200,7 +200,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
         })
 
       {:ok, message} = send_external(ctx, ctx.desk, bound)
-      eventually(fn -> has_element?(view, "#mail-letter-#{message.uuid}") end)
+      eventually(fn -> has_element?(view, "#mail-letter-demo-#{message.uuid}") end)
       eventually(fn -> status_of(view, message) =~ "sending" end)
 
       assert_receive {:waiting, transport}
@@ -215,14 +215,14 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
   test "access change refreshes the list", %{conn: conn} = ctx do
     to_desk = mail(ctx, :bob, ctx.desk.address, %{"subject" => "To the desk"}, links: [@order])
     view = open(ctx, conn)
-    refute has_element?(view, "#mail-row-#{to_desk.uuid}")
+    refute has_element?(view, "#mail-row-demo-#{to_desk.uuid}")
 
     admin_scope = scope_for(ctx.admin, ["inbox", "inbox.manage_shared"])
     {:ok, _} = Mailboxes.grant_access(admin_scope, ctx.desk, ctx.alice.uuid, "read")
-    eventually(fn -> has_element?(view, "#mail-row-#{to_desk.uuid}") end)
+    eventually(fn -> has_element?(view, "#mail-row-demo-#{to_desk.uuid}") end)
 
     :ok = Mailboxes.revoke_access(admin_scope, ctx.desk, ctx.alice.uuid)
-    eventually(fn -> not has_element?(view, "#mail-row-#{to_desk.uuid}") end)
+    eventually(fn -> not has_element?(view, "#mail-row-demo-#{to_desk.uuid}") end)
   end
 
   test "mail of a mailbox granted after the page opened is followed too", %{conn: conn} = ctx do
@@ -232,13 +232,13 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
     settle(view)
 
     letter = mail(ctx, :bob, ctx.desk.address, %{"subject" => "After the grant"}, links: [@order])
-    eventually(fn -> has_element?(view, "#mail-row-#{letter.uuid}") end)
+    eventually(fn -> has_element?(view, "#mail-row-demo-#{letter.uuid}") end)
   end
 
   test "unrelated messages ignored", %{conn: conn} = ctx do
     kept = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Kept"}, links: [@order])
     view = open(ctx, conn)
-    assert has_element?(view, "#mail-row-#{kept.uuid}")
+    assert has_element?(view, "#mail-row-demo-#{kept.uuid}")
 
     queries = :counters.new(1, [])
     page = view.pid
@@ -266,7 +266,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       :telemetry.detach(handler)
     end
 
-    assert has_element?(view, "#mail-row-#{kept.uuid}")
-    assert length(Regex.scan(~r/id="mail-row-/, render(view))) == 1
+    assert has_element?(view, "#mail-row-demo-#{kept.uuid}")
+    assert length(Regex.scan(~r/id="mail-row-demo-/, render(view))) == 1
   end
 end

@@ -15,6 +15,7 @@ defmodule PhoenixKitInbox.Web.Components.MailTree do
 
   @sources ~w(host manual thread subject)
 
+  attr(:id, :string, required: true, doc: "the explorer's id; scopes the DOM ids of the rows")
   attr(:threads, :list, required: true)
   attr(:selected, :any, default: nil, doc: "`{:thread, uuid}`, `{:message, uuid}` or `nil`")
   attr(:target, :any, required: true, doc: "the `phx-target` of the row buttons")
@@ -28,10 +29,11 @@ defmodule PhoenixKitInbox.Web.Components.MailTree do
     <div class="flex flex-col gap-2">
       <div
         :for={thread <- @blocks}
-        id={"mail-thread-#{thread.thread_uuid}"}
+        id={"mail-thread-#{@id}-#{thread.thread_uuid}"}
         class="flex flex-col gap-1"
       >
         <.row
+          id={@id}
           entry={hd(thread.messages)}
           kind="thread"
           selected={@selected == {:thread, thread.thread_uuid}}
@@ -43,6 +45,7 @@ defmodule PhoenixKitInbox.Web.Components.MailTree do
         />
         <.row
           :for={entry <- tl(thread.messages)}
+          id={@id}
           entry={entry}
           kind="message"
           selected={@selected == {:message, entry.message.uuid}}
@@ -57,6 +60,7 @@ defmodule PhoenixKitInbox.Web.Components.MailTree do
     """
   end
 
+  attr(:id, :string, required: true)
   attr(:entry, :map, required: true)
   attr(:kind, :string, required: true)
   attr(:uuid, :string, required: true)
@@ -70,7 +74,7 @@ defmodule PhoenixKitInbox.Web.Components.MailTree do
     ~H"""
     <button
       type="button"
-      id={"mail-row-#{@entry.message.uuid}"}
+      id={"mail-row-#{@id}-#{@entry.message.uuid}"}
       class={[
         "flex flex-col gap-1 rounded-lg border px-3 py-2 text-left text-sm",
         "hover:bg-base-200 focus-visible:outline focus-visible:outline-2",

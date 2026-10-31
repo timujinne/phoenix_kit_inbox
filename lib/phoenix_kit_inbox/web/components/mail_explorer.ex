@@ -400,22 +400,23 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         <span>{@error}</span>
       </div>
 
-      <.picker :if={@picker} letters={@picker} target={@myself} />
+      <.picker :if={@picker} id={@id} letters={@picker} target={@myself} />
 
       <div class="grid gap-4 md:grid-cols-[minmax(16rem,22rem)_1fr]">
-        <div id="mail-list">
-          <MailTree.tree :if={@threads != []} threads={@threads} selected={@selected} target={@myself} />
+        <div id={"mail-list-#{@id}"}>
+          <MailTree.tree :if={@threads != []} id={@id} threads={@threads} selected={@selected} target={@myself} />
           <p :if={@threads == []} class="text-sm text-base-content/60">
             {gettext("No letters yet.")}
           </p>
         </div>
 
-        <div id="mail-detail" class="flex flex-col gap-3">
+        <div id={"mail-detail-#{@id}"} class="flex flex-col gap-3">
           <p :if={@letters == []} class="text-sm text-base-content/60">
             {gettext("Select a conversation to read it.")}
           </p>
           <.letter
             :for={entry <- @letters}
+            id={@id}
             entry={entry}
             attachments={Map.get(@attachments, entry.message.uuid, [])}
             link_access={@link_access}
@@ -445,12 +446,13 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     """
   end
 
+  attr(:id, :string, required: true)
   attr(:letters, :list, required: true)
   attr(:target, :any, required: true)
 
   defp picker(assigns) do
     ~H"""
-    <div id="mail-picker" class="card border border-base-300 bg-base-100">
+    <div id={"mail-picker-#{@id}"} class="card border border-base-300 bg-base-100">
       <div class="card-body gap-2 p-4">
         <div class="flex items-center justify-between gap-2">
           <h4 class="font-medium">{gettext("Pick a letter to link")}</h4>
@@ -483,6 +485,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     """
   end
 
+  attr(:id, :string, required: true)
   attr(:entry, :map, required: true)
   attr(:attachments, :list, default: [])
   attr(:link_access, :map, default: %{})
@@ -496,7 +499,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
     ~H"""
     <article
-      id={"mail-letter-#{@message.uuid}"}
+      id={"mail-letter-#{@id}-#{@message.uuid}"}
       class="card border border-base-300 bg-base-100"
     >
       <div class="card-body gap-3 p-4">
@@ -525,7 +528,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         <div :if={@entry.external != []} class="flex flex-wrap items-center gap-1 text-xs">
           <span
             :for={row <- @entry.external}
-            id={"mail-external-#{row.uuid}"}
+            id={"mail-external-#{@id}-#{row.uuid}"}
             class={["badge badge-sm gap-1", external_class(@entry.direction, row, @now)]}
             title={@entry.direction == :sent && row.error}
           >
@@ -571,7 +574,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
           <%= for {status, attachment} <- @attachments do %>
             <a
               :if={status == :ok}
-              id={"mail-attachment-#{attachment.uuid}"}
+              id={"mail-attachment-#{@id}-#{attachment.uuid}"}
               href={Paths.attachment(attachment.uuid)}
               class="btn btn-sm btn-outline gap-2 max-w-full normal-case"
               title={gettext("Download")}
@@ -583,7 +586,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
             </a>
             <span
               :if={status == :withheld}
-              id={"mail-attachment-#{attachment.uuid}"}
+              id={"mail-attachment-#{@id}-#{attachment.uuid}"}
               class="btn btn-sm btn-disabled gap-2 normal-case"
             >
               <.icon name="hero-no-symbol" class="w-4 h-4 shrink-0" />

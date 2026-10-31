@@ -116,24 +116,29 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       other = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Question"}, links: [@order])
 
       view = mount_explorer(ctx, conn)
-      thread = "#mail-thread-#{root.thread_uuid}"
+      thread = "#mail-thread-demo-#{root.thread_uuid}"
 
-      assert has_element?(view, "#{thread} #mail-row-#{root.uuid}")
-      assert has_element?(view, "#{thread} #mail-row-#{reply.uuid}.ml-4")
-      refute has_element?(view, "#{thread} #mail-row-#{root.uuid}.ml-4")
-      assert has_element?(view, "#mail-thread-#{other.thread_uuid} #mail-row-#{other.uuid}")
-      assert render(element(view, "#{thread} #mail-row-#{root.uuid}")) =~ "2 letters"
+      assert has_element?(view, "#{thread} #mail-row-demo-#{root.uuid}")
+      assert has_element?(view, "#{thread} #mail-row-demo-#{reply.uuid}.ml-4")
+      refute has_element?(view, "#{thread} #mail-row-demo-#{root.uuid}.ml-4")
+
+      assert has_element?(
+               view,
+               "#mail-thread-demo-#{other.thread_uuid} #mail-row-demo-#{other.uuid}"
+             )
+
+      assert render(element(view, "#{thread} #mail-row-demo-#{root.uuid}")) =~ "2 letters"
 
       # The head row selects the conversation: every letter in the pane.
-      view |> element("#mail-row-#{root.uuid}") |> render_click()
-      assert has_element?(view, "#mail-detail #mail-letter-#{root.uuid}")
-      assert has_element?(view, "#mail-detail #mail-letter-#{reply.uuid}")
-      assert render(element(view, "#mail-detail")) =~ "Root body"
+      view |> element("#mail-row-demo-#{root.uuid}") |> render_click()
+      assert has_element?(view, "#mail-detail-demo #mail-letter-demo-#{root.uuid}")
+      assert has_element?(view, "#mail-detail-demo #mail-letter-demo-#{reply.uuid}")
+      assert render(element(view, "#mail-detail-demo")) =~ "Root body"
 
       # A nested row only its own letter.
-      view |> element("#mail-row-#{reply.uuid}") |> render_click()
-      assert has_element?(view, "#mail-detail #mail-letter-#{reply.uuid}")
-      refute has_element?(view, "#mail-detail #mail-letter-#{root.uuid}")
+      view |> element("#mail-row-demo-#{reply.uuid}") |> render_click()
+      assert has_element?(view, "#mail-detail-demo #mail-letter-demo-#{reply.uuid}")
+      refute has_element?(view, "#mail-detail-demo #mail-letter-demo-#{root.uuid}")
 
       assert render(view) =~ "Other people&#39;s personal mail is not shown here."
     end
@@ -143,23 +148,23 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       outgoing = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "Out"}, links: [@order])
 
       view = mount_explorer(ctx, conn)
-      assert has_element?(view, "#mail-row-#{incoming.uuid}")
-      assert has_element?(view, "#mail-row-#{outgoing.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{incoming.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{outgoing.uuid}")
       assert has_element?(view, ~s(button[phx-value-folder=all][aria-pressed=true]))
 
       view |> element("button[phx-value-folder=inbox]") |> render_click()
-      assert has_element?(view, "#mail-row-#{incoming.uuid}")
-      refute has_element?(view, "#mail-row-#{outgoing.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{incoming.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{outgoing.uuid}")
       assert has_element?(view, ~s(button[phx-value-folder=inbox][aria-pressed=true]))
       assert has_element?(view, ~s(button[phx-value-folder=all][aria-pressed=false]))
 
       view |> element("button[phx-value-folder=sent]") |> render_click()
-      refute has_element?(view, "#mail-row-#{incoming.uuid}")
-      assert has_element?(view, "#mail-row-#{outgoing.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{incoming.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{outgoing.uuid}")
 
       view |> element("button[phx-value-folder=all]") |> render_click()
-      assert has_element?(view, "#mail-row-#{incoming.uuid}")
-      assert has_element?(view, "#mail-row-#{outgoing.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{incoming.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{outgoing.uuid}")
     end
 
     test "folders the host did not offer are not shown, nor accepted", %{conn: conn} = ctx do
@@ -194,7 +199,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
             {by_subject, "subject"},
             {by_hand, "manual"}
           ] do
-        row = view |> element("#mail-row-#{message.uuid}") |> render()
+        row = view |> element("#mail-row-demo-#{message.uuid}") |> render()
         assert row =~ ~r/badge[^>]*>\s*#{label}\s*</, "no #{label} label on #{message.subject}"
       end
     end
@@ -233,7 +238,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
     test "reply to a letter the reader can no longer open is refused", %{conn: conn} = ctx do
       letter = mail(ctx, :bob, ctx.desk.address, %{}, links: [@order])
       view = mount_explorer(ctx, conn, %{compose: composing()})
-      assert has_element?(view, "#mail-row-#{letter.uuid}")
+      assert has_element?(view, "#mail-row-demo-#{letter.uuid}")
 
       Repo.delete_all(from(g in MailboxGrant, where: g.user_uuid == ^ctx.alice.uuid))
 
@@ -274,7 +279,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       assert Links.for_message(letter.uuid) == []
       assert_receive {:inbox_explorer, "demo", {:unlinked, uuid}}
       assert uuid == letter.uuid
-      refute has_element?(view, "#mail-row-#{letter.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{letter.uuid}")
     end
 
     test "unlink is not offered, and not done, without can_link?", %{conn: conn} = ctx do
@@ -318,20 +323,20 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       foreign = mail(ctx, :bob, handle(ctx.bob), %{"subject" => "Not Alice"})
 
       view = mount_explorer(ctx, conn, %{can_link?: allowing()})
-      refute has_element?(view, "#mail-row-#{free.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{free.uuid}")
 
       view |> element("button[phx-click=open_picker]") |> render_click()
-      assert has_element?(view, "#mail-picker button[phx-value-uuid='#{free.uuid}']")
-      refute has_element?(view, "#mail-picker button[phx-value-uuid='#{linked.uuid}']")
-      refute has_element?(view, "#mail-picker button[phx-value-uuid='#{foreign.uuid}']")
+      assert has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{free.uuid}']")
+      refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{linked.uuid}']")
+      refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{foreign.uuid}']")
 
-      view |> element("#mail-picker button[phx-value-uuid='#{free.uuid}']") |> render_click()
+      view |> element("#mail-picker-demo button[phx-value-uuid='#{free.uuid}']") |> render_click()
 
       assert_receive {:inbox_explorer, "demo", {:linked, uuid}}
       assert uuid == free.uuid
       assert [%{kind: "order", ref: "o-1", source: "manual"}] = Links.for_message(free.uuid)
-      assert has_element?(view, "#mail-row-#{free.uuid}")
-      refute has_element?(view, "#mail-picker")
+      assert has_element?(view, "#mail-row-demo-#{free.uuid}")
+      refute has_element?(view, "#mail-picker-demo")
     end
 
     test "the picker offers neither trashed nor foreign letters", %{conn: conn} = ctx do
@@ -347,13 +352,45 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       )
 
       view |> element("button[phx-click=open_picker]") |> render_click()
-      refute has_element?(view, "#mail-picker button[phx-value-uuid='#{mine.uuid}']")
-      refute has_element?(view, "#mail-picker button[phx-value-uuid='#{foreign.uuid}']")
+      refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{mine.uuid}']")
+      refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{foreign.uuid}']")
 
       # Someone else's letter is refused whatever the browser sends.
       forge(view, "link", %{"uuid" => foreign.uuid})
       assert Links.for_message(foreign.uuid) == []
       assert render(view) =~ "Message not found."
+    end
+  end
+
+  describe "several explorers on one page" do
+    test "the DOM ids are scoped by the explorer's id", %{conn: conn} = ctx do
+      letter =
+        mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Both"},
+          links: [@order, %{kind: "order", ref: "o-2"}]
+        )
+
+      assigns = %{id: "demo", scope: ctx.alice_scope, filter: [@order]}
+
+      conn =
+        Plug.Test.init_test_session(conn, %{
+          "component" => MailExplorer,
+          "assigns" => assigns,
+          "second_assigns" => %{id: "again", filter: [%{kind: "order", ref: "o-2"}]},
+          "test_pid" => self()
+        })
+
+      # Two explorers showing the same letter: LiveViewTest raises on a
+      # duplicate id.
+      {:ok, view, _html} = live(conn, "/component-host")
+
+      for id <- ["demo", "again"] do
+        assert has_element?(view, "#mail-explorer-#{id}")
+        assert has_element?(view, "#mail-list-#{id} #mail-row-#{id}-#{letter.uuid}")
+        assert has_element?(view, "#mail-detail-#{id} #mail-letter-#{id}-#{letter.uuid}")
+      end
+
+      view |> element("#mail-row-again-#{letter.uuid}") |> render_click()
+      assert has_element?(view, "#mail-detail-again #mail-letter-again-#{letter.uuid}")
     end
   end
 
@@ -384,9 +421,9 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       [file] = Attachments.list_for_message(letter.uuid)
 
       view = mount_explorer(ctx, conn)
-      view |> element("#mail-row-#{letter.uuid}") |> render_click()
+      view |> element("#mail-row-demo-#{letter.uuid}") |> render_click()
 
-      link = "#mail-letter-#{letter.uuid} a#mail-attachment-#{file.uuid}"
+      link = "#mail-letter-demo-#{letter.uuid} a#mail-attachment-demo-#{file.uuid}"
 
       assert has_element?(
                view,
@@ -403,11 +440,11 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       [open, priced] = Attachments.list_for_message(letter.uuid)
 
       view = mount_explorer(ctx, conn)
-      view |> element("#mail-row-#{letter.uuid}") |> render_click()
+      view |> element("#mail-row-demo-#{letter.uuid}") |> render_click()
 
-      assert has_element?(view, "a#mail-attachment-#{open.uuid}")
-      refute has_element?(view, "a#mail-attachment-#{priced.uuid}")
-      assert has_element?(view, "span#mail-attachment-#{priced.uuid}")
+      assert has_element?(view, "a#mail-attachment-demo-#{open.uuid}")
+      refute has_element?(view, "a#mail-attachment-demo-#{priced.uuid}")
+      assert has_element?(view, "span#mail-attachment-demo-#{priced.uuid}")
       html = render(view)
       assert html =~ "Attachment not available"
       refute html =~ "priced.pdf"
@@ -426,11 +463,22 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       [two] = Attachments.list_for_message(reply.uuid)
 
       view = mount_explorer(ctx, conn)
-      view |> element("#mail-row-#{root.uuid}") |> render_click()
+      view |> element("#mail-row-demo-#{root.uuid}") |> render_click()
 
-      assert has_element?(view, "#mail-letter-#{root.uuid} a#mail-attachment-#{one.uuid}")
-      assert has_element?(view, "#mail-letter-#{reply.uuid} a#mail-attachment-#{two.uuid}")
-      refute has_element?(view, "#mail-letter-#{root.uuid} a#mail-attachment-#{two.uuid}")
+      assert has_element?(
+               view,
+               "#mail-letter-demo-#{root.uuid} a#mail-attachment-demo-#{one.uuid}"
+             )
+
+      assert has_element?(
+               view,
+               "#mail-letter-demo-#{reply.uuid} a#mail-attachment-demo-#{two.uuid}"
+             )
+
+      refute has_element?(
+               view,
+               "#mail-letter-demo-#{root.uuid} a#mail-attachment-demo-#{two.uuid}"
+             )
     end
 
     test "a file of a letter the viewer cannot read is not downloadable by its uuid",
@@ -445,7 +493,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       [foreign_file] = Attachments.list_for_message(foreign.uuid)
 
       view = mount_explorer(ctx, conn)
-      view |> element("#mail-row-#{mine.uuid}") |> render_click()
+      view |> element("#mail-row-demo-#{mine.uuid}") |> render_click()
 
       refute render(view) =~ foreign_file.uuid
       # The download itself asks again, whatever uuid is put in a link.
@@ -479,7 +527,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       # render, then the connected one); three letters, one object.
       assert asked() == [{"order", "o-1"}, {"order", "o-1"}]
 
-      view |> element("#mail-row-#{root.uuid}") |> render_click()
+      view |> element("#mail-row-demo-#{root.uuid}") |> render_click()
       render(view)
       render(view)
       assert asked() == []
