@@ -254,15 +254,23 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   end
 
   defp role_recipients(source, role, named) do
+    max = Map.fetch!(@max_per_role, role)
+
     with {:ok, entries} <- entries(source),
+         :ok <- flood_check(entries, role, max),
          {:ok, list} <- parse_entries(entries, named) do
       list = Enum.uniq_by(list, &String.downcase(&1.address))
-      max = Map.fetch!(@max_per_role, role)
 
       if length(list) > max,
         do: {:error, {:too_many_recipients, role, max}},
         else: {:ok, list}
     end
+  end
+
+  # Each entry is looked up (a database read); twice the limit leaves room for
+  # doubles and blanks, and anything more is refused before the first.
+  defp flood_check(entries, role, max) do
+    if length(entries) > max * 2, do: {:error, {:too_many_recipients, role, max}}, else: :ok
   end
 
   # A list, an index map ("0" => entry, as inputs_for forms send), a single
@@ -344,7 +352,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
     cond do
       is_binary(user) and named?(named, user) ->
-        by_account(user, route, &Mailboxes.recipient_address/2)
+        by_account(user, route)
 
       is_binary(user) and route == :internal and not is_binary(address) ->
         by_circle(user)
@@ -357,10 +365,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp by_account(user, route, lookup) do
-    case lookup.(user, route) do
+  defp by_account(user, route) do
+    case Mailboxes.recipient_address(user, route) do
       {:ok, address} -> {:ok, %{address: address, user: user}}
-      {:error, _} -> {:error, {:invalid_recipient, user}}
+      {:error, _} -> {:error, {:invalid_recipient, echo(user)}}
     end
   end
 
@@ -383,7 +391,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
     if address_ok?(address),
       do: {:ok, %{address: address}},
-      else: {:error, {:invalid_recipient, address}}
+      else: {:error, {:invalid_recipient, echo(address)}}
+  end
+
+  # What an error repeats of the person's input: valid text, 200 characters at most.
+  defp echo(text) do
+    text = String.replace_invalid(text, "")
+    if String.length(text) > 200, do: String.slice(text, 0, 199) <> "…", else: text
   end
 
   defp address_ok?(address) do

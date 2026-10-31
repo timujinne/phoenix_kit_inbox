@@ -441,6 +441,30 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       refute Map.has_key?(seen, :user)
     end
 
+    test "a flood of entries is refused before any of them is looked up", ctx do
+      # Not one of them is a user: looked up, the first would be an invalid recipient.
+      flood = for _ <- 1..41, do: %{"user" => Ecto.UUID.generate(), "route" => "internal"}
+
+      assert {:error, {:too_many_recipients, :to, 20}} = run(ctx, %{"to" => flood}, draft(ctx))
+
+      assert {:error, {:too_many_recipients, :cc, 5}} =
+               run(ctx, %{"cc" => Enum.take(flood, 11)}, draft(ctx))
+
+      # An index map is the same list.
+      indexed = flood |> Enum.with_index() |> Map.new(fn {e, n} -> {"#{n}", e} end)
+      assert {:error, {:too_many_recipients, :to, 20}} = run(ctx, %{"to" => indexed}, draft(ctx))
+    end
+
+    test "what is echoed back of a refused entry is cut short", ctx do
+      long = String.duplicate("a", 400) <> ",b"
+
+      assert {:error, {:invalid_recipient, echoed}} =
+               run(ctx, %{"to" => [%{"address" => long, "route" => "email"}]}, draft(ctx))
+
+      assert String.length(echoed) <= 200
+      assert String.starts_with?(long, String.trim_trailing(echoed, "…"))
+    end
+
     test "the form's recipients replace the draft's; absent, the draft's stay", ctx do
       assert {:ok, kept} = run(ctx, %{}, draft(ctx))
       assert [%{"role" => "to", "handle" => "@staff_bob"}] = recipients(kept)
