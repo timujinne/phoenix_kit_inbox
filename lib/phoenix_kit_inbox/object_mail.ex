@@ -21,7 +21,8 @@ defmodule PhoenixKitInbox.ObjectMail do
       there, otherwise the first of the viewer's mailboxes holding a copy): another recipient's
       Bcc, the sending identity of someone else's letter and the host's
       `html_body` are not in it. The external recipients are filtered by the
-      same rule.
+      same rule, and only the sending mailbox gets how the send went (the
+      transport's `error`, the email log's id).
 
   Needs `Scope.can?(scope, "inbox")`; without it every answer is `[]`.
 
@@ -347,10 +348,17 @@ defmodule PhoenixKitInbox.ObjectMail do
   end
 
   # An external Bcc stays blind, like an internal one: only the sending
-  # mailbox sees it (the rule of `External.list_for_viewer/2`).
+  # mailbox sees it (the rule of `External.list_for_viewer/2`). How the send
+  # went — the transport's error and the email log's id — is the sender's
+  # too: anyone else gets the addresses.
   defp visible_externals(rows, message, viewer) do
-    sender? = message.sender_mailbox_uuid == viewer
-    Enum.filter(rows, &(sender? or &1.role != "bcc"))
+    if message.sender_mailbox_uuid == viewer do
+      rows
+    else
+      for %{role: role} = row <- rows,
+          role != "bcc",
+          do: %{row | error: nil, email_log_message_id: nil}
+    end
   end
 
   # Parents before their replies, siblings in the order sent. A reply whose

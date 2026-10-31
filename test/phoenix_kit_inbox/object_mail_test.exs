@@ -169,7 +169,9 @@ defmodule PhoenixKitInbox.ObjectMailTest do
           message_uuid: message.uuid,
           role: role,
           address: address,
-          status: "sent"
+          status: "failed",
+          error: "smtp 550 mailbox unavailable: #{address}",
+          email_log_message_id: "<log-#{role}@mail.test>"
         })
       end
 
@@ -177,6 +179,11 @@ defmodule PhoenixKitInbox.ObjectMailTest do
       [%{messages: [for_bob]}] = threads(ctx.bob_scope)
 
       assert Enum.map(for_alice.external, & &1.address) == ["client@example.com"]
+
+      # How the send went is the sender's: a reader gets the addresses alone.
+      assert [%{error: nil, email_log_message_id: nil}] = for_alice.external
+      assert Enum.all?(for_bob.external, &(&1.error =~ "smtp 550"))
+      assert Enum.all?(for_bob.external, &(&1.email_log_message_id =~ "<log-"))
       refute Map.has_key?(for_alice.message.metadata, "identity")
 
       assert Enum.map(for_bob.external, & &1.address) == [
