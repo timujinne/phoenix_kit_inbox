@@ -653,6 +653,65 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 0
     end
 
+    test "a result that is not for the attempt that runs is dropped", %{conn: conn} = ctx do
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, _}, 2000
+
+      stranger = %Message{uuid: Ecto.UUID.generate(), subject: "Not ours"}
+      forge_to_form(view, send_result: {-1, {:ok, stranger}})
+      forge_to_form(view, send_lost: -1)
+      render(view)
+
+      refute_receive {:inbox_compose, "demo", {:sent, _}}, 100
+      assert sending?(view)
+      refute has_element?(view, "[role=alert]")
+
+      send(task, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{subject: "Offer"}}}, 2000
+    end
+
+    test "a send that takes too long is reported as lost, and a late success is still taken",
+         %{conn: conn} = ctx do
+      put_env!(:compose_send_timeout, 100)
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, _}, 2000
+
+      eventually(fn -> not send_button_disabled?(view) and has_element?(view, "[role=alert]") end)
+      assert text(view, "[role=alert]") =~ "interrupted"
+      refute sending?(view)
+
+      send(task, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{}}}, 2000
+      eventually(fn -> send_button_disabled?(view) end)
+      assert messages() == 1
+    end
+
+    test "after a lost attempt the next one's result is the one that counts",
+         %{conn: conn} = ctx do
+      put_env!(:compose_send_timeout, 100)
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, first, %{idempotency_key: key}}, 2000
+      eventually(fn -> not send_button_disabled?(view) end)
+
+      submit(view)
+      assert_receive {:around, second, %{idempotency_key: ^key}}, 2000
+
+      # The first one finishes late: its answer is for an attempt that is over.
+      send(first, :go)
+      eventually(fn -> messages() == 1 end)
+      refute_receive {:inbox_compose, "demo", {:sent, _}}, 150
+
+      send(second, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+      assert messages() == 1
+    end
+
   end
 
   describe "a key that was used before" do

@@ -95,6 +95,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   @blocks ~w(cc bcc signature)
   # How long a send may run before the page stops waiting for it. A send that
   # is slow, not lost, still lands; a retry with the same key is the same letter.
+  # (`config :phoenix_kit_inbox, :compose_send_timeout` changes it, for tests.)
   @send_timeout :timer.minutes(5)
   @replay_margin 2
   @roles ~w(to cc bcc)
@@ -756,7 +757,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # it was given are its own. Without a watcher the page waits for the
   # answer without a time limit, which is all that is lost.
   defp watch_worker(supervisor, worker, page, id, ref) do
-    case Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref)) do
+    timeout = Application.get_env(:phoenix_kit_inbox, :compose_send_timeout, @send_timeout)
+
+    case Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref, timeout)) do
       {:ok, _watcher} ->
         :ok
 
@@ -768,7 +771,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       Logger.warning("[Inbox] a compose send runs without a watcher: none could start")
   end
 
-  defp watch(worker, page, id, ref) do
+  defp watch(worker, page, id, ref, timeout) do
     fn ->
       monitor = Process.monitor(worker)
 
@@ -776,7 +779,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         {:DOWN, ^monitor, :process, ^worker, :normal} -> :ok
         {:DOWN, ^monitor, :process, ^worker, _reason} -> lost(page, id, ref)
       after
-        @send_timeout -> lost(page, id, ref)
+        timeout -> lost(page, id, ref)
       end
     end
   end
