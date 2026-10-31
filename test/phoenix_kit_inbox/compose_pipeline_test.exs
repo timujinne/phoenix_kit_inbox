@@ -843,6 +843,17 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       assert message_count() == 0
     end
 
+    test "a send that failed is answered with its own error, not the one the wrapper adds",
+         ctx do
+      wrapper = fn _scope, draft, send_fun ->
+        send_fun.(%{draft | subject: String.duplicate("x", 501)})
+        {:error, :the_wrappers_own_reason}
+      end
+
+      assert {:error, :subject_too_long} = run(ctx, %{}, draft(ctx), %{around_send: wrapper})
+      assert message_count() == 0
+    end
+
     test "a send that failed is not turned into a success by the wrapper", ctx do
       liar = fn _scope, draft, send_fun ->
         send_fun.(%{draft | subject: String.duplicate("x", 501)})

@@ -308,7 +308,6 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     ok
   end
 
-  defp settle({:error, _reason} = error, {:sent, {:error, _}}), do: error
   defp settle(_answer, {:sent, {:error, _} = error}), do: error
   defp settle(_answer, {:sent, _other}), do: {:error, :send_failed}
 
