@@ -34,7 +34,13 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       the host's say on linking and unlinking. Without it nothing can be
       linked or unlinked from here (`Links.link/5` refuses). Asked once per
       object each time the list is read, never while rendering; a callback
-      that raises says no.
+      that raises says no. It is the **only** gate on writing a link: a
+      viewer who can read the letter (a shared mailbox with a read grant is
+      enough) links when it says yes. Linking never widens reading, though it
+      writes onto every sent letter of the conversation, those in mailboxes
+      the viewer cannot read included. Unlinking takes the link off the one
+      letter; the other letters of the conversation that are still linked
+      pass it on to the replies that come later.
     * `link_to` — `nil` (default) or `%{kind: ..., ref: ...}`: the object a
       manual link goes to. Without it, the only object of `filter`; with
       several and no `link_to` the page offers no manual linking.

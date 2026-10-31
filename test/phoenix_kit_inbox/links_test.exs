@@ -540,6 +540,40 @@ defmodule PhoenixKitInbox.LinksTest do
       assert links_of(ctx.root) == []
     end
 
+    test "a reader with only read access links when the host says so, thread and all", ctx do
+      admin = user_fixture()
+      desk = shared_mailbox_fixture(admin, %{name: "Desk", address: "desk@company.test"})
+      grant_fixture(desk, ctx.alice, "read")
+
+      {:ok, root} =
+        Messages.send_message(
+          ctx.bob_scope,
+          ctx.bob_mb,
+          %{"to" => desk.slug, "subject" => "Question", "body" => "Body"}
+        )
+
+      # The answer goes to Carol alone: Alice reads neither mailbox it is in.
+      reply = reply_to(ctx.bob_scope, ctx.bob_mb, ctx.carol, root)
+      assert {:error, :message_not_found} = Messages.fetch_for_scope(ctx.alice_scope, reply.uuid)
+
+      # The host's can_link? is the only gate: a no is a no, whatever she reads.
+      assert {:error, :forbidden} =
+               Links.link(ctx.alice_scope, root.uuid, "order", "o-1",
+                 can_link?: fn _, _, _ -> false end
+               )
+
+      assert links_of(reply) == []
+
+      # A yes writes the link to the conversation, the letters she cannot read
+      # included; it gives her no way to read them.
+      assert {:ok, %Link{}} =
+               Links.link(ctx.alice_scope, root.uuid, "order", "o-1", can_link?: &allow/3)
+
+      assert links_of(root) == [{"order", "o-1", "manual"}]
+      assert links_of(reply) == [{"order", "o-1", "manual"}]
+      assert {:error, :message_not_found} = Messages.fetch_for_scope(ctx.alice_scope, reply.uuid)
+    end
+
     test "link refuses a kind longer than the column in code points, and a NUL", ctx do
       long = String.duplicate("e\u0301", 64)
 

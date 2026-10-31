@@ -21,6 +21,15 @@ defmodule PhoenixKitInbox.Links do
   A link does not widen who may read a message: reading stays a matter of the
   mailboxes a person can reach.
 
+  **The host's `can_link?` is the only gate of a person's link.** `link/5` and
+  `unlink/5` ask `can_link?` and nothing about the object; the person must be
+  able to read the message they link, no more. Linking the root of a
+  conversation writes the link onto every sent message of it, those in
+  mailboxes the person cannot read included (they gain no way to read them).
+  Unlinking takes the link off **one** message: the other messages of the
+  conversation that are still linked pass it on to the replies that come
+  later.
+
   ## Events
 
   Whoever cares about an object subscribes to it (`subscribe/2`) and gets
@@ -69,7 +78,7 @@ defmodule PhoenixKitInbox.Links do
   doc). Entries that are not a `kind`/`ref` pair of binaries within the
   limits are skipped. `linked_by:` (a user uuid) is stored with the link.
 
-  Checks nothing about who asks: for server code only. A person's link goes
+  **Server-side only**: checks nothing about who asks. A person's link goes
   through `link/5`.
   """
   @spec record(binary(), [link()], String.t(), keyword()) :: :ok
@@ -291,8 +300,8 @@ defmodule PhoenixKitInbox.Links do
 
   The link (source `"manual"`, `linked_by_user_uuid` the person) goes onto the
   message and onto every message of its conversation that exists now, so
-  linking the root brings the whole conversation along; messages that come
-  later inherit it. Returns the message's own row, which keeps a stronger
+  linking the root brings the whole conversation along, those in mailboxes
+  the person cannot read included; messages that come later inherit it. Returns the message's own row, which keeps a stronger
   source if it already had one.
   """
   @spec link(Scope.t(), binary(), String.t(), String.t(), keyword()) ::
@@ -311,8 +320,10 @@ defmodule PhoenixKitInbox.Links do
 
   @doc """
   Takes the link to an object off one message, with the same checks as
-  `link/5`. The other messages of its conversation keep theirs. Unlinking
-  what is not linked is not an error.
+  `link/5`. The other messages of its conversation keep theirs, and a reply
+  to one of them that is still linked inherits the link again: unlinking is
+  per message, not for the conversation. Unlinking what is not linked is not
+  an error.
   """
   @spec unlink(Scope.t(), binary(), String.t(), String.t(), keyword()) ::
           :ok | {:error, :forbidden | :message_not_found | :invalid_link}
@@ -373,8 +384,9 @@ defmodule PhoenixKitInbox.Links do
   # ── reading ─────────────────────────────────────────────────────────────────
 
   @doc """
-  The links of a message, oldest first. Checks nothing about who asks: for
-  server code only.
+  The links of a message, oldest first. **Server-side only**: checks nothing
+  about who asks, so never hand its answer to a person without having read the
+  message through `PhoenixKitInbox.Messages.fetch_for_scope/2`.
   """
   @spec for_message(binary()) :: [Link.t()]
   def for_message(message_uuid) when is_binary(message_uuid) do
