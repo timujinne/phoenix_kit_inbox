@@ -453,6 +453,22 @@ defmodule PhoenixKitInbox.Web.ComposeFormRecipientsTest do
       end
     end
 
+    test "a value that is no text in an entry is an entry that can not be read, not a crash",
+         %{conn: conn} = ctx do
+      for junk <- [
+            %{address: 5, user: ""},
+            %{address: "", user: 5},
+            %{user: 5},
+            %{address: :atom},
+            %{address: nil, user: nil}
+          ] do
+        view = mount_form(ctx, conn, draft(to: [junk, @anna]))
+
+        assert has_element?(view, "#compose-demo-to li[data-unresolved]"), inspect(junk)
+        assert has_element?(view, "#compose-demo-to li", "Anna Client")
+      end
+    end
+
     test "no sources at all is no sources", %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft(), %{recipient_sources: nil})
 

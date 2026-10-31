@@ -305,8 +305,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp blank_entry?(entry) do
     values = [field(entry, :user), field(entry, :address)]
-    Enum.any?(values, &is_binary/1) and Enum.all?(values, &(is_nil(&1) or String.trim(&1) == ""))
+    Enum.any?(values, &is_binary/1) and Enum.all?(values, &blank_value?/1)
   end
+
+  # A value that is no text (a number, an atom) is not blank: it is junk, and
+  # the entry shows as one that can not be read.
+  defp blank_value?(nil), do: true
+  defp blank_value?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_value?(_other), do: false
 
   # A key of a map that is the draft's (atoms) or the browser's (strings).
   defp field(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
