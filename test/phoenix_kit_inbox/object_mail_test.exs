@@ -396,6 +396,140 @@ defmodule PhoenixKitInbox.ObjectMailTest do
     end
   end
 
+  describe "the mailbox a letter is read through" do
+    # Bob writes for the desk and sends from it to Carol (to) and Dave (bcc),
+    # with an external to and bcc. Alice only reads the desk.
+    setup ctx do
+      grant_fixture(ctx.desk, ctx.bob, "write")
+
+      {:ok, message} =
+        Messages.send_message(
+          ctx.bob_scope,
+          ctx.desk,
+          %{
+            "to" => handle(ctx.carol),
+            "bcc" => handle(ctx.dave),
+            "subject" => "From the desk",
+            "body" => "Body"
+          },
+          links: [@order]
+        )
+
+      for {role, address} <- [{"to", "client@example.com"}, {"bcc", "hidden@example.com"}] do
+        Repo.insert!(%ExternalRecipient{
+          message_uuid: message.uuid,
+          role: role,
+          address: address,
+          status: "sent"
+        })
+      end
+
+      %{desk_letter: message}
+    end
+
+    defp seen(ctx, scope) do
+      [%{messages: [entry]}] = threads(scope)
+      assert entry.message.uuid == ctx.desk_letter.uuid
+      entry
+    end
+
+    defp bcc_visible?(entry) do
+      {"bcc" in roles(entry), Enum.map(entry.external, & &1.address)}
+    end
+
+    defp roles(entry) do
+      entry.message
+      |> Messages.recipient_snapshot(entry.viewer_mailbox_uuid)
+      |> Enum.map(& &1["role"])
+    end
+
+    test "a letter from a shared mailbox is read as the Inbox shows that mailbox", ctx do
+      desk = ctx.desk.uuid
+
+      # Whoever may open the desk reads what the desk's Sent folder shows —
+      # reader and writer alike, the grant level only decides on Retry.
+      for scope <- [ctx.alice_scope, ctx.bob_scope] do
+        entry = seen(ctx, scope)
+        assert entry.viewer_mailbox_uuid == desk
+        assert entry.direction == :sent
+
+        assert Enum.map(entry.external, & &1.address) ==
+                 ctx.desk_letter.uuid
+                 |> Messages.list_external_recipients(desk)
+                 |> Enum.map(& &1.address)
+
+        assert Enum.sort(roles(entry)) == ["bcc", "to"]
+      end
+    end
+
+    test "a recipient of that letter reads their own copy, not the desk's view", ctx do
+      carol = seen(ctx, ctx.carol_scope)
+      assert carol.viewer_mailbox_uuid == ctx.carol_mb.uuid
+      assert carol.direction == :inbox
+      assert roles(carol) == ["to"]
+      assert bcc_visible?(carol) == {false, ["client@example.com"]}
+      refute Map.has_key?(carol.message.metadata, "identity")
+
+      # The blind recipient sees their own entry and no other.
+      dave = seen(ctx, ctx.dave_scope)
+      assert dave.viewer_mailbox_uuid == ctx.dave_mb.uuid
+      assert Enum.sort(roles(dave)) == ["bcc", "to"]
+      assert bcc_visible?(dave) == {true, ["client@example.com"]}
+    end
+
+    test "with a personal and a shared mailbox, the sending one is the one read through", ctx do
+      # Bob sends from the desk to himself: both of his mailboxes hold a copy.
+      {:ok, own} =
+        Messages.send_message(
+          ctx.bob_scope,
+          ctx.desk,
+          %{"to" => handle(ctx.bob), "bcc" => handle(ctx.dave), "subject" => "To myself"},
+          links: [@order]
+        )
+
+      entry =
+        ctx.bob_scope
+        |> threads()
+        |> Enum.flat_map(& &1.messages)
+        |> Enum.find(&(&1.message.uuid == own.uuid))
+
+      assert entry.viewer_mailbox_uuid == ctx.desk.uuid
+      assert "bcc" in roles(entry)
+    end
+
+    test "the sending mailbox is read through only while the viewer has a copy there", ctx do
+      # The desk's own copy is trashed; Alice, who reads the desk, still holds
+      # the letter through her own mailbox — as its recipient, not as the
+      # sender: nothing blind, and not the sending identity.
+      {:ok, to_alice} =
+        Messages.send_message(
+          ctx.bob_scope,
+          ctx.desk,
+          %{"to" => handle(ctx.alice), "bcc" => handle(ctx.dave), "subject" => "Alice"},
+          links: [@order]
+        )
+
+      Repo.insert!(%ExternalRecipient{
+        message_uuid: to_alice.uuid,
+        role: "bcc",
+        address: "blind@example.com",
+        status: "sent"
+      })
+
+      move_copy!(to_alice, ctx.desk, "trash")
+
+      entry =
+        ctx.alice_scope
+        |> threads()
+        |> Enum.flat_map(& &1.messages)
+        |> Enum.find(&(&1.message.uuid == to_alice.uuid))
+
+      assert entry.viewer_mailbox_uuid == ctx.alice_mb.uuid
+      assert roles(entry) == ["to"]
+      assert entry.external == []
+    end
+  end
+
   describe "link_candidates/2" do
     test "letters without any link, from the mailboxes the viewer may read", ctx do
       free = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})

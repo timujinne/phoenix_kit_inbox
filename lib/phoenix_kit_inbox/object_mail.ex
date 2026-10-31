@@ -17,8 +17,8 @@ defmodule PhoenixKitInbox.ObjectMail do
       spam and the archive folders and drafts are not mail of the object;
     * a letter held through two of the viewer's mailboxes is one letter;
     * each letter as `Messages.project_for_viewer/2` shows it to the mailbox
-      it is read through (the sending mailbox if the viewer has it, otherwise
-      the first of the viewer's mailboxes holding a copy): another recipient's
+      it is read through (the sending mailbox if the viewer holds a copy
+      there, otherwise the first of the viewer's mailboxes holding a copy): another recipient's
       Bcc, the sending identity of someone else's letter and the host's
       `html_body` are not in it. The external recipients are filtered by the
       same rule.
@@ -299,10 +299,13 @@ defmodule PhoenixKitInbox.ObjectMail do
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
-  # The sending mailbox when the viewer has it (they see the whole letter),
-  # otherwise the first of their mailboxes (personal first) holding a copy.
+  # The sending mailbox when the viewer holds a copy of the letter there (they
+  # see the whole letter, as the Inbox shows that mailbox); otherwise the first
+  # of their mailboxes (personal first) holding a copy. Being allowed into the
+  # sending mailbox is not enough: a viewer who reads the letter only through
+  # their own copy reads what a recipient reads.
   defp viewer_mailbox(message, copies, mailbox_uuids) do
-    if message.sender_mailbox_uuid in mailbox_uuids do
+    if message.sender_mailbox_uuid in copies do
       message.sender_mailbox_uuid
     else
       Enum.find(mailbox_uuids, &(&1 in copies))
