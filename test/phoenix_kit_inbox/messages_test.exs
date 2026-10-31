@@ -225,6 +225,22 @@ defmodule PhoenixKitInbox.MessagesTest do
     end
   end
 
+  describe "exists?/1" do
+    test "is true for a stored message and false for anything else", ctx do
+      {:ok, message} =
+        Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+          "to" => ctx.bob.email,
+          "subject" => "Hello",
+          "body" => "Body"
+        })
+
+      assert Messages.exists?(message.uuid)
+      refute Messages.exists?(Ecto.UUID.generate())
+      refute Messages.exists?("not-a-uuid")
+      refute Messages.exists?(nil)
+    end
+  end
+
   describe "who may send (send_message/3)" do
     test "a user with no access to the mailbox can't send from it", ctx do
       assert {:error, :mailbox_access_denied} =

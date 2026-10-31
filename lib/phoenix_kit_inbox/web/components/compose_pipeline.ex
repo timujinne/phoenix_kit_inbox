@@ -352,8 +352,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   # The message the send answered is there to be read. A wrapper that put
   # `send_fun` in a database transaction and failed took it back with the
   # rest: the answer would be a message that does not exist.
-  defp stored?(%Message{uuid: uuid}) when is_binary(uuid),
-    do: not is_nil(PhoenixKit.RepoHelper.repo().get(Message, uuid))
+  defp stored?(%Message{uuid: uuid}) when is_binary(uuid), do: Messages.exists?(uuid)
 
   defp stored?(_message), do: false
 
