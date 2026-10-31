@@ -31,6 +31,15 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
 
     defp act(:error, _draft, _send_fun), do: {:error, :host_said_no}
     defp act(:text_error, _draft, _send_fun), do: {:error, "SQL timeout at db-7.internal:5432"}
+
+    defp act(:refused, _draft, _send_fun),
+      do: {:error, {:refused, "Fill in {{client_name}} first."}}
+
+    defp act(:refused_markup, _draft, _send_fun),
+      do:
+        {:error,
+         {:refused, "<script>alert(1)</script> stale offer\n" <> String.duplicate("x", 400)}}
+
     defp act(:unknown_error, _draft, _send_fun), do: {:error, {:db_down, "10.0.0.7"}}
     defp act(:raise, _draft, _send_fun), do: raise("wrapper bug with secret-token")
     defp act(:exit, _draft, _send_fun), do: exit(:wrapper_died)
@@ -276,7 +285,8 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 0
     end
 
-    test "what the wrapper says in words of its own is not shown", %{conn: conn} = ctx do
+    test "raw text, unknown reasons and crashes of the wrapper are not shown",
+         %{conn: conn} = ctx do
       for {mode, secret} <- [
             text_error: "db-7.internal",
             unknown_error: "10.0.0.7",
@@ -313,6 +323,29 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
         refute has_element?(view, "[role=alert]")
         refute render(view) =~ "secret-token"
       end
+    end
+
+    test "a refusal the host marks as its own is shown in its words", %{conn: conn} = ctx do
+      mode(:refused)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, _, _}, 2000
+      eventually(fn -> has_element?(view, "[role=alert]") end)
+
+      assert text(view, "[role=alert]") =~ "Fill in {{client_name}} first."
+      refute send_button_disabled?(view)
+      assert messages() == 0
+    end
+
+    test "a host's refusal is cut and cannot bring markup in", %{conn: conn} = ctx do
+      mode(:refused_markup)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, _, _}, 2000
+      eventually(fn -> has_element?(view, "[role=alert]") end)
+
+      refute render(view) =~ "<script>alert"
+      assert String.length(text(view, "[role=alert]")) <= 320
     end
 
     test "a task that is killed gives a plain error and an active button",

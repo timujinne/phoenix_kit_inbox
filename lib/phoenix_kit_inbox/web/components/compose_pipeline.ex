@@ -145,6 +145,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   else `{:error, :send_failed}` — success is never claimed for a letter that
   did not go.
 
+  A wrapper that refuses on purpose — an unfilled `{{field}}`, an out-of-date
+  attachment, a limit of the host's own — answers
+  `{:error, {:refused, text}}`: `text` is its short, already translated words,
+  and the form shows it as it is (control characters taken out, cut to 300
+  characters; HTML in it is shown as text). It is the only way a host's words
+  reach the person: any other string, and a reason nobody wrote a message for,
+  show as "could not be sent". See `PhoenixKitInbox.Errors.user_message/1`.
+
   The subject, text and labels in `draft'` are what a person typed: human text,
   not markup. A host that builds `html_body` from them escapes them.
 

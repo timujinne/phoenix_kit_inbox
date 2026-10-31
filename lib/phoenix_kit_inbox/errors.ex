@@ -18,11 +18,18 @@ defmodule PhoenixKitInbox.Errors do
 
   alias PhoenixKit.Utils.Format
 
+  @refused_max 300
+
   @doc """
   `message/1` for a person who is not the developer: what the application did
   not mean to say — a reason that is text (it came from somewhere else) and
   one with no message of its own — becomes the plain "could not be sent".
   For the places a host's code can answer through, like a compose form.
+
+  A host that means to tell the person why it refused answers
+  `{:refused, text}`: its short, already translated text is shown as it is
+  (control characters taken out, at most #{@refused_max} characters). That is
+  the one way for a host's own words to get through.
   """
   @spec user_message(term()) :: String.t()
   def user_message(reason) when is_binary(reason), do: message(:send_failed)
@@ -41,6 +48,15 @@ defmodule PhoenixKitInbox.Errors do
   def message(:invalid_user), do: gettext("Could not identify the current user.")
 
   def message(:forbidden), do: gettext("You don't have permission to do that.")
+
+  def message({:refused, text}) when is_binary(text) do
+    case refused_text(text) do
+      "" -> message(:send_failed)
+      cleaned -> cleaned
+    end
+  end
+
+  def message({:refused, _other}), do: message(:send_failed)
 
   def message(:mailbox_access_denied),
     do: gettext("You don't have access to this mailbox.")
@@ -284,6 +300,20 @@ defmodule PhoenixKitInbox.Errors do
   def message(reason) when is_binary(reason), do: reason
 
   def message(reason), do: message_unexpected(reason)
+
+  # A host's words, made fit to show: valid text, one line, not too long.
+  defp refused_text(text) do
+    cleaned =
+      text
+      |> String.replace_invalid("")
+      |> String.replace(~r/[\x00-\x1f\x7f]+/u, " ")
+      |> String.replace(~r/ {2,}/, " ")
+      |> String.trim()
+
+    if String.length(cleaned) > @refused_max,
+      do: String.slice(cleaned, 0, @refused_max - 1) <> "…",
+      else: cleaned
+  end
 
   defp message_unexpected(reason) do
     gettext("Unexpected error: %{reason}", reason: inspect(reason))

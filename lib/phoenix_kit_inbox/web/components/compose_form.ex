@@ -56,8 +56,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   second send while one runs, or after one went, is ignored by the server.
   The answer comes back by `send_update` to the page; if the page is gone it
   is lost, the letter is not. A send that is killed, or takes five minutes,
-  is reported as interrupted. A refusal shows its message (a reason in words
-  of the host's own, or one with no message, shows as "could not be sent");
+  is reported as interrupted. A refusal shows its message (the host's own words only
+  as `{:error, {:refused, text}}` from its `around_send`, see
+  `ComposePipeline`; any other text, or a reason with no message, shows as
+  "could not be sent");
   the button works again and the **same idempotency key** is kept, so a retry
   is the same letter. The form issues a fresh key whenever it is opened (a
   new component or a new draft) and replaces any `:idempotency_key` of the
