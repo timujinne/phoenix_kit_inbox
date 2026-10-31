@@ -1004,18 +1004,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
              socket.assigns.scope,
              socket.assigns.source_draft,
              uuids,
-             socket.assigns.authorize_attachments
+             socket.assigns[:authorize_attachments]
            ) do
-        {:ok, _items} -> add_picks(socket, uuids)
+        {:ok, items} -> add_picks(socket, uuids, items)
         {:error, reason} -> assign(socket, files_error: Errors.message(reason))
       end
     end
   end
 
-  defp add_picks(socket, uuids) do
+  # A pick is shown under the name the host gave with its yes, else by a
+  # short label of the file's id.
+  defp add_picks(socket, uuids, items) do
     {picks, seq} =
       Enum.map_reduce(uuids, socket.assigns.file_seq, fn uuid, n ->
-        {%{key: "p-#{n}", file_uuid: uuid}, n + 1}
+        name = Enum.find_value(items, &(&1.file_uuid == uuid && is_binary(&1.name) && &1.name))
+        {%{key: "p-#{n}", file_uuid: uuid, name: name}, n + 1}
       end)
 
     assign(socket, picked: socket.assigns.picked ++ picks, file_seq: seq, files_error: nil)
@@ -1417,7 +1420,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           <.file_chip
             :for={file <- @picked}
             id={"compose-#{@id}-file-#{file.key}"}
-            name={gettext("File %{id}", id: String.slice(file.file_uuid, 0, 8))}
+            name={file.name || gettext("File %{id}", id: String.slice(file.file_uuid, 0, 8))}
             key={file.key}
             target={@myself}
           />

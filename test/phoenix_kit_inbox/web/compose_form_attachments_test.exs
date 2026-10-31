@@ -21,9 +21,16 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
       if pid = Process.whereis(:compose_attachments_test),
         do: send(pid, {:authorize, context, uuids})
 
-      if context[:deny],
-        do: {:error, {:attachment_forbidden, hd(uuids)}},
-        else: :ok
+      cond do
+        context[:deny] ->
+          {:error, {:attachment_forbidden, hd(uuids)}}
+
+        context[:named] ->
+          {:ok, for(uuid <- uuids, do: %{file_uuid: uuid, name: "Price list.pdf"})}
+
+        true ->
+          :ok
+      end
     end
   end
 
@@ -60,7 +67,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
     )
   end
 
-  defp mount_form(ctx, conn, draft) do
+  defp mount_form(ctx, conn, draft, opts \\ []) do
     scope = ComponentHostLive.stash(ctx.scope)
     draft = ComponentHostLive.stash(draft)
 
@@ -69,12 +76,12 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
       ComponentHostLive.unstash(draft)
     end)
 
-    assigns = %{
-      id: "demo",
-      draft: draft,
-      scope: scope,
-      authorize_attachments: {:capture, Authorizer, :authorize, 3}
-    }
+    assigns = %{id: "demo", draft: draft, scope: scope}
+
+    assigns =
+      if Keyword.get(opts, :authorizer, true),
+        do: Map.put(assigns, :authorize_attachments, {:capture, Authorizer, :authorize, 3}),
+        else: assigns
 
     conn =
       Plug.Test.init_test_session(conn, %{
@@ -262,6 +269,39 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
 
       assert files(view) == 2
       refute_received {:authorize, _, _}
+    end
+
+    test "a picked file is shown under the name the host gave it", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(attachments: [], context: %{named: true}))
+
+      forge(view, "pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
+
+      assert has_element?(view, "#compose-demo-attachments li[data-file]", "Price list.pdf")
+      refute render(view) =~ "File "
+    end
+
+    test "a pick the host did not name is shown by a short label", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(attachments: []))
+      uuid = Ecto.UUID.generate()
+
+      forge(view, "pick_attachments", %{"uuids" => [uuid]})
+
+      assert has_element?(
+               view,
+               "#compose-demo-attachments li[data-file]",
+               "File " <> String.slice(uuid, 0, 8)
+             )
+    end
+
+    test "a pick without any authorize_attachments is refused, not a crash",
+         %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(), authorizer: false)
+
+      forge(view, "pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
+
+      assert has_element?(view, "#compose-demo-files-error[role=alert]")
+      assert files(view) == 2
+      assert has_element?(view, "#compose-form-demo")
     end
 
     test "a picked file can be taken off again", %{conn: conn} = ctx do
