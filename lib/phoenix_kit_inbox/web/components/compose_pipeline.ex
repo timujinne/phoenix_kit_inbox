@@ -683,7 +683,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     context = Map.put(draft.context || %{}, :links, draft.links)
 
     case fun.(scope, context, uuids) do
-      :ok -> {:ok, Enum.map(uuids, &%{id: &1, file_uuid: &1, name: nil, flags: nil})}
+      :ok -> {:ok, Enum.map(uuids, &picked(&1, []))}
+      {:ok, vouched} when is_list(vouched) -> {:ok, Enum.map(uuids, &picked(&1, vouched))}
       {:error, _} = error -> error
       _ -> {:error, {:attachment_forbidden, hd(uuids)}}
     end
@@ -691,6 +692,32 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp authorize(_scope, _draft, uuids, _callbacks),
     do: {:error, {:attachment_forbidden, hd(uuids)}}
+
+  # A picked file as the draft holds attachments. The host may have told its
+  # name and flags with its yes (only for the files asked about: an answer
+  # naming others adds nothing); without, they are nil.
+  defp picked(uuid, vouched) do
+    info =
+      Enum.find(vouched, fn
+        %{} = entry when not is_struct(entry) -> same_uuid?(field(entry, :file_uuid), uuid)
+        _ -> false
+      end) || %{}
+
+    name = field(info, :name)
+    flags = field(info, :flags)
+
+    %{
+      id: uuid,
+      file_uuid: uuid,
+      name: if(is_binary(name), do: name),
+      flags: if(is_map(flags) and not is_struct(flags), do: flags)
+    }
+  end
+
+  defp same_uuid?(a, b) when is_binary(a) and is_binary(b),
+    do: String.downcase(a) == String.downcase(b)
+
+  defp same_uuid?(_, _), do: false
 
   defp normalize_attachments(list) when is_list(list) do
     list

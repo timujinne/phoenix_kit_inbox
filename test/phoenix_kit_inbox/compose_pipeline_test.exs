@@ -896,6 +896,69 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       assert attachment_names(message) == ["mine.txt"]
     end
 
+    test "authorize_attachments may answer with names and flags of the files it vouches for",
+         ctx do
+      mine = host_file(ctx, "mine", "mine.txt")
+      stranger = Ecto.UUID.generate()
+      test = self()
+
+      authorize = fn _scope, _context, uuids ->
+        {:ok,
+         [
+           %{file_uuid: mine, name: "Price list.txt", flags: %{"money_free" => true}},
+           # Not asked about: the host cannot add a file by answering with it.
+           %{file_uuid: stranger, name: "uninvited.txt", flags: %{}}
+         ]
+         |> tap(fn _ -> send(test, {:asked, uuids}) end)}
+      end
+
+      wrapper = fn _scope, seen, send_fun ->
+        send(test, {:seen, seen.attachments})
+        send_fun.(seen)
+      end
+
+      callbacks = %{authorize_attachments: authorize, around_send: wrapper}
+      assert {:ok, message} = run(ctx, %{"added_attachments" => [mine]}, draft(ctx), callbacks)
+
+      assert_received {:asked, [^mine]}
+      assert_received {:seen, [seen]}
+      assert seen.file_uuid == mine
+      assert seen.name == "Price list.txt"
+      assert seen.flags == %{"money_free" => true}
+
+      # The flags are kept with the stored attachment; the stranger is nowhere.
+      assert attachment_names(message) == ["mine.txt"]
+
+      assert [%{flags: %{"money_free" => true}}] =
+               PhoenixKitInbox.Attachments.list_for_message(message.uuid)
+    end
+
+    test "a plain :ok leaves the picked file with no name or flags; junk in the list is ignored",
+         ctx do
+      mine = host_file(ctx, "mine", "mine.txt")
+      test = self()
+
+      wrapper = fn _scope, seen, send_fun ->
+        send(test, {:seen, seen.attachments})
+        send_fun.(seen)
+      end
+
+      for answer <- [
+            :ok,
+            {:ok, []},
+            {:ok, [:junk, %{}, %{file_uuid: 5}, %{file_uuid: mine, name: 7, flags: 8}]}
+          ] do
+        callbacks = %{authorize_attachments: fn _, _, _ -> answer end, around_send: wrapper}
+        assert {:ok, _} = run(ctx, %{"added_attachments" => [mine]}, draft(ctx), callbacks)
+        assert_received {:seen, [%{file_uuid: ^mine, name: nil, flags: nil}]}
+      end
+
+      callbacks = %{authorize_attachments: fn _, _, _ -> {:ok, :nope} end}
+
+      assert {:error, {:attachment_forbidden, ^mine}} =
+               run(ctx, %{"added_attachments" => [mine]}, draft(ctx), callbacks)
+    end
+
     test "host attachments come from the draft only", ctx do
       first = host_file(ctx, "one", "one.txt")
       second = host_file(ctx, "two", "two.txt")
