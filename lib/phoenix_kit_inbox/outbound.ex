@@ -66,13 +66,16 @@ defmodule PhoenixKitInbox.Outbound do
   What a send is: `:kind` (`:message` — a message or its retry, `:nudge`),
   `:integration_uuid` (required), `:user_uuid` (who sent the message),
   `:message_uuid` (the Inbox message), `:identity_uuid` (the sending identity).
+  A filter is also told `preview: true` when the email is only being shown
+  (`preview/2`); a real send has no such key.
   """
   @type context :: %{
           required(:kind) => :message | :nudge,
           required(:integration_uuid) => String.t() | nil,
           optional(:user_uuid) => String.t() | nil,
           optional(:message_uuid) => String.t() | nil,
-          optional(:identity_uuid) => String.t() | nil
+          optional(:identity_uuid) => String.t() | nil,
+          optional(:preview) => boolean()
         }
 
   @doc "Sends `email` through `integration_uuid` — `PhoenixKit.Mailer.deliver_via_integration/3`."
@@ -104,6 +107,24 @@ defmodule PhoenixKitInbox.Outbound do
          {:ok, email} <- run_filter(filter(), email, context),
          :ok <- any_recipient(email) do
       transport_deliver(email, integration_uuid, send_options(context, integration_uuid))
+    end
+  end
+
+  @doc """
+  The email as `deliver/2` would send it, without sending: the same checks
+  (closed unless `open?/0`) and the same host filter, which is told
+  `preview: true` in the context so it can tell a look from a send. Returns
+  the email with the addressing the filter left it
+  (`{:error, {:filter_refused, reason}}`, `{:error, :filter_failed}`,
+  `{:error, :no_recipients}` and `{:error, :external_disabled}` as for a
+  send). Writes nothing, does not touch the transport, needs no integration.
+  """
+  @spec preview(Swoosh.Email.t(), context()) :: {:ok, Swoosh.Email.t()} | {:error, term()}
+  def preview(%Swoosh.Email{} = email, %{kind: kind} = context) when kind in [:message, :nudge] do
+    with :ok <- check_open(),
+         {:ok, email} <- run_filter(filter(), email, Map.put(context, :preview, true)),
+         :ok <- any_recipient(email) do
+      {:ok, email}
     end
   end
 

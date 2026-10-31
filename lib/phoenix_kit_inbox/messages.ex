@@ -1298,6 +1298,36 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
+  @doc """
+  The way each of `addresses` would travel if sent now, by the send path's own
+  lookup (the one `send_message/4` resolves recipients with, so the two cannot
+  disagree): `:internal` with the `mailbox_uuid` it lands in when the text
+  names a member or a shared mailbox (`@username`, an email, a mailbox name),
+  else `:email`. Text that is no address and names nobody — and one that
+  names two people — is `:email` too: the send refuses those itself.
+
+  Reads the database (and, like the send, makes a member's personal mailbox
+  on demand); writes no message. The order and the spelling of `addresses` are
+  kept; entries that are not text are skipped. `scope` is the asker; today the
+  route of an address does not depend on who asks.
+  """
+  @spec resolve_recipient_routes(Scope.t(), [String.t()]) :: [
+          %{address: String.t(), route: :internal | :email, mailbox_uuid: binary() | nil}
+        ]
+  def resolve_recipient_routes(%Scope{} = _scope, addresses) when is_list(addresses) do
+    for address <- addresses, is_binary(address), do: recipient_route(address)
+  end
+
+  defp recipient_route(address) do
+    case resolve_recipient({"to", address}, {[], [], [], []}) do
+      {[%{mailbox: mailbox}], _external, _unknown, _ambiguous} ->
+        %{address: address, route: :internal, mailbox_uuid: mailbox.uuid}
+
+      _ ->
+        %{address: address, route: :email, mailbox_uuid: nil}
+    end
+  end
+
   defp resolve_recipients(attrs) do
     parsed =
       for role <- ~w(to cc bcc),
