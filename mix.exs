@@ -131,7 +131,23 @@ defmodule PhoenixKitInbox.MixProject do
       main: "PhoenixKitInbox",
       # Tags in this repo are bare version numbers, not v-prefixed — a "v" ref
       # points at a tag that does not exist and 404s every HexDocs source link.
-      source_ref: @version
+      source_ref: @version,
+      groups_for_modules: [
+        Embedding: [
+          PhoenixKitInbox.Web.Components.ComposeForm,
+          PhoenixKitInbox.Web.Components.ComposeDraft,
+          PhoenixKitInbox.Web.Components.ComposePipeline,
+          PhoenixKitInbox.RecipientSource,
+          PhoenixKitInbox.RecipientSources.Members,
+          PhoenixKitInbox.Web.Components.MailExplorer,
+          PhoenixKitInbox.Web.Components.MailExplorerHooks,
+          PhoenixKitInbox.ObjectMail,
+          PhoenixKitInbox.Links,
+          PhoenixKitInbox.LinkResolver
+        ],
+        Schemas: ~r/^PhoenixKitInbox\.Schemas\./,
+        Migrations: ~r/^PhoenixKitInbox\.Migrations/
+      ]
     ]
   end
 end
