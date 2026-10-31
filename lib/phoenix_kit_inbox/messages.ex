@@ -61,7 +61,9 @@ defmodule PhoenixKitInbox.Messages do
   # Where a draft keeps the chosen identity and Reply-To — unchecked until sent.
   @draft_sender_key "draft_sender"
   # Metadata only a send writes; a caller's copy of them is dropped.
-  @sent_only_keys ["identity", "reply_to"]
+  @sent_only_keys ["identity", "reply_to", "html_body"]
+  # The host's ready-made HTML of the external email, at most this many bytes.
+  @html_body_max_bytes 256 * 1024
 
   @typedoc """
   A message as the UI consumes it: the delivery row (folder/seen/starred state
@@ -93,7 +95,7 @@ defmodule PhoenixKitInbox.Messages do
     |> offset(^Keyword.get(opts, :offset, 0))
     |> repo().all()
     |> Enum.map(fn {delivery, message} ->
-      %{delivery: delivery, message: for_viewer(message, mailbox_uuid)}
+      %{delivery: delivery, message: project_for_viewer(message, mailbox_uuid)}
     end)
   end
 
@@ -214,7 +216,7 @@ defmodule PhoenixKitInbox.Messages do
         {:error, :message_not_found}
 
       {delivery, message} ->
-        {:ok, %{delivery: delivery, message: for_viewer(message, mailbox_uuid)}}
+        {:ok, %{delivery: delivery, message: project_for_viewer(message, mailbox_uuid)}}
     end
   end
 
@@ -234,7 +236,7 @@ defmodule PhoenixKitInbox.Messages do
       order_by: [asc: m.inserted_at, asc: m.uuid]
     )
     |> repo().all()
-    |> Enum.map(&for_viewer(&1, nil))
+    |> Enum.map(&project_for_viewer(&1, nil))
   end
 
   @doc """
@@ -264,15 +266,25 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
-  # What a reader may see of the server-written metadata: the Bcc rule of
-  # `recipient_snapshot/2`, and the sending identity (an integration uuid is
-  # admin configuration) only for the sending mailbox. The Reply-To stays —
-  # recipients reply to it.
-  defp for_viewer(%Message{metadata: metadata} = message, viewer) when is_map(metadata) do
+  @doc """
+  The message as `viewer_mailbox_uuid` may read it: what every read function
+  of this module returns. Of the server-written metadata a reader gets the
+  Bcc rule of `recipient_snapshot/2`, and the sending identity (an integration
+  uuid is admin configuration) only for the sending mailbox. The Reply-To
+  stays — recipients reply to it. The host's `html_body` (kept for the retry
+  of an external email) is for nobody: it is never in the projection, not
+  even for the sender. `nil` as the viewer is a reader of no mailbox.
+
+  Use it on any `Message` read straight from the database before it goes to
+  a person.
+  """
+  @spec project_for_viewer(Message.t(), binary() | nil) :: Message.t()
+  def project_for_viewer(%Message{metadata: metadata} = message, viewer) when is_map(metadata) do
     sender? = is_binary(viewer) and message.sender_mailbox_uuid == viewer
 
     metadata =
       metadata
+      |> Map.delete("html_body")
       |> then(&if sender?, do: &1, else: Map.delete(&1, "identity"))
       |> then(fn
         %{"recipients" => _} = m -> Map.put(m, "recipients", recipient_snapshot(message, viewer))
@@ -282,7 +294,7 @@ defmodule PhoenixKitInbox.Messages do
     %{message | metadata: metadata}
   end
 
-  defp for_viewer(message, _viewer), do: message
+  def project_for_viewer(message, _viewer), do: message
 
   @doc """
   The recipient mailboxes of a message, with their roles — every row, `bcc`
@@ -622,7 +634,7 @@ defmodule PhoenixKitInbox.Messages do
       `Identities.resolve/3` against the sending mailbox
       (`{:error, {:identity_unusable, reason}}`) and recorded in the
       message's `metadata["identity"]` (uuid, kind, integration, From name and
-      address) — what external recipients are sent as.
+      address, and the name of the sender the From name was built from) — what external recipients are sent as.
     * `"reply_to"` — one of `Identities.reply_to_options/2`
       (`{:error, :reply_to_not_allowed}`), recorded in `metadata["reply_to"]`
     * `"uuid"` — promotes an existing draft instead of creating a new message;
@@ -646,6 +658,19 @@ defmodule PhoenixKitInbox.Messages do
   application (`{:error, :external_needs_scope}`).
 
   `opts` — server-side only, never filled from a form:
+
+    * `reply_to_trusted: address` — a Reply-To the host vouches for, recorded
+      in `metadata["reply_to"]` whatever `Identities.reply_to_options/2` says
+      (`{:error, :invalid_reply_to}` when it is not an email address). A
+      `"reply_to"` in `attrs` still has to be one of those options.
+    * `html_body: html` — the host's ready-made HTML for the email to external
+      recipients, instead of the one built from the body. At most 256 KiB
+      (`{:error, :html_body_too_large}`), valid UTF-8 without NUL
+      (`{:error, :invalid_html_body}`). Kept in `metadata["html_body"]` so a
+      retry sends the same; the text part is still built from the body. Never
+      returned to a reader (`project_for_viewer/2`), nor to the caller. The
+      host answers for its content. A `"html_body"` in `attrs["metadata"]` is
+      dropped.
 
     * `attachments_authorized: [file_uuid]` — files the host checked itself;
       copied without the read check (trashed or system-managed ones are
@@ -716,8 +741,10 @@ defmodule PhoenixKitInbox.Messages do
     key = send_key(opts)
 
     with :ok <- check_send_key(key, mailbox, sender_user_uuid),
+         {:ok, host_record} <- host_options(opts),
          :ok <- ensure_active(mailbox),
          {:ok, sender_record} <- sender_options(scope, mailbox, attrs),
+         sender_record = Map.merge(sender_record, host_record),
          {:ok, recipients, externals} <- resolve_recipients(attrs),
          {:ok, externals} <- admit_externals(scope, mailbox, sender_record, externals),
          :ok <- ensure_any_recipient(recipients ++ externals),
@@ -761,7 +788,9 @@ defmodule PhoenixKitInbox.Messages do
       # already stored (in `do_send/1`). `apply_to_new_message/1` never raises.
       Links.apply_to_new_message(message)
 
-      {:ok, sent}
+      # The HTML was for the email (it travelled in `message`); the caller
+      # does not get it back.
+      {:ok, without_html_body(sent)}
     else
       {:replay, message} ->
         {:ok, message}
@@ -781,6 +810,48 @@ defmodule PhoenixKitInbox.Messages do
         other
     end
   end
+
+  defp without_html_body(%Message{metadata: %{"html_body" => _} = metadata} = message),
+    do: %{message | metadata: Map.delete(metadata, "html_body")}
+
+  defp without_html_body(message), do: message
+
+  # ── host options ────────────────────────────────────────────────────────────
+
+  # The server-side options that become metadata of the message. Never read
+  # from `attrs`: a form cannot name its own Reply-To or the HTML of the
+  # email.
+  defp host_options(opts) do
+    with {:ok, reply_to} <- trusted_reply_to(Keyword.get(opts, :reply_to_trusted)),
+         {:ok, html} <- html_body_option(Keyword.get(opts, :html_body)) do
+      {:ok, Map.merge(reply_to, html)}
+    end
+  end
+
+  # An address the host vouches for: taken as it is, once it is an address.
+  defp trusted_reply_to(nil), do: {:ok, %{}}
+
+  defp trusted_reply_to(address) when is_binary(address) do
+    address = String.trim(address)
+
+    if External.address?(address),
+      do: {:ok, %{"reply_to" => address}},
+      else: {:error, :invalid_reply_to}
+  end
+
+  defp trusted_reply_to(_), do: {:error, :invalid_reply_to}
+
+  defp html_body_option(blank) when blank in [nil, ""], do: {:ok, %{}}
+
+  defp html_body_option(html) when is_binary(html) do
+    cond do
+      byte_size(html) > @html_body_max_bytes -> {:error, :html_body_too_large}
+      not Links.valid_text?(html, @html_body_max_bytes) -> {:error, :invalid_html_body}
+      true -> {:ok, %{"html_body" => html}}
+    end
+  end
+
+  defp html_body_option(_), do: {:error, :invalid_html_body}
 
   # ── idempotency key ─────────────────────────────────────────────────────────
 
@@ -827,7 +898,7 @@ defmodule PhoenixKitInbox.Messages do
 
       %Message{sender_mailbox_uuid: mailbox_uuid, sender_user_uuid: user_uuid} = message
       when mailbox_uuid == mailbox.uuid and user_uuid == sender_user_uuid ->
-        {:ok, %{message | external_status: replayed_external_status(message)}}
+        {:ok, %{without_html_body(message) | external_status: replayed_external_status(message)}}
 
       %Message{} ->
         {:error, :idempotency_key_taken}
@@ -951,7 +1022,10 @@ defmodule PhoenixKitInbox.Messages do
              "kind" => resolved.kind,
              "integration_uuid" => resolved.integration_uuid,
              "from_address" => resolved.from_address,
-             "from_name" => resolved.from_name
+             "from_name" => resolved.from_name,
+             # Whose name the From name was built from: a retry by someone
+             # else keeps it (`PhoenixKitInbox.External.retry/3`).
+             "sender_name" => resolved.sender_name
            }
          }}
 

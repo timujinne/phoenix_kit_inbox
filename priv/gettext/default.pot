@@ -1270,3 +1270,18 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The link to the related object is not valid."
 msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:163
+#, elixir-autogen, elixir-format
+msgid "The Reply-To address is not a valid email address."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:166
+#, elixir-autogen, elixir-format
+msgid "The email's HTML is too large to send."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:168
+#, elixir-autogen, elixir-format
+msgid "The email's HTML cannot be sent as it is."
+msgstr ""

@@ -106,7 +106,8 @@ defmodule PhoenixKitInbox.Identities do
           mailbox_uuid: binary() | nil,
           integration_uuid: binary(),
           from_address: String.t(),
-          from_name: String.t()
+          from_name: String.t(),
+          sender_name: String.t() | nil
         }
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
@@ -420,27 +421,43 @@ defmodule PhoenixKitInbox.Identities do
   """
   @spec resolve(Scope.t(), term()) ::
           {:ok, resolved()} | {:error, :forbidden | :broken | :not_found}
-  def resolve(scope, identity_uuid), do: do_resolve(scope, identity_uuid, nil)
+  def resolve(scope, identity_uuid), do: do_resolve(scope, identity_uuid, nil, nil)
 
   @spec resolve(Scope.t(), term(), Mailbox.t()) ::
           {:ok, resolved()}
           | {:error, :forbidden | :broken | :not_found | :identity_not_for_mailbox}
   def resolve(scope, identity_uuid, %Mailbox{} = mailbox),
-    do: do_resolve(scope, identity_uuid, mailbox)
+    do: do_resolve(scope, identity_uuid, mailbox, nil)
 
-  defp do_resolve(%Scope{} = scope, identity_uuid, mailbox) do
+  @doc """
+  `resolve/3` with the sender's name given instead of read from the user
+  behind `scope`: the name a message recorded when it was sent
+  (`resolved.sender_name`), so that whoever sends it again does not put
+  their own name into a From name built from the sender's.
+  """
+  @spec resolve(Scope.t(), term(), Mailbox.t(), String.t() | nil) ::
+          {:ok, resolved()}
+          | {:error, :forbidden | :broken | :not_found | :identity_not_for_mailbox}
+  def resolve(scope, identity_uuid, %Mailbox{} = mailbox, sender_name)
+      when is_binary(sender_name) or is_nil(sender_name),
+      do: do_resolve(scope, identity_uuid, mailbox, sender_name)
+
+  defp do_resolve(%Scope{} = scope, identity_uuid, mailbox, sender_name) do
     with {:ok, identity} <- fetch(identity_uuid),
          {:ok, user} <- scope_user(scope),
          :ok <- authorize_use(scope, user, identity),
          :ok <- fits_mailbox(identity, mailbox, user) do
       case checked(identity) do
-        {:ok, identity, from_address} -> {:ok, describe(identity, from_address, user)}
-        {:error, _identity, _problem} -> {:error, :broken}
+        {:ok, identity, from_address} ->
+          {:ok, describe(identity, from_address, user, sender_name)}
+
+        {:error, _identity, _problem} ->
+          {:error, :broken}
       end
     end
   end
 
-  defp do_resolve(_scope, _uuid, _mailbox), do: {:error, :forbidden}
+  defp do_resolve(_scope, _uuid, _mailbox, _sender_name), do: {:error, :forbidden}
 
   @doc """
   A **shared** identity as the module itself sends from it, with no user
@@ -539,13 +556,18 @@ defmodule PhoenixKitInbox.Identities do
     end
   end
 
-  # From name: a bound identity its own (else the mailbox's name); the common
-  # sender "<user> | <from_name>"; a personal one its own (else the user's).
-  defp describe(identity, from_address, user),
-    do: %{
+  # From name: a bound identity its own (else the mailbox's name), or
+  # "<user> | <that>" when it personalizes; the common sender
+  # "<user> | <from_name>"; a personal one its own (else the user's).
+  defp describe(identity, from_address, user, sender_name \\ nil) do
+    sender_name = sender_name || Mailboxes.user_display_name(user)
+
+    %{
       describe_base(identity, from_address)
-      | from_name: header_name(from_name(identity, user))
+      | from_name: header_name(from_name(identity, sender_name)),
+        sender_name: sender_name
     }
+  end
 
   # Profile names, mailbox names and labels bypass the identity's from_name
   # validation, but also become mail headers when used as fallback names.
@@ -559,25 +581,31 @@ defmodule PhoenixKitInbox.Identities do
       mailbox_uuid: identity.mailbox_uuid,
       integration_uuid: identity.integration_uuid,
       from_address: from_address,
-      from_name: nil
+      from_name: nil,
+      sender_name: nil
     }
   end
 
-  defp from_name(%Identity{kind: "shared", mailbox_uuid: nil, from_name: name}, user) do
-    [Mailboxes.user_display_name(user), name]
+  defp from_name(%Identity{kind: "shared", mailbox_uuid: nil, from_name: name}, sender_name) do
+    [sender_name, name]
     |> Enum.reject(&blank?/1)
     |> Enum.join(" | ")
   end
 
-  defp from_name(%Identity{kind: "shared", mailbox_uuid: mailbox_uuid, from_name: name}, _user) do
-    if blank?(name) do
-      case Mailboxes.fetch_mailbox(mailbox_uuid) do
-        {:ok, mailbox} -> mailbox.name
-        _ -> ""
+  defp from_name(%Identity{kind: "shared", mailbox_uuid: mailbox_uuid} = identity, sender_name) do
+    name =
+      if blank?(identity.from_name) do
+        case Mailboxes.fetch_mailbox(mailbox_uuid) do
+          {:ok, mailbox} -> mailbox.name
+          _ -> ""
+        end
+      else
+        identity.from_name
       end
-    else
-      name
-    end
+
+    if identity.personalize_from_name,
+      do: [sender_name, name] |> Enum.reject(&blank?/1) |> Enum.join(" | "),
+      else: name
   end
 
   defp from_name(%Identity{kind: "personal", owner_uuid: owner_uuid, from_name: name}, _user) do

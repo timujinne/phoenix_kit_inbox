@@ -1271,3 +1271,18 @@ msgstr "Не удалось сохранить связи с объектами;
 #, elixir-autogen, elixir-format
 msgid "The link to the related object is not valid."
 msgstr "Связь с объектом недействительна."
+
+#: lib/phoenix_kit_inbox/errors.ex:163
+#, elixir-autogen, elixir-format
+msgid "The Reply-To address is not a valid email address."
+msgstr "Адрес для ответа не является корректным адресом электронной почты."
+
+#: lib/phoenix_kit_inbox/errors.ex:166
+#, elixir-autogen, elixir-format
+msgid "The email's HTML is too large to send."
+msgstr "HTML-часть письма слишком велика для отправки."
+
+#: lib/phoenix_kit_inbox/errors.ex:168
+#, elixir-autogen, elixir-format
+msgid "The email's HTML cannot be sent as it is."
+msgstr "HTML-часть письма нельзя отправить в таком виде."

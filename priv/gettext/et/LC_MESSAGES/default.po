@@ -1270,3 +1270,18 @@ msgstr "Seotud objektide linke ei õnnestunud salvestada; sõnumit ei saadetud."
 #, elixir-autogen, elixir-format
 msgid "The link to the related object is not valid."
 msgstr "Seotud objekti link ei kehti."
+
+#: lib/phoenix_kit_inbox/errors.ex:163
+#, elixir-autogen, elixir-format
+msgid "The Reply-To address is not a valid email address."
+msgstr "Vastusaadress ei ole kehtiv e-posti aadress."
+
+#: lib/phoenix_kit_inbox/errors.ex:166
+#, elixir-autogen, elixir-format
+msgid "The email's HTML is too large to send."
+msgstr "Kirja HTML on saatmiseks liiga suur."
+
+#: lib/phoenix_kit_inbox/errors.ex:168
+#, elixir-autogen, elixir-format
+msgid "The email's HTML cannot be sent as it is."
+msgstr "Kirja HTML-i ei saa sellisena saata."

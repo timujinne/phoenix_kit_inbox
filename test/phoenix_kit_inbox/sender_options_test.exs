@@ -67,7 +67,8 @@ defmodule PhoenixKitInbox.SenderOptionsTest do
                "kind" => "shared",
                "integration_uuid" => ctx.system_smtp,
                "from_address" => "noreply@company.test",
-               "from_name" => "Alice Smith | Company"
+               "from_name" => "Alice Smith | Company",
+               "sender_name" => "Alice Smith"
              }
 
       # Delivered internally like any message.

@@ -395,6 +395,7 @@ defmodule PhoenixKitInbox.External do
         |> put_recipients(rows)
         |> put_reply_to(message.metadata)
         |> put_body(message)
+        |> put_html_body(message.metadata)
 
       {:ok, Enum.reduce(files, email, &Swoosh.Email.attachment(&2, &1))}
     end
@@ -432,6 +433,13 @@ defmodule PhoenixKitInbox.External do
   end
 
   defp put_body(email, %Message{body: body}), do: Swoosh.Email.text_body(email, body || "")
+
+  # The host's ready-made HTML replaces the one built from the body; the
+  # text part stays what the body gives.
+  defp put_html_body(email, %{"html_body" => html}) when is_binary(html) and html != "",
+    do: Swoosh.Email.html_body(email, html)
+
+  defp put_html_body(email, _metadata), do: email
 
   defp read_attachments(attachments) do
     Enum.reduce_while(attachments, {:ok, []}, fn row, {:ok, acc} ->
@@ -529,8 +537,14 @@ defmodule PhoenixKitInbox.External do
   end
 
   # The message's identity as `scope` may send from it from `mailbox` now.
-  defp current_identity(scope, mailbox, %Message{metadata: %{"identity" => %{"uuid" => uuid}}}) do
-    case Identities.resolve(scope, uuid, mailbox) do
+  # Whether it may, and the identity's own name, are decided now; the user's
+  # part of a From name built from the sender (a common sender, a
+  # personalized one) is the name recorded when the message was sent, not the
+  # name of whoever retries.
+  defp current_identity(scope, mailbox, %Message{
+         metadata: %{"identity" => %{"uuid" => uuid} = recorded}
+       }) do
+    case Identities.resolve(scope, uuid, mailbox, recorded["sender_name"]) do
       {:ok, resolved} ->
         {:ok,
          %{

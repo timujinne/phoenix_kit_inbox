@@ -160,6 +160,13 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(:invalid_link), do: gettext("The link to the related object is not valid.")
 
+  def message(:invalid_reply_to),
+    do: gettext("The Reply-To address is not a valid email address.")
+
+  def message(:html_body_too_large), do: gettext("The email's HTML is too large to send.")
+
+  def message(:invalid_html_body), do: gettext("The email's HTML cannot be sent as it is.")
+
   def message({:internal_recipients, addresses}),
     do:
       gettext(

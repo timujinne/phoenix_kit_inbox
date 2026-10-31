@@ -59,7 +59,15 @@ defmodule PhoenixKitInbox.GettextCatalogueTest do
   end
 
   test "the send-key and link errors have their own texts" do
-    for reason <- [:idempotency_key_taken, :invalid_idempotency_key, :links_failed, :invalid_link] do
+    for reason <- [
+          :idempotency_key_taken,
+          :invalid_idempotency_key,
+          :links_failed,
+          :invalid_link,
+          :invalid_reply_to,
+          :html_body_too_large,
+          :invalid_html_body
+        ] do
       refute Errors.message(reason) =~ "Unexpected error"
     end
 
