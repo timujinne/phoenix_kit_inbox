@@ -1,6 +1,6 @@
 defmodule PhoenixKitInbox.MigrationsTest do
   @moduledoc """
-  V02–V06 against a real database: the suite's own schema (migrated by
+  V02–V07 against a real database: the suite's own schema (migrated by
   `test_helper.exs` through the coordinator) and a scratch named schema, so
   the prefix-anchored changes are exercised outside `public`.
   """
@@ -56,13 +56,13 @@ defmodule PhoenixKitInbox.MigrationsTest do
     def down, do: PhoenixKitInbox.Migrations.down(prefix: "inbox_v02_probe", version: 5)
   end
 
-  test "the coordinator expects version 6" do
-    assert PhoenixKitInbox.Migrations.current_version() == 6
+  test "the coordinator expects version 7" do
+    assert PhoenixKitInbox.Migrations.current_version() == 7
   end
 
   describe "the suite's schema (public)" do
-    test "is recorded at version 6" do
-      assert version_comment("public") == "6"
+    test "is recorded at version 7" do
+      assert version_comment("public") == "7"
     end
 
     test "identity roles go with their identity and with their role" do

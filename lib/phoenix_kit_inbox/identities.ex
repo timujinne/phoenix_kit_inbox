@@ -693,7 +693,8 @@ defmodule PhoenixKitInbox.Identities do
   `inbox.manage_shared` (`{:error, :forbidden}`).
 
   `attrs`: `"label"`, `"from_name"`, `"integration_uuid"` and optionally
-  `"mailbox_uuid"` — an existing shared mailbox (`{:error,
+  `"personalize_from_name"` (the sender's own name goes into the From name;
+  off by default) and `"mailbox_uuid"` — an existing shared mailbox (`{:error,
   :mailbox_not_found}` otherwise) — and `"role_uuids"`, the roles a sender
   bound to no mailbox is open to (see the moduledoc): Owner, `nil` and
   unknown uuids are dropped, `[]` opens it to nobody; without the key it is
@@ -731,13 +732,14 @@ defmodule PhoenixKitInbox.Identities do
   Needs `"inbox"` (`{:error, :forbidden}`); another user's or a system
   integration is `{:error, {:integration_unusable, :owner_mismatch}}`.
 
-  `attrs`: `"label"`, `"from_name"`, `"integration_uuid"`.
+  `attrs`: `"label"`, `"from_name"`, `"integration_uuid"`. A personal identity
+  has no `"personalize_from_name"`: it is ignored.
   """
   @spec create_personal(Scope.t(), map()) ::
           {:ok, Identity.t()}
           | {:error, :forbidden | {:integration_unusable, problem()} | Ecto.Changeset.t()}
   def create_personal(%Scope{} = scope, attrs) when is_map(attrs) do
-    attrs = normalize_attrs(attrs)
+    attrs = attrs |> normalize_attrs() |> Map.delete("personalize_from_name")
 
     with {:ok, user} <- scope_user(scope),
          :ok <- authorize_inbox(scope),
@@ -752,10 +754,11 @@ defmodule PhoenixKitInbox.Identities do
 
   @doc """
   Changes an identity's `"label"`, `"from_name"`, `"integration_uuid"` (checked
-  again) and, for a shared one, `"mailbox_uuid"` and `"role_uuids"` (as in
-  `create_shared/2`; without the key the roles stay). Binding a shared one
-  to a mailbox drops its roles. Same permissions as creating it, judged on
-  the stored row; the fields and the roles change in one transaction.
+  again) and, for a shared one, `"personalize_from_name"`, `"mailbox_uuid"` and
+  `"role_uuids"` (as in `create_shared/2`; without the key the roles stay).
+  Binding a shared one to a mailbox drops its roles. Same permissions as
+  creating it, judged on the stored row; the fields and the roles change in
+  one transaction.
   """
   @spec update_identity(Scope.t(), Identity.t(), map()) ::
           {:ok, Identity.t()}
@@ -775,7 +778,10 @@ defmodule PhoenixKitInbox.Identities do
       with {:ok, identity} <- fetch(uuid, lock: true),
            :ok <- authorize_manage(scope, identity),
            {:ok, changes} <- structural_changes(identity, attrs),
-           changeset = identity |> Ecto.Changeset.change(changes) |> Identity.changeset(attrs),
+           changeset =
+             identity
+             |> Ecto.Changeset.change(changes)
+             |> Identity.changeset(shared_only(identity, attrs)),
            {:ok, identity} <- repo().update(changeset),
            :ok <- update_roles(identity, attrs) do
         identity
@@ -785,6 +791,9 @@ defmodule PhoenixKitInbox.Identities do
     end)
     |> tell_senders()
   end
+
+  defp shared_only(%Identity{kind: "shared"}, attrs), do: attrs
+  defp shared_only(_identity, attrs), do: Map.delete(attrs, "personalize_from_name")
 
   defp update_roles(%Identity{kind: "shared", mailbox_uuid: bound} = identity, _attrs)
        when is_binary(bound),

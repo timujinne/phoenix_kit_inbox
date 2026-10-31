@@ -46,6 +46,7 @@ defmodule PhoenixKitInbox.Schemas.Identity do
     field(:owner_uuid, UUIDv7)
     field(:label, :string)
     field(:from_name, :string)
+    field(:personalize_from_name, :boolean, default: false)
     field(:integration_uuid, UUIDv7)
     field(:status, :string, default: "active")
 
@@ -60,10 +61,14 @@ defmodule PhoenixKitInbox.Schemas.Identity do
   @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
-  @doc "Changeset for the fields a form may set: `label` and `from_name`."
+  @doc """
+  Changeset for the fields a form may set: `label`, `from_name` and, for a
+  shared identity, `personalize_from_name` — whether the sender's own name goes
+  into the From name.
+  """
   def changeset(identity, attrs) do
     identity
-    |> cast(attrs, [:label, :from_name])
+    |> cast(attrs, [:label, :from_name, :personalize_from_name])
     |> update_change(:label, &trim/1)
     |> update_change(:from_name, &trim/1)
     |> validate_required([:label, :kind, :integration_uuid])

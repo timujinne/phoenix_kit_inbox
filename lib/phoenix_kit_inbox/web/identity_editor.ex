@@ -29,7 +29,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
 
   @fields %{
     personal: ~w(label from_name integration_uuid),
-    shared: ~w(label from_name integration_uuid role_uuids)
+    shared: ~w(label from_name personalize_from_name integration_uuid role_uuids)
   }
 
   @doc "Loads the identities of `kind` the scope may manage, and the form's choices."
@@ -82,6 +82,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         params = %{
           "label" => "",
           "from_name" => "",
+          "personalize_from_name" => false,
           "integration_uuid" => "",
           "role_uuids" => for(%{sends_external: true, uuid: uuid} <- roles, do: uuid)
         }
@@ -105,6 +106,7 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
         params = %{
           "label" => identity.label,
           "from_name" => identity.from_name || "",
+          "personalize_from_name" => identity.personalize_from_name,
           "integration_uuid" => identity.integration_uuid,
           "role_uuids" => Enum.map(Map.get(entry, :roles, []), & &1.uuid)
         }
@@ -293,6 +295,12 @@ defmodule PhoenixKitInbox.Web.IdentityEditor do
           field={@form[:from_name]}
           type="text"
           label={gettext("Name shown to recipients")}
+        />
+        <.checkbox
+          :if={@kind == :shared}
+          field={@form[:personalize_from_name]}
+          variant="toggle"
+          label={gettext("Put the sender's own name into the From name")}
         />
         <.select
           field={@form[:integration_uuid]}

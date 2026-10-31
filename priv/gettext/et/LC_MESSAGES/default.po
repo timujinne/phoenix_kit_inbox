@@ -443,6 +443,11 @@ msgstr "Nimi"
 msgid "Name shown to recipients"
 msgstr "Saajatele näidatav nimi"
 
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:303
+#, elixir-autogen, elixir-format
+msgid "Put the sender's own name into the From name"
+msgstr "Lisa saatja enda nimi From-nimesse"
+
 #: lib/phoenix_kit_inbox/web/compose_live.ex:107
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:609
 #, elixir-autogen, elixir-format
