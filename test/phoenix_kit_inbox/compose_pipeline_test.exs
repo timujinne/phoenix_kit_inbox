@@ -27,7 +27,7 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
   defmodule ClientFilter do
     @moduledoc false
     # A host's circle: staff always, a client only while the host's wrapper
-    # has put them in the process (the way Andi's with_clients works).
+    # has put them in the process (as a host's wrapper does).
     def addressable?(user),
       do: String.starts_with?(user.username, "staff_") or user.uuid in Process.get(:clients, [])
   end
