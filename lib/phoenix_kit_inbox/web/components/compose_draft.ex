@@ -33,8 +33,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
       linked to (from the draft only)
     * `:reply_to_message` — the uuid of the message this answers; it gives the
       message its conversation
-    * `:idempotency_key` — issued by the form on every opening; a repeated
-      send with the same key is one message
+    * `:idempotency_key` — issued by the form on every opening (a key the
+      host puts here is replaced); a repeated send with the same key is one
+      message
     * `:html_body` — the host's ready-made HTML for the email to outside
       recipients; never shown in the form, never read from it
     * `:context` — a map of the host's own, passed through to its recipient

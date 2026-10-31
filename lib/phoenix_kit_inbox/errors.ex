@@ -18,6 +18,20 @@ defmodule PhoenixKitInbox.Errors do
 
   alias PhoenixKit.Utils.Format
 
+  @doc """
+  `message/1` for a person who is not the developer: what the application did
+  not mean to say — a reason that is text (it came from somewhere else) and
+  one with no message of its own — becomes the plain "could not be sent".
+  For the places a host's code can answer through, like a compose form.
+  """
+  @spec user_message(term()) :: String.t()
+  def user_message(reason) when is_binary(reason), do: message(:send_failed)
+
+  def user_message(reason) do
+    text = message(reason)
+    if text == message_unexpected(reason), do: message(:send_failed), else: text
+  end
+
   @doc "Translates an error reason into a user-facing string."
   @spec message(term()) :: String.t()
   def message(:mailbox_not_found), do: gettext("Mailbox not found.")
@@ -261,7 +275,9 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(reason) when is_binary(reason), do: reason
 
-  def message(reason) do
+  def message(reason), do: message_unexpected(reason)
+
+  defp message_unexpected(reason) do
     gettext("Unexpected error: %{reason}", reason: inspect(reason))
   end
 end

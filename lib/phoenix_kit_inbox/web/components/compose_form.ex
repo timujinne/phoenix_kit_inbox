@@ -45,9 +45,30 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   Without `Scope.can?(scope, "inbox")` the component renders an empty
   container and ignores every event.
 
+  ## The send
+
+  "Send" adds what was typed in a recipient field and not yet added (a field
+  that cannot be added stops the send, its reason shown at the field), builds
+  the draft from the form's own state — the chips, the host's files that were
+  left, the own uploads — and runs `ComposePipeline.run/4` (the host's
+  `around_send` inside it) in a task under `PhoenixKitInbox.TaskSupervisor`,
+  not linked to the page: leaving or crashing the page does not cut it. A
+  second send while one runs, or after one went, is ignored by the server.
+  The answer comes back by `send_update` to the page; if the page is gone it
+  is lost, the letter is not. A send that is killed, or takes five minutes,
+  is reported as interrupted. A refusal shows its message (a reason in words
+  of the host's own, or one with no message, shows as "could not be sent");
+  the button works again and the **same idempotency key** is kept, so a retry
+  is the same letter. The form issues a fresh key whenever it is opened (a
+  new component or a new draft) and replaces any `:idempotency_key` of the
+  draft. Cancel is ignored while a send runs. Above the button, one line says
+  who gets the letter, and — for outside addresses — where the host's
+  `outbound_filter` would send it (`Outbound.preview/2`, nothing is sent).
+
   ## Messages to the parent LiveView
 
     * `{:inbox_compose, id, :cancelled}`
+    * `{:inbox_compose, id, {:sent, %Message{}}}`
   """
 
   use PhoenixKitWeb, :live_component
@@ -59,13 +80,20 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.Outbound
   alias PhoenixKitInbox.RecipientSource
   alias PhoenixKitInbox.RecipientSources.Members
+  alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Web.Components.ComposeDraft
   alias PhoenixKitInbox.Web.Components.ComposePipeline
 
+  require Logger
+
   @blocks ~w(cc bcc signature)
+  # How long a send may run before the page stops waiting for it. A send that
+  # is slow, not lost, still lands; a retry with the same key is the same letter.
+  @send_timeout :timer.minutes(5)
   @roles ~w(to cc bcc)
   @subject_max 500
   @query_max 320
@@ -92,6 +120,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   defp upload_progress(:attachments, _entry, socket), do: {:noreply, limit_uploads(socket)}
 
   @impl true
+  # The send task answers the component that started it, by send_update. An
+  # answer to an attempt that is no longer the current one is not for this page.
+  def update(%{send_result: {ref, result}}, %{assigns: %{send_ref: ref}} = socket),
+    do: {:ok, finish_send(socket, result)}
+
+  def update(%{send_lost: ref}, %{assigns: %{send_ref: ref, sending: true}} = socket) do
+    {:ok,
+     assign(socket,
+       sending: false,
+       error: gettext("Sending was interrupted. Check the sent mail before sending again.")
+     )}
+  end
+
+  def update(%{send_result: _}, socket), do: {:ok, socket}
+  def update(%{send_lost: _}, socket), do: {:ok, socket}
+
   def update(assigns, socket) do
     socket =
       socket
@@ -106,7 +150,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     cond do
       not socket.assigns.allowed? -> {:ok, socket}
       draft != socket.assigns[:source_draft] -> {:ok, open_draft(socket, draft)}
-      scope_changed? -> {:ok, assign_sender(socket, socket.assigns.from)}
+      scope_changed? -> {:ok, socket |> assign_sender(socket.assigns.from) |> refresh_summary()}
       true -> {:ok, socket}
     end
   end
@@ -140,12 +184,18 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       picked: [],
       file_seq: length(List.wrap(draft.attachments)) + 1,
       files_error: nil,
+      idempotency_key: UUIDv7.generate(),
+      sending: false,
+      sent: false,
+      send_ref: nil,
+      summary: nil,
       open: %{cc: recipients.cc != [], bcc: recipients.bcc != [], signature: false},
       signature_uuid: "",
       signature_block: "",
       error: nil
     )
     |> assign_sender(choice_key(draft.from))
+    |> refresh_summary()
   end
 
   defp text(value) when is_binary(value), do: value
@@ -315,7 +365,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   def handle_event("select_from", %{"from" => key}, socket) when is_binary(key) do
     if editable?(socket.assigns) and Enum.any?(socket.assigns.from_options, &(&1.key == key)),
-      do: {:noreply, socket |> assign(from: key, error: nil) |> assign_signatures()},
+      do:
+        {:noreply,
+         socket |> assign(from: key, error: nil) |> assign_signatures() |> refresh_summary()},
       else: {:noreply, socket}
   end
 
@@ -377,7 +429,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         line = Enum.reject(recipients[role], &(&1.key == key))
 
         {:noreply,
-         assign(socket, recipients: Map.put(recipients, role, line), recipient_error: nil)}
+         socket
+         |> assign(recipients: Map.put(recipients, role, line), recipient_error: nil)
+         |> refresh_summary()}
     end
   end
 
@@ -429,9 +483,30 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
      |> keep(:body, params["body"])}
   end
 
-  # Sending is wired in with the pipeline; until then Enter in a field must
-  # not submit the page.
-  def handle_event("submit", _params, socket), do: {:noreply, socket}
+  # One send per opening at a time, and none after one went: the server says
+  # so, whatever the button looked like in the browser.
+  def handle_event("submit", _params, %{assigns: %{sending: true}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("submit", _params, %{assigns: %{sent: true}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("submit", params, socket) do
+    socket =
+      socket
+      |> keep(:subject, params["subject"])
+      |> keep(:body, params["body"])
+      |> assign(error: nil)
+      |> add_pending_input()
+
+    if socket.assigns.recipient_error,
+      do: {:noreply, socket},
+      else: {:noreply, start_send(socket)}
+  end
+
+  # A running send is not the form's to take back: the page stays until it is done.
+  def handle_event("cancel", _params, %{assigns: %{sending: true}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("cancel", _params, socket) do
     send(self(), {:inbox_compose, socket.assigns.id, :cancelled})
@@ -442,6 +517,279 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp keep(socket, key, value) when is_binary(value), do: assign(socket, key, value)
   defp keep(socket, _key, _value), do: socket
+
+  # ── the send ────────────────────────────────────────────────────────────────
+
+  # What was typed in a line's field and not added is added now, by the rules
+  # of adding; the first that cannot be added stops the send, and its reason
+  # shows at its field. A recipient is never dropped silently.
+  defp add_pending_input(socket) do
+    Enum.reduce([:to, :cc, :bcc], socket, fn role, acc ->
+      text = acc.assigns.inputs[role]
+
+      if acc.assigns.recipient_error || String.trim(text) == "",
+        do: acc,
+        else: add_typed(acc, role, text)
+    end)
+  end
+
+  # Everything the pipeline gets is made here from the server's state: the
+  # draft with the chips and files the person left, the subject and text, the
+  # sender's choice and the picks. The browser's params are read for the two
+  # texts and nothing else.
+  defp start_send(socket) do
+    case collect_uploads(socket) do
+      {:ok, uploads, links} ->
+        run_send(socket, uploads, links)
+
+      {:error, message} ->
+        assign(socket, error: message)
+    end
+  end
+
+  defp collect_uploads(socket) do
+    case uploaded_entries(socket, :attachments) do
+      {_done, [_ | _] = busy} ->
+        if Enum.any?(busy, &(&1.valid? == false)),
+          do: {:error, gettext("Remove the files that failed, then send again.")},
+          else: {:error, Errors.message(:uploads_in_progress)}
+
+      {[], []} ->
+        {:ok, [], []}
+
+      {_done, []} ->
+        consumed =
+          consume_uploaded_entries(socket, :attachments, fn %{path: path}, entry ->
+            {:postpone, {entry.ref, path, entry.client_name, entry.client_type}}
+          end)
+
+        {entries, links} = own_uploads(consumed)
+        {:ok, Enum.map(entries, &upload_attachment/1), links}
+    end
+  end
+
+  # An upload's temporary file belongs to its upload channel and goes with the
+  # page. The send gets a hard link of its own to each, so it survives the
+  # page; where none can be made (another file system) the upload's own path.
+  defp own_uploads(uploads) do
+    Enum.map_reduce(uploads, [], fn {ref, path, name, type}, links ->
+      link = Path.join(System.tmp_dir!(), "phoenix_kit_inbox_upload_#{UUIDv7.generate()}")
+
+      case File.ln(path, link) do
+        :ok -> {{ref, link, name, type}, [link | links]}
+        {:error, _reason} -> {{ref, path, name, type}, links}
+      end
+    end)
+  end
+
+  defp upload_attachment({ref, path, name, type}) do
+    filename = Attachments.clean_filename(name)
+
+    %{
+      id: "upload-#{ref}",
+      path: path,
+      filename: filename,
+      name: filename,
+      content_type: Attachments.safe_content_type(type)
+    }
+  end
+
+  defp run_send(socket, uploads, links) do
+    %{scope: scope, id: id, source_draft: source} = socket.assigns
+    r = socket.assigns.recipients
+    host = for %{item: item} <- socket.assigns.host_files, do: item
+
+    draft = %{
+      source
+      | to: Enum.map(r.to, &entry/1),
+        cc: Enum.map(r.cc, &entry/1),
+        bcc: Enum.map(r.bcc, &entry/1),
+        attachments: host ++ uploads,
+        idempotency_key: socket.assigns.idempotency_key
+    }
+
+    params =
+      %{"subject" => socket.assigns.subject, "body" => socket.assigns.body}
+      |> Map.put("from", socket.assigns.from)
+      |> put_picks(socket.assigns.picked)
+
+    callbacks =
+      for key <- ~w(around_send authorize_attachments)a,
+          fun = socket.assigns[key],
+          into: %{},
+          do: {key, fun}
+
+    ref = System.unique_integer([:positive])
+
+    case start_task(scope, id, ref, params, draft, callbacks, links) do
+      :ok ->
+        assign(socket, sending: true, send_ref: ref, error: nil)
+
+      :error ->
+        Enum.each(links, &File.rm/1)
+        assign(socket, error: Errors.message(:send_failed))
+    end
+  end
+
+  defp put_picks(params, []), do: params
+
+  defp put_picks(params, picked),
+    do: Map.put(params, "added_attachments", Enum.map(picked, & &1.file_uuid))
+
+  # A chip, as the pipeline takes a recipient from the draft.
+  defp entry(chip) do
+    chip
+    |> Map.take([:user, :address, :label, :route])
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  # The send runs under the module's task supervisor, not linked to the page:
+  # leaving or crashing the page between the commit and the external part must
+  # not cut it. The answer finds its way back by send_update to the page's
+  # pid, if it is still there. A second task watches the first: a send that
+  # is killed, or takes longer than the timeout, is reported as lost.
+  defp start_task(scope, id, ref, params, draft, callbacks, links) do
+    page = self()
+    supervisor = PhoenixKitInbox.TaskSupervisor
+
+    work = fn ->
+      result =
+        try do
+          ComposePipeline.run(scope, params, draft, callbacks)
+        catch
+          kind, reason ->
+            # What failed, not what it carried: the text may name people.
+            what = if is_struct(reason), do: inspect(reason.__struct__), else: "a #{kind}"
+            Logger.error("[Inbox] a compose send ended with #{what}")
+            {:error, :send_failed}
+        after
+          Enum.each(links, &File.rm/1)
+        end
+
+      Phoenix.LiveView.send_update(page, __MODULE__, id: id, send_result: {ref, result})
+    end
+
+    with {:ok, worker} <- Task.Supervisor.start_child(supervisor, work),
+         {:ok, _watcher} <- Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref)) do
+      :ok
+    else
+      _ -> :error
+    end
+  catch
+    :exit, _reason -> :error
+  end
+
+  defp watch(worker, page, id, ref) do
+    fn ->
+      monitor = Process.monitor(worker)
+
+      receive do
+        {:DOWN, ^monitor, :process, ^worker, :normal} -> :ok
+        {:DOWN, ^monitor, :process, ^worker, _reason} -> lost(page, id, ref)
+      after
+        @send_timeout -> lost(page, id, ref)
+      end
+    end
+  end
+
+  defp lost(page, id, ref),
+    do: Phoenix.LiveView.send_update(page, __MODULE__, id: id, send_lost: ref)
+
+  defp finish_send(socket, {:ok, %Message{} = message}) do
+    send(self(), {:inbox_compose, socket.assigns.id, {:sent, message}})
+    assign(socket, sending: false, sent: true, send_ref: nil, error: nil)
+  end
+
+  defp finish_send(socket, {:error, reason}),
+    do: assign(socket, sending: false, send_ref: nil, error: Errors.user_message(reason))
+
+  defp finish_send(socket, _other),
+    do: assign(socket, sending: false, send_ref: nil, error: Errors.message(:send_failed))
+
+  # ── the line above the button ───────────────────────────────────────────────
+
+  # Who gets it, as the person sees it — and, for the outside addresses, where
+  # the host's filter would really send it (`Outbound.preview/2`; nothing is
+  # sent). A filter that refuses or fails leaves the plain line.
+  defp refresh_summary(socket) do
+    %{recipients: r} = socket.assigns
+    people = r.to ++ r.cc ++ r.bcc
+
+    summary =
+      if people == [] do
+        nil
+      else
+        %{
+          from: socket.assigns |> current_option() |> then(&(&1 && &1.label)),
+          to: Enum.map(r.to, &chip_text/1),
+          cc: length(r.cc),
+          bcc: length(r.bcc),
+          outside: outside_addresses(socket)
+        }
+      end
+
+    assign(socket, :summary, summary)
+  end
+
+  defp outside_addresses(socket) do
+    r = socket.assigns.recipients
+    typed = for role <- [:to, :cc, :bcc], c <- r[role], c.route == :email, do: {role, c}
+
+    with [_ | _] <- typed,
+         {:ok, email} <- Outbound.preview(preview_email(typed), preview_context(socket)) do
+      shown = Enum.map(email.to ++ email.cc ++ email.bcc, fn {_name, address} -> address end)
+      asked = Enum.map(typed, fn {_role, c} -> c.address end)
+
+      if Enum.sort(Enum.map(shown, &String.downcase/1)) ==
+           Enum.sort(Enum.map(asked, &String.downcase/1)),
+         do: nil,
+         else: Enum.uniq(shown)
+    else
+      _ -> nil
+    end
+  end
+
+  defp preview_email(typed) do
+    Enum.reduce(typed, Swoosh.Email.new(), fn {role, chip}, email ->
+      recipient = {chip.label || "", chip.address}
+
+      case role do
+        :to -> Swoosh.Email.to(email, recipient)
+        :cc -> Swoosh.Email.cc(email, recipient)
+        :bcc -> Swoosh.Email.bcc(email, recipient)
+      end
+    end)
+  end
+
+  defp preview_context(socket) do
+    identity =
+      case current_option(socket.assigns) do
+        %{choice: {:identity, uuid}} -> uuid
+        _ -> nil
+      end
+
+    %{
+      kind: :message,
+      integration_uuid: nil,
+      user_uuid: socket.assigns.scope.user && to_string(socket.assigns.scope.user.uuid),
+      identity_uuid: identity
+    }
+  end
+
+  defp summary_text(%{from: from, to: to} = summary) do
+    base = gettext("From %{from} → %{to}", from: from || "?", to: Enum.join(to, ", "))
+
+    [
+      base,
+      summary.cc > 0 && ngettext("%{count} in copy", "%{count} in copy", summary.cc),
+      summary.bcc > 0 && ngettext("%{count} hidden", "%{count} hidden", summary.bcc),
+      summary.outside &&
+        gettext("outside mail goes to %{addresses}", addresses: Enum.join(summary.outside, ", "))
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join("; ")
+  end
 
   # ── attachments ─────────────────────────────────────────────────────────────
 
@@ -656,11 +1004,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   end
 
   defp finish_add(socket, role) do
-    assign(socket,
+    socket
+    |> assign(
       inputs: Map.put(socket.assigns.inputs, role, ""),
       list: nil,
       recipient_error: nil
     )
+    |> refresh_summary()
   end
 
   defp same_person?(%{user: user}, %{user: user}) when is_binary(user), do: true
@@ -927,9 +1277,33 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         </div>
       </div>
 
+      <p
+        :if={@summary}
+        id={"compose-#{@id}-summary"}
+        class="text-sm text-base-content/70"
+        data-sending={@sending || nil}
+      >
+        {summary_text(@summary)}
+      </p>
+
       <div class="flex justify-end gap-2">
-        <.button type="button" variant="ghost" phx-click="cancel" phx-target={@myself}>
+        <.button
+          type="button"
+          variant="ghost"
+          disabled={@sending}
+          phx-click="cancel"
+          phx-target={@myself}
+        >
           {gettext("Cancel")}
+        </.button>
+        <.button
+          type="submit"
+          form={"compose-#{@id}-form"}
+          variant="primary"
+          disabled={@sending or @sent}
+          aria-busy={to_string(@sending)}
+        >
+          {if @sending, do: gettext("Sending…"), else: gettext("Send")}
         </.button>
       </div>
     </div>
