@@ -178,6 +178,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Schemas.Message
+  alias PhoenixKitInbox.Text
   alias PhoenixKitInbox.Web.Components.ComposeDraft
 
   require Logger
@@ -186,7 +187,6 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   @callback_keys [:around_send, :authorize_attachments]
   @roles [:to, :cc, :bcc]
   @subject_max 500
-  @html_max 256 * 1024
   @address_max 320
   @label_max 200
   @picks_max 50
@@ -426,8 +426,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp direct(_scope, draft, send_fun), do: send_fun.(draft)
 
-  defp valid_fun(fun, arity, _default) when is_function(fun, arity), do: fun
-  defp valid_fun(_fun, _arity, default), do: default
+  defp valid_fun(fun, arity) when is_function(fun, arity), do: fun
+  defp valid_fun(_fun, _arity), do: nil
 
   # ── recipients ──────────────────────────────────────────────────────────────
 
@@ -645,13 +645,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
     cond do
       value == nil -> {:ok, ""}
-      storable?(value) -> {:ok, value}
+      Text.storable?(value) -> {:ok, value}
       true -> {:error, :invalid_text}
     end
   end
-
-  defp storable?(value),
-    do: is_binary(value) and String.valid?(value) and not String.contains?(value, <<0>>)
 
   defp subject_length(subject) do
     # In code points, as the schema counts (`count: :codepoints`), not graphemes.
@@ -875,7 +872,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   @spec authorize_picks(Scope.t(), ComposeDraft.t(), [binary()], term()) ::
           {:ok, [map()]} | {:error, term()}
   def authorize_picks(scope, %ComposeDraft{} = draft, [_ | _] = uuids, fun),
-    do: authorize(scope, draft, uuids, %{authorize_attachments: valid_fun(fun, 3, nil)})
+    do: authorize(scope, draft, uuids, %{authorize_attachments: valid_fun(fun, 3)})
 
   defp authorize(scope, draft, uuids, %{authorize_attachments: fun}) when is_function(fun, 3) do
     context = Map.put(draft.context || %{}, :links, draft.links)
@@ -1044,8 +1041,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp html_body(html) when is_binary(html) do
     cond do
-      byte_size(html) > @html_max -> {:error, :html_body_too_large}
-      not String.valid?(html) or String.contains?(html, <<0>>) -> {:error, :invalid_html_body}
+      byte_size(html) > Messages.html_body_max_bytes() -> {:error, :html_body_too_large}
+      not Text.storable?(html) -> {:error, :invalid_html_body}
       true -> {:ok, html}
     end
   end

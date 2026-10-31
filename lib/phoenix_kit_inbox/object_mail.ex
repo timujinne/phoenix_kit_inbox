@@ -40,10 +40,9 @@ defmodule PhoenixKitInbox.ObjectMail do
   alias PhoenixKitInbox.Schemas.ExternalRecipient
   alias PhoenixKitInbox.Schemas.Link
   alias PhoenixKitInbox.Schemas.Message
+  alias PhoenixKitInbox.Text
 
   @folders ~w(inbox sent)
-  @kind_max 64
-  @ref_max 255
   @default_limit 50
   @max_limit 200
 
@@ -165,7 +164,7 @@ defmodule PhoenixKitInbox.ObjectMail do
   def normalize_filter(_), do: []
 
   defp object(kind, ref) do
-    if Links.valid_text?(kind, @kind_max) and Links.valid_text?(ref, @ref_max),
+    if Text.fits?(kind, Links.kind_max()) and Text.fits?(ref, Links.ref_max()),
       do: [%{kind: kind, ref: ref}],
       else: []
   end

@@ -48,6 +48,7 @@ defmodule PhoenixKitInbox.Links do
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Schemas.Link
   alias PhoenixKitInbox.Schemas.Message
+  alias PhoenixKitInbox.Text
 
   @sources Link.sources()
   @kind_max 64
@@ -273,19 +274,15 @@ defmodule PhoenixKitInbox.Links do
     if valid?(kind, ref), do: [%{kind: kind, ref: ref}], else: []
   end
 
-  defp valid?(kind, ref), do: valid_text?(kind, @kind_max) and valid_text?(ref, @ref_max)
+  defp valid?(kind, ref), do: Text.fits?(kind, @kind_max) and Text.fits?(ref, @ref_max)
 
-  @doc false
-  # Whether `value` fits a `varchar(max)` column: a non-empty, valid UTF-8
-  # binary without a NUL byte (Postgres refuses one), at most `max` code
-  # points long (Postgres counts code points, not graphemes).
-  @spec valid_text?(term(), pos_integer()) :: boolean()
-  def valid_text?(value, max) when is_binary(value) do
-    value != "" and String.valid?(value) and not String.contains?(value, <<0>>) and
-      length(String.to_charlist(value)) <= max
-  end
+  @doc "The longest `kind` of a link, in characters."
+  @spec kind_max() :: pos_integer()
+  def kind_max, do: @kind_max
 
-  def valid_text?(_value, _max), do: false
+  @doc "The longest `ref` of a link, in characters."
+  @spec ref_max() :: pos_integer()
+  def ref_max, do: @ref_max
 
   # ── by a person ─────────────────────────────────────────────────────────────
 

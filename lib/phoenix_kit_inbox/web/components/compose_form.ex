@@ -135,6 +135,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Web.Components.ComposeDraft
   alias PhoenixKitInbox.Web.Components.ComposePipeline
+  alias PhoenixKitInbox.Web.OwnUploads
 
   require Logger
 
@@ -713,18 +714,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end
   end
 
-  # An upload's temporary file belongs to its upload channel and goes with the
-  # page. The send gets a hard link of its own to each, so it survives the
-  # page; where none can be made (another file system) the upload's own path.
+  # The send gets a hard link of its own to each upload, so it survives the page.
   defp own_uploads(uploads) do
-    Enum.map_reduce(uploads, [], fn {ref, path, name, type}, links ->
-      link = Path.join(System.tmp_dir!(), "phoenix_kit_inbox_upload_#{UUIDv7.generate()}")
-
-      case File.ln(path, link) do
-        :ok -> {{ref, link, name, type}, [link | links]}
-        {:error, _reason} -> {{ref, path, name, type}, links}
-      end
-    end)
+    OwnUploads.link(
+      uploads,
+      fn {_ref, path, _name, _type} -> path end,
+      fn {ref, _path, name, type}, link -> {ref, link, name, type} end
+    )
   end
 
   defp upload_attachment({ref, path, name, type}) do

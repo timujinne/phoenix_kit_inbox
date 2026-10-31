@@ -55,6 +55,7 @@ defmodule PhoenixKitInbox.Messages do
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Schemas.SendKey
+  alias PhoenixKitInbox.Text
 
   @default_limit 50
   @recipient_roles ~w(to cc bcc)
@@ -298,6 +299,10 @@ defmodule PhoenixKitInbox.Messages do
   end
 
   def project_for_viewer(message, _viewer), do: message
+
+  @doc "The most bytes of the host's `html_body` a send takes."
+  @spec html_body_max_bytes() :: pos_integer()
+  def html_body_max_bytes, do: @html_body_max_bytes
 
   @doc """
   Whether a message with this uuid is stored, in any status, for anyone.
@@ -872,7 +877,7 @@ defmodule PhoenixKitInbox.Messages do
   defp trusted_reply_to(address) when is_binary(address) do
     address = String.trim(address)
 
-    if Links.valid_text?(address, @reply_to_max_chars) and External.address?(address),
+    if Text.fits?(address, @reply_to_max_chars) and External.address?(address),
       do: {:ok, %{"reply_to" => address}},
       else: {:error, :invalid_reply_to}
   end
@@ -884,7 +889,7 @@ defmodule PhoenixKitInbox.Messages do
   defp html_body_option(html) when is_binary(html) do
     cond do
       byte_size(html) > @html_body_max_bytes -> {:error, :html_body_too_large}
-      not Links.valid_text?(html, @html_body_max_bytes) -> {:error, :invalid_html_body}
+      not Text.fits?(html, @html_body_max_bytes) -> {:error, :invalid_html_body}
       true -> {:ok, %{"html_body" => html}}
     end
   end
@@ -917,7 +922,7 @@ defmodule PhoenixKitInbox.Messages do
     do: {:error, :invalid_idempotency_key}
 
   defp check_send_key(key, mailbox, sender_user_uuid) do
-    if Links.valid_text?(key, @send_key_max_chars) do
+    if Text.fits?(key, @send_key_max_chars) do
       case replay_send_key(key, mailbox, sender_user_uuid) do
         {:ok, message} -> {:replay, message}
         {:error, :not_found} -> :ok

@@ -31,6 +31,8 @@ defmodule PhoenixKitInbox.Schemas.Message do
 
   import Ecto.Changeset
 
+  alias PhoenixKitInbox.Text
+
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @foreign_key_type UUIDv7
 
@@ -105,7 +107,7 @@ defmodule PhoenixKitInbox.Schemas.Message do
   end
 
   defp storable_errors(field, value) do
-    if is_binary(value) and (not String.valid?(value) or String.contains?(value, <<0>>)),
+    if is_binary(value) and not Text.storable?(value),
       do: [{field, "contains characters that cannot be stored"}],
       else: []
   end

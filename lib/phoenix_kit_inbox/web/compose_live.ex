@@ -98,6 +98,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
   alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Signatures
+  alias PhoenixKitInbox.Web.OwnUploads
   alias PhoenixKitInbox.Web.ScopeRefresh
 
   @impl true
@@ -704,20 +705,10 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     :exit, _reason -> :error
   end
 
-  # An upload's temporary file belongs to its upload channel and goes with
-  # the page. The work gets a hard link of its own to each, so a send
-  # survives the page; where no link can be made (another file system),
-  # the upload's own path, as before.
-  defp own_uploads(uploads) do
-    Enum.map_reduce(uploads, [], fn %{path: path} = upload, links ->
-      link = Path.join(System.tmp_dir!(), "phoenix_kit_inbox_upload_#{UUIDv7.generate()}")
-
-      case File.ln(path, link) do
-        :ok -> {%{upload | path: link}, [link | links]}
-        {:error, _reason} -> {upload, links}
-      end
-    end)
-  end
+  # The work gets a hard link of its own to each upload, so a send survives
+  # the page.
+  defp own_uploads(uploads),
+    do: OwnUploads.link(uploads, & &1.path, fn upload, link -> %{upload | path: link} end)
 
   # A pick that arrives while a save runs would be overwritten by its chips.
   @impl true
