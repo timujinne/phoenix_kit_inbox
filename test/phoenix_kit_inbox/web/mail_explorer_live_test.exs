@@ -472,7 +472,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
     test "is one reload", %{conn: conn} = ctx do
       letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Kept"}, links: [@order])
       view = open(ctx, conn, nil, %{can_link?: counting()})
-      assert length(asks()) >= 1
+      assert asks() != []
 
       for _ <- 1..25 do
         send(view.pid, {:inbox_message_linked, letter.uuid})

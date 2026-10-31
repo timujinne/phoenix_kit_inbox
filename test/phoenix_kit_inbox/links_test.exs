@@ -11,6 +11,7 @@ defmodule PhoenixKitInbox.LinksTest do
 
   import ExUnit.CaptureLog
 
+  alias PhoenixKit.PubSub.Manager
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
@@ -252,7 +253,7 @@ defmodule PhoenixKitInbox.LinksTest do
     test "the link events of the host come right after the commit, before the notifications",
          ctx do
       :ok = Links.subscribe("order", "o-1")
-      :ok = PhoenixKit.PubSub.Manager.subscribe(PhoenixKit.Activity.pubsub_topic())
+      :ok = Manager.subscribe(PhoenixKit.Activity.pubsub_topic())
 
       send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
 
