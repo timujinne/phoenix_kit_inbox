@@ -1128,6 +1128,74 @@ defmodule PhoenixKitInbox.AttachmentsTest do
     end
   end
 
+  describe "list_for_viewer_many/2" do
+    setup ctx do
+      {:ok, first} =
+        send_to(ctx.scope, ctx.alice_box, ctx.bob, %{},
+          attachments_data: [
+            %{binary: "open", filename: "open.pdf"},
+            %{binary: "priced", filename: "priced.pdf", flags: %{"money_free" => false}}
+          ]
+        )
+
+      {:ok, second} =
+        send_to(ctx.scope, ctx.alice_box, ctx.bob, %{},
+          attachments_data: [%{binary: "again", filename: "again.pdf"}]
+        )
+
+      {:ok, bare} = send_to(ctx.scope, ctx.alice_box, ctx.bob, %{})
+      %{first: first, second: second, bare: bare}
+    end
+
+    test "groups by message with one attachments query and no policy", ctx do
+      uuids = [ctx.first.uuid, ctx.second.uuid, ctx.bare.uuid]
+
+      {result, queries} =
+        count_queries(fn -> Attachments.list_for_viewer_many(scope_for(ctx.bob), uuids) end)
+
+      assert queries == 1
+
+      assert result[ctx.first.uuid] ==
+               Enum.map(Attachments.list_for_message(ctx.first.uuid), &{:ok, &1})
+
+      assert [{:ok, %{filename: "again.pdf"}}] = result[ctx.second.uuid]
+      assert result[ctx.bare.uuid] == []
+    end
+
+    test "judges every row as list_for_viewer/2 does, in a bounded number of queries", ctx do
+      put_policy(:refuse_file)
+      Application.put_env(:phoenix_kit_inbox, :policy_refused_file, "priced.pdf")
+      bob = scope_for(ctx.bob)
+      uuids = [ctx.first.uuid, ctx.second.uuid, ctx.bare.uuid]
+
+      {many, queries} = count_queries(fn -> Attachments.list_for_viewer_many(bob, uuids) end)
+
+      for uuid <- uuids, do: assert(many[uuid] == Attachments.list_for_viewer(bob, uuid))
+      assert [{:ok, %{filename: "open.pdf"}}, {:withheld, withheld}] = many[ctx.first.uuid]
+      assert withheld.filename == nil and withheld.size_bytes == nil and withheld.flags == nil
+      # attachments, the viewer, the files they created: not one per message
+      assert queries <= 3
+    end
+
+    test "the creator is not asked, a user-less scope is refused everything", ctx do
+      put_policy(:refuse)
+      uuids = [ctx.first.uuid, ctx.second.uuid]
+
+      assert %{} = mine = Attachments.list_for_viewer_many(ctx.scope, uuids)
+      assert Enum.all?(mine[ctx.first.uuid], &match?({:ok, _}, &1))
+
+      assert Enum.all?(
+               Attachments.list_for_viewer_many(nil, uuids)[ctx.first.uuid],
+               &match?({:withheld, _}, &1)
+             )
+    end
+
+    test "an empty or unusable list is an empty map", ctx do
+      assert Attachments.list_for_viewer_many(scope_for(ctx.bob), []) == %{}
+      assert Attachments.list_for_viewer_many(scope_for(ctx.bob), nil) == %{}
+    end
+  end
+
   defp count_queries(fun) do
     handler = "inbox-count-queries-#{System.unique_integer([:positive])}"
     test_pid = self()

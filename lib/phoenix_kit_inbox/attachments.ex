@@ -599,6 +599,42 @@ defmodule PhoenixKitInbox.Attachments do
     end
   end
 
+  @doc """
+  `list_for_viewer/2` for many messages at once, for a reading pane that
+  shows a whole conversation: `%{message_uuid => [{status, row}]}`, every
+  asked uuid present (a message without files maps to `[]`). The same rules
+  and statuses as `list_for_viewer/2` — `{:ok, row}` or `{:withheld, row}`
+  by the host's `attachment_policy`, the snapshot's creator never asked —
+  with one attachments query for the whole batch, then the viewer and the
+  files they created read once, not per message.
+
+  The caller has already checked that the user may read the messages.
+  """
+  @spec list_for_viewer_many(Scope.t() | nil, [binary()]) ::
+          %{binary() => [{:ok, Attachment.t()} | {:withheld, Attachment.t()}]}
+  def list_for_viewer_many(_scope, []), do: %{}
+
+  def list_for_viewer_many(scope, message_uuids) when is_list(message_uuids) do
+    rows =
+      from(a in Attachment,
+        where: a.message_uuid in ^message_uuids,
+        order_by: [asc: a.position, asc: a.inserted_at]
+      )
+      |> repo().all()
+
+    judged =
+      case {rows, policy()} do
+        {[], _policy} -> []
+        {rows, nil} -> Enum.map(rows, &{:ok, &1})
+        {rows, _policy} -> judge_rows(scope, rows)
+      end
+
+    by_message = Enum.group_by(judged, fn {_status, row} -> to_string(row.message_uuid) end)
+    Map.new(message_uuids, &{&1, Map.get(by_message, to_string(&1), [])})
+  end
+
+  def list_for_viewer_many(_scope, _other), do: %{}
+
   defp judge_rows(scope, rows) do
     with {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope),
          %User{} = viewer <- repo().get(User, user_uuid) do

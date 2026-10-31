@@ -1,6 +1,7 @@
 defmodule PhoenixKitInbox.Web.MailExplorerTest do
   use PhoenixKitInbox.LiveCase
 
+  alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
@@ -18,6 +19,12 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
   def compose(attrs), do: %{to: "client@example.com", reply_to_message: attrs.reply_to_message}
   def allow(_scope, "order", "o-1"), do: true
   def allow(_scope, _kind, _ref), do: false
+
+  # The host's attachment policy: refuses the files whose name it was told.
+  def policy(_scope, _users, rows) do
+    refused = Application.get_env(:phoenix_kit_inbox, :explorer_refused_file)
+    if Enum.any?(rows, &(&1.filename == refused)), do: {:error, :money}, else: :ok
+  end
 
   setup do
     enable_inbox!()
@@ -339,6 +346,103 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       forge(view, "link", %{"uuid" => foreign.uuid})
       assert Links.for_message(foreign.uuid) == []
       assert render(view) =~ "Message not found."
+    end
+  end
+
+  describe "attachments of a letter" do
+    setup :storage_setup
+
+    setup do
+      on_exit(fn ->
+        Application.delete_env(:phoenix_kit_inbox, :attachment_policy)
+        Application.delete_env(:phoenix_kit_inbox, :explorer_refused_file)
+      end)
+    end
+
+    defp with_files(ctx, files) do
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Files"},
+        links: [@order],
+        attachments_data: Enum.map(files, &%{binary: "content of " <> &1, filename: &1})
+      )
+    end
+
+    defp refuse_file(name) do
+      Application.put_env(:phoenix_kit_inbox, :attachment_policy, {__MODULE__, :policy})
+      Application.put_env(:phoenix_kit_inbox, :explorer_refused_file, name)
+    end
+
+    test "a file of the letter is offered as a download link", %{conn: conn} = ctx do
+      letter = with_files(ctx, ["plan.pdf"])
+      [file] = Attachments.list_for_message(letter.uuid)
+
+      view = mount_explorer(ctx, conn)
+      view |> element("#mail-row-#{letter.uuid}") |> render_click()
+
+      link = "#mail-letter-#{letter.uuid} a#mail-attachment-#{file.uuid}"
+
+      assert has_element?(
+               view,
+               link <> ~s([href="#{PhoenixKitInbox.Paths.attachment(file.uuid)}"])
+             )
+
+      assert render(element(view, link)) =~ "plan.pdf"
+    end
+
+    test "a file the host policy withholds shows a plate without link or name",
+         %{conn: conn} = ctx do
+      letter = with_files(ctx, ["plan.pdf", "priced.pdf"])
+      refuse_file("priced.pdf")
+      [open, priced] = Attachments.list_for_message(letter.uuid)
+
+      view = mount_explorer(ctx, conn)
+      view |> element("#mail-row-#{letter.uuid}") |> render_click()
+
+      assert has_element?(view, "a#mail-attachment-#{open.uuid}")
+      refute has_element?(view, "a#mail-attachment-#{priced.uuid}")
+      assert has_element?(view, "span#mail-attachment-#{priced.uuid}")
+      html = render(view)
+      assert html =~ "Attachment not available"
+      refute html =~ "priced.pdf"
+      refute html =~ PhoenixKitInbox.Paths.attachment(priced.uuid)
+    end
+
+    test "every letter of a selected conversation shows its own files", %{conn: conn} = ctx do
+      root = with_files(ctx, ["one.pdf"])
+
+      reply =
+        mail(ctx, :alice, handle(ctx.bob), %{"parent_uuid" => root.uuid},
+          attachments_data: [%{binary: "two", filename: "two.pdf"}]
+        )
+
+      [one] = Attachments.list_for_message(root.uuid)
+      [two] = Attachments.list_for_message(reply.uuid)
+
+      view = mount_explorer(ctx, conn)
+      view |> element("#mail-row-#{root.uuid}") |> render_click()
+
+      assert has_element?(view, "#mail-letter-#{root.uuid} a#mail-attachment-#{one.uuid}")
+      assert has_element?(view, "#mail-letter-#{reply.uuid} a#mail-attachment-#{two.uuid}")
+      refute has_element?(view, "#mail-letter-#{root.uuid} a#mail-attachment-#{two.uuid}")
+    end
+
+    test "a file of a letter the viewer cannot read is not downloadable by its uuid",
+         %{conn: conn} = ctx do
+      mine = with_files(ctx, ["mine.pdf"])
+
+      foreign =
+        mail(ctx, :bob, handle(ctx.bob), %{},
+          attachments_data: [%{binary: "x", filename: "x.pdf"}]
+        )
+
+      [foreign_file] = Attachments.list_for_message(foreign.uuid)
+
+      view = mount_explorer(ctx, conn)
+      view |> element("#mail-row-#{mine.uuid}") |> render_click()
+
+      refute render(view) =~ foreign_file.uuid
+      # The download itself asks again, whatever uuid is put in a link.
+      assert {:error, :not_found} =
+               Attachments.fetch_for_download(ctx.alice_scope, foreign_file.uuid)
     end
   end
 end

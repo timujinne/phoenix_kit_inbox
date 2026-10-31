@@ -50,12 +50,15 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   use PhoenixKitWeb, :live_component
   use Gettext, backend: PhoenixKitInbox.Gettext
 
+  alias PhoenixKit.Utils.Format
+  alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Body
   alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.ObjectMail
+  alias PhoenixKitInbox.Paths
   alias PhoenixKitInbox.Web.Components.MailExplorerHooks
   alias PhoenixKitInbox.Web.Components.MailTree
 
@@ -124,6 +127,17 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     |> assign(:threads, threads)
     |> assign(:selected, keep_or_first(socket.assigns[:selected], threads))
     |> assign(:picker, reload_picker(socket.assigns[:picker], scope))
+    |> assign_attachments()
+  end
+
+  # The files of the letters in the reading pane, as this viewer may see them
+  # (the host's attachment policy, one batch): read when the pane changes,
+  # not on every render.
+  defp assign_attachments(
+         %{assigns: %{scope: scope, threads: threads, selected: selected}} = socket
+       ) do
+    uuids = threads |> shown(selected) |> Enum.map(& &1.message.uuid)
+    assign(socket, :attachments, Attachments.list_for_viewer_many(scope, uuids))
   end
 
   defp keep_or_first(selected, threads) do
@@ -158,7 +172,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       end
 
     if selected && present?(socket.assigns.threads, selected),
-      do: {:noreply, assign(socket, selected: selected, error: nil)},
+      do: {:noreply, socket |> assign(selected: selected, error: nil) |> assign_attachments()},
       else: {:noreply, socket}
   end
 
@@ -351,6 +365,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
           <.letter
             :for={entry <- @letters}
             entry={entry}
+            attachments={Map.get(@attachments, entry.message.uuid, [])}
             scope={@scope}
             can_link?={@can_link?}
             reply?={is_function(@compose, 1)}
@@ -418,6 +433,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   end
 
   attr(:entry, :map, required: true)
+  attr(:attachments, :list, default: [])
   attr(:scope, :any, required: true)
   attr(:can_link?, :any, default: nil)
   attr(:reply?, :boolean, required: true)
@@ -496,6 +512,34 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         <div :if={@html} class="prose prose-sm max-w-none">{@html}</div>
         <div :if={!@html} class="prose max-w-none whitespace-pre-wrap text-sm">
           {@message.body || ""}
+        </div>
+
+        <%!-- Plain links: each is a download from the module's controller, which
+              checks the reader again. A file the host's policy withholds shows
+              no name or size. --%>
+        <div :if={@attachments != []} class="flex flex-wrap gap-2">
+          <%= for {status, attachment} <- @attachments do %>
+            <a
+              :if={status == :ok}
+              id={"mail-attachment-#{attachment.uuid}"}
+              href={Paths.attachment(attachment.uuid)}
+              class="btn btn-sm btn-outline gap-2 max-w-full normal-case"
+              title={gettext("Download")}
+              download
+            >
+              <.icon name="hero-paper-clip" class="w-4 h-4 shrink-0" />
+              <span class="truncate">{attachment.filename}</span>
+              <span class="text-xs opacity-60 shrink-0">{Format.bytes(attachment.size_bytes)}</span>
+            </a>
+            <span
+              :if={status == :withheld}
+              id={"mail-attachment-#{attachment.uuid}"}
+              class="btn btn-sm btn-disabled gap-2 normal-case"
+            >
+              <.icon name="hero-no-symbol" class="w-4 h-4 shrink-0" />
+              {gettext("Attachment not available")}
+            </span>
+          <% end %>
         </div>
 
         <div :if={@reply?} class="card-actions justify-end">
