@@ -99,6 +99,25 @@ defmodule PhoenixKitInbox.ExternalSendTest do
     {message, Enum.map(rows(message), & &1.uuid)}
   end
 
+  describe "host subject resolvers" do
+    test "run after the external email has gone, so a slow one holds nothing back", ctx do
+      Application.put_env(:phoenix_kit_inbox, :link_resolvers, [
+        PhoenixKitInbox.Test.WaitingResolver
+      ])
+
+      Application.delete_env(:phoenix_kit_inbox, :test_resolver_saw)
+
+      on_exit(fn ->
+        Application.delete_env(:phoenix_kit_inbox, :link_resolvers)
+        Application.delete_env(:phoenix_kit_inbox, :test_resolver_saw)
+      end)
+
+      assert {:ok, %Message{external_status: :pending}} = send_mail(ctx, %{})
+
+      assert Application.get_env(:phoenix_kit_inbox, :test_resolver_saw) == true
+    end
+  end
+
   describe "a mixed send" do
     test "delivers inside, writes the external rows, and sends one email after the commit",
          ctx do

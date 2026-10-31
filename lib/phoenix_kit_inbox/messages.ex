@@ -9,15 +9,24 @@ defmodule PhoenixKitInbox.Messages do
     1. resolve every recipient string to a mailbox (unknown ones fail the whole
        send — silently dropping a recipient is worse than refusing)
     2. insert or update the message with `status: "sent"` and a `sent_at` stamp
-    3. fan out one `Delivery` per recipient into their `"inbox"`, plus the
+    3. store the links to the host's objects: the ones the host gave
+       (`links:`) and the ones inherited from the conversation
+       (`PhoenixKitInbox.Links`)
+    4. fan out one `Delivery` per recipient into their `"inbox"`, plus the
        sender's own copy into `"sent"`, and one `"pending"` row per external
        recipient (`PhoenixKitInbox.External`)
+
+  A host that gives `idempotency_key:` can repeat a send safely: the key is
+  checked first, before anything is stored or sent, and recorded in the same
+  transaction as the message, so a repeat answers with the first message and
+  does nothing else (see `send_message/4`).
 
   Notifications are fired *after* the transaction commits, by
   `PhoenixKitInbox.Notify`, and so is the email to external recipients — a
   notification for a message that got rolled back would be a lie, and an
   outbound-email failure must never roll back a successfully delivered
-  internal message.
+  internal message. The host's subject resolvers (`PhoenixKitInbox.Links`)
+  run last of all, so a slow one delays nothing.
 
   ## Reads
 
@@ -173,18 +182,20 @@ defmodule PhoenixKitInbox.Messages do
          {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope) do
       user_uuid
       |> Mailboxes.list_accessible_mailboxes()
-      |> Enum.find_value({:error, :message_not_found}, fn mailbox ->
-        case fetch_for_mailbox(mailbox.uuid, message_uuid) do
-          {:ok, _listed} = found -> found
-          {:error, _} -> nil
-        end
-      end)
+      |> Enum.find_value({:error, :message_not_found}, &found_in(&1, message_uuid))
     else
       _ -> {:error, :message_not_found}
     end
   end
 
   def fetch_for_scope(_scope, _message_uuid), do: {:error, :message_not_found}
+
+  defp found_in(mailbox, message_uuid) do
+    case fetch_for_mailbox(mailbox.uuid, message_uuid) do
+      {:ok, _listed} = found -> found
+      {:error, _} -> nil
+    end
+  end
 
   defp fetch_delivered(mailbox_uuid, message_uuid) do
     query =
@@ -646,11 +657,12 @@ defmodule PhoenixKitInbox.Messages do
       stored as they are
     * `links: [%{kind: kind, ref: ref}]` — objects of the host the message is
       linked to (source `"host"`, see `PhoenixKitInbox.Links`). Stored in the
-      send's own transaction: if that fails the send fails with
-      `{:error, :links_failed}` and nothing is sent. The links the
-      conversation and the host's resolvers add come after the commit and
+      send's own transaction, with the links inherited from the conversation:
+      if that fails the send fails with `{:error, :links_failed}` and nothing
+      is sent. Malformed entries are dropped (and logged). The links the
+      host's resolvers find in the subject come last, after the commit, and
       never lose the message. A `"links"` entry in `attrs` is ignored.
-    * `idempotency_key: key` — a string (at most 255 characters) the host
+    * `idempotency_key: key` — a string (at most 255 characters, no NUL byte) the host
       issues per opening of its form. Repeating a send with a key already used
       returns `{:ok, message}` with the message the first send made (its
       `external_status` as that send answered it) and does nothing else: no
@@ -730,12 +742,6 @@ defmodule PhoenixKitInbox.Messages do
              )
            end)
            |> finish_attachments(created) do
-      # After the commit, not inside it: the host's resolvers run here, and a
-      # failing query of theirs would poison the transaction of a message
-      # that is otherwise fine. The host's own links are already stored (in
-      # `do_send/7`). `apply_to_new_message/2` never raises.
-      Links.apply_to_new_message(message, Keyword.get(opts, :links, []))
-
       if items != [], do: Folders.lay_out_sent(message, mailbox)
 
       # Post-commit, deliberately: see the moduledoc.
@@ -744,12 +750,33 @@ defmodule PhoenixKitInbox.Messages do
         attachments: length(items)
       })
 
-      {:ok, start_external(message, external_rows, scope, mailbox)}
+      sent = start_external(message, external_rows, scope, mailbox)
+
+      # Last, after the commit and after the email and nudges have gone: the
+      # host's resolvers run here, and a slow or failing one must not hold
+      # back the external send or poison the transaction of a message that is
+      # otherwise fine. The links of the host and of the conversation are
+      # already stored (in `do_send/8`). `apply_to_new_message/1` never raises.
+      Links.apply_to_new_message(message)
+
+      {:ok, sent}
     else
-      {:replay, message} -> {:ok, message}
+      {:replay, message} ->
+        {:ok, message}
+
       # Lost the race for the key: the rival's message is the answer.
-      {:error, :send_key_taken} -> replay_send_key(key, mailbox, sender_user_uuid)
-      other -> other
+      {:error, :send_key_taken} ->
+        replay_send_key(key, mailbox, sender_user_uuid)
+
+      # A draft sent twice at once: the second finds it sent already.
+      {:error, :message_not_found} = error when is_binary(key) ->
+        case replay_send_key(key, mailbox, sender_user_uuid) do
+          {:ok, _message} = replayed -> replayed
+          _ -> error
+        end
+
+      other ->
+        other
     end
   end
 
@@ -774,14 +801,14 @@ defmodule PhoenixKitInbox.Messages do
   defp check_send_key(nil, _mailbox, _sender_user_uuid), do: :ok
 
   defp check_send_key(key, mailbox, sender_user_uuid) do
-    if String.length(key) > @send_key_max_chars do
-      {:error, :invalid_idempotency_key}
-    else
+    if Links.valid_text?(key, @send_key_max_chars) do
       case replay_send_key(key, mailbox, sender_user_uuid) do
         {:ok, message} -> {:replay, message}
         {:error, :not_found} -> :ok
         {:error, _} = error -> error
       end
+    else
+      {:error, :invalid_idempotency_key}
     end
   end
 
@@ -1039,7 +1066,9 @@ defmodule PhoenixKitInbox.Messages do
     |> Multi.run(:thread, &backfill_thread_uuid/2)
     |> record_send_key(send_key)
     |> Multi.run(:links, fn _repo, %{thread: message} ->
-      with :ok <- Links.write_host(message.uuid, host_links), do: {:ok, :written}
+      with :ok <- Links.write_host(message.uuid, host_links),
+           :ok <- Links.write_thread(message),
+           do: {:ok, :written}
     end)
     |> Multi.run(:sender_copy, fn repo, %{thread: message} ->
       # Moves the draft's own delivery row from "drafts" to "sent" when

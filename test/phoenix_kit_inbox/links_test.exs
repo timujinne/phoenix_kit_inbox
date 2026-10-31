@@ -211,6 +211,67 @@ defmodule PhoenixKitInbox.LinksTest do
       message = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order | bad])
       assert links_of(message) == [{"order", "o-1", "host"}]
     end
+
+    test "dropped host links are logged by kind of fault, without the ref", ctx do
+      log =
+        capture_log(fn ->
+          send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{},
+            links: [@order, %{kind: "order", ref: "secret-ref-" <> String.duplicate("r", 300)}]
+          )
+        end)
+
+      assert log =~ "1 host link"
+      refute log =~ "secret-ref"
+    end
+
+    test "lengths are counted in code points, as the database counts them", ctx do
+      # 64 graphemes, 128 code points: too long for the column.
+      decomposed = String.duplicate("e\u0301", 64)
+      assert String.length(decomposed) == 64
+
+      message =
+        send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{},
+          links: [
+            @order,
+            %{kind: decomposed, ref: "x"},
+            %{kind: "order", ref: decomposed <> decomposed <> decomposed}
+          ]
+        )
+
+      assert links_of(message) == [{"order", "o-1", "host"}]
+
+      exactly = String.duplicate("k", 64)
+
+      message =
+        send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [%{kind: exactly, ref: "x"}])
+
+      assert links_of(message) == [{exactly, "x", "host"}]
+    end
+
+    test "a NUL byte in kind or ref is dropped", ctx do
+      message =
+        send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{},
+          links: [@order, %{kind: "or\0der", ref: "x"}, %{kind: "order", ref: "x\0y"}]
+        )
+
+      assert links_of(message) == [{"order", "o-1", "host"}]
+    end
+
+    test "a draft of the conversation gives nothing to inherit", ctx do
+      root = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
+
+      {:ok, draft} =
+        Messages.save_draft(ctx.bob_scope, ctx.bob_mb, %{
+          "to" => ctx.alice.email,
+          "subject" => "Re: Hello",
+          "parent_uuid" => root.uuid
+        })
+
+      Links.record(draft.uuid, [%{kind: "order", ref: "from-draft"}], "host")
+
+      reply = reply_to(ctx.bob_scope, ctx.bob_mb, ctx.alice, root)
+      assert links_of(reply) == [{"order", "o-1", "thread"}]
+    end
   end
 
   describe "record/3" do
@@ -268,6 +329,21 @@ defmodule PhoenixKitInbox.LinksTest do
       # A later reply inherits it.
       later = reply_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, ctx.reply)
       assert links_of(later) == [{"order", "o-1", "thread"}]
+    end
+
+    test "linking a root leaves the drafts of its conversation alone", ctx do
+      {:ok, draft} =
+        Messages.save_draft(ctx.bob_scope, ctx.bob_mb, %{
+          "to" => ctx.alice.email,
+          "subject" => "Re: Hello",
+          "parent_uuid" => ctx.root.uuid
+        })
+
+      {:ok, _} =
+        Links.link(ctx.alice_scope, ctx.root.uuid, "order", "o-1", can_link?: &allow/3)
+
+      assert Links.for_message(draft.uuid) == []
+      assert links_of(ctx.reply) == [{"order", "o-1", "manual"}]
     end
 
     test "link keeps a stronger source the message already had", ctx do
@@ -347,6 +423,15 @@ defmodule PhoenixKitInbox.LinksTest do
       assert links_of(ctx.root) == []
     end
 
+    test "link refuses a kind longer than the column in code points, and a NUL", ctx do
+      long = String.duplicate("e\u0301", 64)
+
+      for {kind, ref} <- [{long, "x"}, {"order", long <> long <> long}, {"or\0der", "x"}] do
+        assert {:error, :invalid_link} =
+                 Links.link(ctx.alice_scope, ctx.root.uuid, kind, ref, can_link?: &allow/3)
+      end
+    end
+
     test "link refuses a malformed kind or ref", ctx do
       opts = [can_link?: &allow/3]
 
@@ -392,6 +477,14 @@ defmodule PhoenixKitInbox.LinksTest do
 
       :ok = Links.unlink(ctx.alice_scope, other.uuid, "order", "a:b/c d", can_link?: &allow/3)
       assert_receive {:inbox_message_linked, ^other_uuid}
+    end
+
+    test "unsubscribe stops the events", ctx do
+      :ok = Links.subscribe("order", "o-1")
+      assert :ok = Links.unsubscribe("order", "o-1")
+
+      send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
+      refute_receive {:inbox_message_linked, _}, 100
     end
 
     test "subscribers of another object hear nothing", ctx do

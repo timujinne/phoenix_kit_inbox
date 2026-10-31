@@ -68,59 +68,88 @@ defmodule PhoenixKitInbox.Links do
   only when `source` is more explicit than the stored one (see the module
   doc). Entries that are not a `kind`/`ref` pair of binaries within the
   limits are skipped. `linked_by:` (a user uuid) is stored with the link.
+
+  Checks nothing about who asks: for server code only. A person's link goes
+  through `link/5`.
   """
   @spec record(binary(), [link()], String.t(), keyword()) :: :ok
   def record(message_uuid, links, source, opts \\ [])
       when is_binary(message_uuid) and source in @sources do
     links = normalize(links)
-    insert(message_uuid, links, source, Keyword.get(opts, :linked_by))
+    insert([message_uuid], links, source, Keyword.get(opts, :linked_by))
     Enum.each(links, &broadcast(&1, message_uuid))
   end
 
-  @doc """
-  Stores the links the host gave a message (source `"host"`), for the send's
-  own transaction: the message and its host links are committed together or
-  not at all. Entries that are not a `kind`/`ref` pair within the limits are
-  dropped first; a database failure on valid ones is `{:error, :links_failed}`
-  (logged), for the caller to roll back. Announces nothing — the message is
-  not committed yet; `apply_to_new_message/2` does that.
-  """
+  @doc false
+  # Stores the links the host gave a message (source "host"), for the send's
+  # own transaction: the message and its host links are committed together or
+  # not at all. Entries that are not a `kind`/`ref` pair within the limits are
+  # dropped first (and counted in the log, without their content); a database
+  # failure on valid ones is `{:error, :links_failed}` (logged), for the caller
+  # to roll back. Announces nothing — the message is not committed yet. No
+  # access check: server code only.
   @spec write_host(binary(), [link()]) :: :ok | {:error, :links_failed}
   def write_host(message_uuid, host_links) when is_binary(message_uuid) do
-    insert(message_uuid, normalize(host_links), "host", nil)
-  rescue
-    e ->
-      Logger.error(
-        "[Inbox] host links failed, the send is rolled back:\n" <>
-          Exception.format(:error, e, __STACKTRACE__)
-      )
+    host_links = List.wrap(host_links)
+    links = normalize(host_links)
 
-      {:error, :links_failed}
+    case Enum.count(host_links, &(pair(&1) == [])) do
+      0 -> :ok
+      dropped -> Logger.warning("[Inbox] #{dropped} host link(s) dropped: malformed kind or ref")
+    end
+
+    insert([message_uuid], links, "host", nil)
+  rescue
+    e -> links_failed("host links", e, __STACKTRACE__)
   end
 
-  @doc """
-  After a message was committed: announces its `host_links` (already stored by
-  `write_host/2`), then writes the links of the other messages of its
-  conversation (`"thread"`) and the objects the host's resolvers find in its
-  subject (`"subject"` — see `PhoenixKitInbox.LinkResolver`).
+  @doc false
+  # Writes into the send's own transaction what the earlier sent messages of
+  # the conversation are linked to (source "thread"), so a reply never loses
+  # an inherited link. Failure is `{:error, :links_failed}`, for the caller to
+  # roll back. No access check: server code only.
+  @spec write_thread(Message.t()) :: :ok | {:error, :links_failed}
+  def write_thread(%Message{} = message) do
+    insert([message.uuid], thread_links(message), "thread", nil)
+  rescue
+    e -> links_failed("thread links", e, __STACKTRACE__)
+  end
 
-  Never raises and never fails the send: a failure in either step, a crashing
-  resolver included, is logged and the rest goes on.
-  """
-  @spec apply_to_new_message(Message.t(), [link()]) :: :ok
-  def apply_to_new_message(%Message{} = message, host_links) do
-    host_links |> normalize() |> Enum.each(&broadcast(&1, message.uuid))
-    guarded("thread links", fn -> record(message.uuid, thread_links(message), "thread") end)
+  defp links_failed(what, e, stacktrace) do
+    Logger.error(
+      "[Inbox] #{what} failed, the send is rolled back:\n" <>
+        Exception.format(:error, e, stacktrace)
+    )
+
+    {:error, :links_failed}
+  end
+
+  @doc false
+  # After a message was committed: announces the links it was given in the
+  # transaction (host and thread), then writes the objects the host's
+  # resolvers find in its subject ("subject" — see
+  # `PhoenixKitInbox.LinkResolver`). The resolvers are host code, so this runs
+  # last. Never raises and never fails the send: a failure in either step, a
+  # crashing resolver included, is logged and the rest goes on. No access
+  # check: server code only.
+  @spec apply_to_new_message(Message.t()) :: :ok
+  def apply_to_new_message(%Message{} = message) do
+    guarded("link events", fn ->
+      message.uuid
+      |> for_message()
+      |> Enum.each(&broadcast(&1, message.uuid))
+    end)
+
     guarded("subject links", fn -> record(message.uuid, subject_links(message), "subject") end)
     :ok
   end
 
-  # What the other messages of the conversation are linked to.
+  # What the other sent messages of the conversation are linked to.
   defp thread_links(%Message{thread_uuid: thread_uuid} = message) when is_binary(thread_uuid) do
     from(l in Link,
       join: m in Message,
       on: m.uuid == l.message_uuid,
-      where: m.thread_uuid == ^thread_uuid and m.uuid != ^message.uuid,
+      where: m.thread_uuid == ^thread_uuid and m.uuid != ^message.uuid and m.status == "sent",
       distinct: true,
       select: %{kind: l.kind, ref: l.ref}
     )
@@ -169,23 +198,24 @@ defmodule PhoenixKitInbox.Links do
     :error
   end
 
-  defp insert(_message_uuid, [], _source, _linked_by), do: :ok
+  defp insert(_message_uuids, [], _source, _linked_by), do: :ok
 
-  defp insert(message_uuid, links, source, linked_by) do
+  # One statement for every message and link; `source` wins a conflict only
+  # when it is more explicit than the stored one.
+  defp insert(message_uuids, links, source, linked_by) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     rows =
-      Enum.map(
-        links,
-        &%{
+      for message_uuid <- message_uuids, link <- links do
+        %{
           message_uuid: message_uuid,
-          kind: &1.kind,
-          ref: &1.ref,
+          kind: link.kind,
+          ref: link.ref,
           source: source,
           linked_by_user_uuid: linked_by,
           inserted_at: now
         }
-      )
+      end
 
     stronger =
       from(l in Link,
@@ -216,11 +246,19 @@ defmodule PhoenixKitInbox.Links do
     if valid?(kind, ref), do: [%{kind: kind, ref: ref}], else: []
   end
 
-  defp valid?(kind, ref) do
-    is_binary(kind) and is_binary(ref) and String.valid?(kind) and String.valid?(ref) and
-      kind != "" and ref != "" and String.length(kind) <= @kind_max and
-      String.length(ref) <= @ref_max
+  defp valid?(kind, ref), do: valid_text?(kind, @kind_max) and valid_text?(ref, @ref_max)
+
+  @doc false
+  # Whether `value` fits a `varchar(max)` column: a non-empty, valid UTF-8
+  # binary without a NUL byte (Postgres refuses one), at most `max` code
+  # points long (Postgres counts code points, not graphemes).
+  @spec valid_text?(term(), pos_integer()) :: boolean()
+  def valid_text?(value, max) when is_binary(value) do
+    value != "" and String.valid?(value) and not String.contains?(value, <<0>>) and
+      length(String.to_charlist(value)) <= max
   end
+
+  def valid_text?(_value, _max), do: false
 
   # ── by a person ─────────────────────────────────────────────────────────────
 
@@ -247,11 +285,7 @@ defmodule PhoenixKitInbox.Links do
          {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope) do
       uuids = thread_message_uuids(message)
 
-      {:ok, :ok} =
-        repo().transaction(fn ->
-          Enum.each(uuids, &insert(&1, [%{kind: kind, ref: ref}], "manual", user_uuid))
-        end)
-
+      insert(uuids, [%{kind: kind, ref: ref}], "manual", user_uuid)
       Enum.each(uuids, &broadcast(%{kind: kind, ref: ref}, &1))
       {:ok, repo().get_by!(Link, message_uuid: message.uuid, kind: kind, ref: ref)}
     end
@@ -300,7 +334,10 @@ defmodule PhoenixKitInbox.Links do
 
   # ── reading ─────────────────────────────────────────────────────────────────
 
-  @doc "The links of a message, oldest first."
+  @doc """
+  The links of a message, oldest first. Checks nothing about who asks: for
+  server code only.
+  """
   @spec for_message(binary()) :: [Link.t()]
   def for_message(message_uuid) when is_binary(message_uuid) do
     case Ecto.UUID.cast(message_uuid) do
@@ -326,6 +363,11 @@ defmodule PhoenixKitInbox.Links do
   @spec subscribe(String.t(), String.t()) :: :ok | {:error, term()}
   def subscribe(kind, ref) when is_binary(kind) and is_binary(ref),
     do: PubSub.subscribe(topic(kind, ref))
+
+  @doc "Undoes `subscribe/2` for the caller."
+  @spec unsubscribe(String.t(), String.t()) :: :ok | {:error, term()}
+  def unsubscribe(kind, ref) when is_binary(kind) and is_binary(ref),
+    do: PubSub.unsubscribe(topic(kind, ref))
 
   # The ref is the host's, so it is encoded: any character is safe in a topic.
   defp topic(kind, ref),
