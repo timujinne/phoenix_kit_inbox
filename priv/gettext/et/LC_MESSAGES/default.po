@@ -431,7 +431,7 @@ msgstr "Sõnum saadetud. Kiri välisaadressidele on teel."
 msgid "Messages between users of this application"
 msgstr "Selle rakenduse kasutajate vahelised sõnumid"
 
-#: lib/phoenix_kit_inbox/errors.ex:202
+#: lib/phoenix_kit_inbox/errors.ex:245
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Sobib mitu saajat: %{recipients}. Kasuta selle asemel täielikku e-posti aadressi."
@@ -769,7 +769,7 @@ msgstr "See meiliühendus pole sellele saatjale saadaval."
 msgid "That mail connection isn't connected."
 msgstr "See meiliühendus pole ühendatud."
 
-#: lib/phoenix_kit_inbox/errors.ex:199
+#: lib/phoenix_kit_inbox/errors.ex:242
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "See nimi sobib mitmele saajale."
@@ -885,7 +885,7 @@ msgstr "Faile on liiga palju."
 msgid "Trash"
 msgstr "Prügikast"
 
-#: lib/phoenix_kit_inbox/errors.ex:222
+#: lib/phoenix_kit_inbox/errors.ex:265
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1103,7 +1103,7 @@ msgid_plural "A message can carry at most %{max} files."
 msgstr[0] "Sõnumiga saab lisada kuni %{max} faili."
 msgstr[1] "Sõnumiga saab lisada kuni %{max} faili."
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:504
+#: lib/phoenix_kit_inbox/mailboxes.ex:529
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr "Kasutaja %{id}"
@@ -1389,5 +1389,57 @@ msgstr "vestlus"
 #: lib/phoenix_kit_inbox/recipient_sources/members.ex:24
 #, elixir-autogen, elixir-format
 msgid "People and shared mailboxes"
-
 msgstr "Inimesed ja ühised postkastid"
+
+#: lib/phoenix_kit_inbox/errors.ex:222
+#, elixir-autogen, elixir-format
+msgid "%{addresses} is inside this application. Choose them from the list as an internal recipient instead of typing the email."
+msgid_plural "%{addresses} are inside this application. Choose them from the list as internal recipients instead of typing the email."
+msgstr[0] "%{addresses} on rakenduse sees. Vali ta loendist sisemise saajana, mitte ei sisesta e-posti."
+msgstr[1] "%{addresses} on rakenduse sees. Vali nad loendist sisemiste saajatena, mitte ei sisesta e-posti."
+
+#: lib/phoenix_kit_inbox/errors.ex:208
+#, elixir-autogen, elixir-format
+msgid "At most %{max} addresses in %{field}."
+msgstr "Väljal „%{field}“ võib olla kuni %{max} aadressi."
+
+#: lib/phoenix_kit_inbox/errors.ex:200
+#, elixir-autogen, elixir-format
+msgid "Not a valid recipient: %{entry}. Add one address at a time."
+msgstr "Sobimatu saaja: %{entry}. Lisa aadressid ükshaaval."
+
+#: lib/phoenix_kit_inbox/errors.ex:218
+#, elixir-autogen, elixir-format
+msgid "That sender is not valid."
+msgstr "Saatja ei sobi."
+
+#: lib/phoenix_kit_inbox/errors.ex:239
+#, elixir-autogen, elixir-format
+msgid "The message could not be sent."
+msgstr "Sõnumit ei õnnestunud saata."
+
+#: lib/phoenix_kit_inbox/errors.ex:237
+#, elixir-autogen, elixir-format
+msgid "The recipients could not be checked. Try again."
+msgstr "Saajaid ei õnnestunud kontrollida. Proovi uuesti."
+
+#: lib/phoenix_kit_inbox/errors.ex:204
+#, elixir-autogen, elixir-format
+msgid "The recipients could not be read."
+msgstr "Saajate loendit ei õnnestunud lugeda."
+
+#: lib/phoenix_kit_inbox/errors.ex:214
+#, elixir-autogen, elixir-format
+msgid "The subject is too long (500 characters at most)."
+msgstr "Teema on liiga pikk (kuni 500 märki)."
+
+#: lib/phoenix_kit_inbox/errors.ex:216
+#, elixir-autogen, elixir-format
+msgid "The text contains characters that can't be sent."
+msgstr "Tekstis on märke, mida ei saa saata."
+
+#: lib/phoenix_kit_inbox/errors.ex:231
+#, elixir-autogen, elixir-format
+msgid "These recipients would not be reached the way they were chosen: %{addresses}. Choose them again."
+
+msgstr "Need saajad saaksid kirja muud teed kui valitud: %{addresses}. Vali nad uuesti."

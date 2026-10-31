@@ -431,7 +431,7 @@ msgstr "Сообщение отправлено. Письмо на внешни�
 msgid "Messages between users of this application"
 msgstr "Сообщения между пользователями этого приложения"
 
-#: lib/phoenix_kit_inbox/errors.ex:202
+#: lib/phoenix_kit_inbox/errors.ex:245
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
@@ -769,7 +769,7 @@ msgstr "Это почтовое подключение недоступно дл
 msgid "That mail connection isn't connected."
 msgstr "Это почтовое подключение не подключено."
 
-#: lib/phoenix_kit_inbox/errors.ex:199
+#: lib/phoenix_kit_inbox/errors.ex:242
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "Это имя подходит нескольким получателям."
@@ -885,7 +885,7 @@ msgstr "Слишком много файлов."
 msgid "Trash"
 msgstr "Корзина"
 
-#: lib/phoenix_kit_inbox/errors.ex:222
+#: lib/phoenix_kit_inbox/errors.ex:265
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Непредвиденная ошибка: %{reason}"
@@ -1104,7 +1104,7 @@ msgstr[0] "К сообщению можно прикрепить не более
 msgstr[1] "К сообщению можно прикрепить не более %{max} файлов."
 msgstr[2] "К сообщению можно прикрепить не более %{max} файлов."
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:504
+#: lib/phoenix_kit_inbox/mailboxes.ex:529
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr "Пользователь %{id}"
@@ -1391,5 +1391,58 @@ msgstr "цепочка"
 #: lib/phoenix_kit_inbox/recipient_sources/members.ex:24
 #, elixir-autogen, elixir-format
 msgid "People and shared mailboxes"
-
 msgstr "Люди и общие ящики"
+
+#: lib/phoenix_kit_inbox/errors.ex:222
+#, elixir-autogen, elixir-format
+msgid "%{addresses} is inside this application. Choose them from the list as an internal recipient instead of typing the email."
+msgid_plural "%{addresses} are inside this application. Choose them from the list as internal recipients instead of typing the email."
+msgstr[0] "%{addresses} находится внутри приложения. Выберите его в списке как внутреннего получателя, а не вводите e-mail."
+msgstr[1] "%{addresses} находятся внутри приложения. Выберите их в списке как внутренних получателей, а не вводите e-mail."
+msgstr[2] "%{addresses} находятся внутри приложения. Выберите их в списке как внутренних получателей, а не вводите e-mail."
+
+#: lib/phoenix_kit_inbox/errors.ex:208
+#, elixir-autogen, elixir-format
+msgid "At most %{max} addresses in %{field}."
+msgstr "Не более %{max} адресов в поле «%{field}»."
+
+#: lib/phoenix_kit_inbox/errors.ex:200
+#, elixir-autogen, elixir-format
+msgid "Not a valid recipient: %{entry}. Add one address at a time."
+msgstr "Некорректный получатель: %{entry}. Добавляйте по одному адресу."
+
+#: lib/phoenix_kit_inbox/errors.ex:218
+#, elixir-autogen, elixir-format
+msgid "That sender is not valid."
+msgstr "Недопустимый отправитель."
+
+#: lib/phoenix_kit_inbox/errors.ex:239
+#, elixir-autogen, elixir-format
+msgid "The message could not be sent."
+msgstr "Не удалось отправить сообщение."
+
+#: lib/phoenix_kit_inbox/errors.ex:237
+#, elixir-autogen, elixir-format
+msgid "The recipients could not be checked. Try again."
+msgstr "Не удалось проверить получателей. Попробуйте ещё раз."
+
+#: lib/phoenix_kit_inbox/errors.ex:204
+#, elixir-autogen, elixir-format
+msgid "The recipients could not be read."
+msgstr "Не удалось прочитать список получателей."
+
+#: lib/phoenix_kit_inbox/errors.ex:214
+#, elixir-autogen, elixir-format
+msgid "The subject is too long (500 characters at most)."
+msgstr "Тема слишком длинная (не более 500 символов)."
+
+#: lib/phoenix_kit_inbox/errors.ex:216
+#, elixir-autogen, elixir-format
+msgid "The text contains characters that can't be sent."
+msgstr "В тексте есть символы, которые нельзя отправить."
+
+#: lib/phoenix_kit_inbox/errors.ex:231
+#, elixir-autogen, elixir-format
+msgid "These recipients would not be reached the way they were chosen: %{addresses}. Choose them again."
+
+msgstr "Эти получатели получили бы письмо не тем путём, который выбран: %{addresses}. Выберите их заново."

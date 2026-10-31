@@ -195,6 +195,49 @@ defmodule PhoenixKitInbox.Errors do
     )
   end
 
+  def message({:invalid_recipient, entry}),
+    do:
+      gettext("Not a valid recipient: %{entry}. Add one address at a time.",
+        entry: to_string(entry)
+      )
+
+  def message(:invalid_recipients), do: gettext("The recipients could not be read.")
+
+  def message({:too_many_recipients, role, max}),
+    do:
+      gettext("At most %{max} addresses in %{field}.",
+        max: max,
+        field: role |> to_string() |> String.capitalize()
+      )
+
+  def message(:subject_too_long),
+    do: gettext("The subject is too long (500 characters at most).")
+
+  def message(:invalid_text), do: gettext("The text contains characters that can't be sent.")
+
+  def message(:invalid_from), do: gettext("That sender is not valid.")
+
+  def message({:member_as_email, addresses}),
+    do:
+      ngettext(
+        "%{addresses} is inside this application. Choose them from the list as an internal recipient instead of typing the email.",
+        "%{addresses} are inside this application. Choose them from the list as internal recipients instead of typing the email.",
+        length(addresses),
+        addresses: Enum.join(addresses, ", ")
+      )
+
+  def message({:route_mismatch, mismatches}),
+    do:
+      gettext(
+        "These recipients would not be reached the way they were chosen: %{addresses}. Choose them again.",
+        addresses: Enum.map_join(mismatches, ", ", & &1.address)
+      )
+
+  def message(:route_check_failed),
+    do: gettext("The recipients could not be checked. Try again.")
+
+  def message(:send_failed), do: gettext("The message could not be sent.")
+
   def message(:ambiguous_recipient),
     do: gettext("That name matches more than one recipient.")
 
