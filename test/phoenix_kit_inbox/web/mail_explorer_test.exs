@@ -299,6 +299,56 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
     end
   end
 
+  describe "rendering" do
+    test "only shows what load prepared: no reading of threads, bodies or the clock" do
+      message = %PhoenixKitInbox.Schemas.Message{
+        uuid: Ecto.UUID.generate(),
+        subject: "Prepared",
+        body: "**bold**",
+        body_format: "markdown",
+        sent_at: ~U[2026-10-31 10:00:00Z],
+        metadata: %{}
+      }
+
+      entry = %{
+        message: message,
+        viewer_mailbox_uuid: Ecto.UUID.generate(),
+        direction: :inbox,
+        depth: 0,
+        links: [],
+        external: []
+      }
+
+      # `threads`, `selected` and the body's format are not among the
+      # assigns: a render that read them would raise.
+      assigns = %{
+        __changed__: nil,
+        allowed?: true,
+        id: "demo",
+        title: "Prepared mail",
+        folders: [:all],
+        folder: :all,
+        compose: nil,
+        error: nil,
+        picker: nil,
+        can_pick?: false,
+        threads: [],
+        link_access: %{},
+        link_labels: %{},
+        now: ~U[2026-10-31 10:00:00Z],
+        myself: %Phoenix.LiveComponent.CID{cid: 1},
+        letters: [
+          %{entry: entry, html: Phoenix.HTML.raw("<strong>prepared</strong>"), attachments: []}
+        ]
+      }
+
+      html = assigns |> MailExplorer.render() |> Phoenix.LiveViewTest.rendered_to_string()
+
+      assert html =~ "<strong>prepared</strong>"
+      assert html =~ "Prepared"
+    end
+  end
+
   describe "the words of the component" do
     test "the button is Compose and the folders are Inbox and Sent", %{conn: conn} = ctx do
       mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])

@@ -167,7 +167,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   # the selection if it still points at something on the page.
   defp load(%{assigns: %{allowed?: false}} = socket) do
     socket
-    |> assign(threads: [], selected: nil, picker: nil, attachments: %{})
+    |> assign(threads: [], selected: nil, picker: nil, letters: [], can_pick?: false)
     |> assign(link_access: %{}, link_labels: %{})
   end
 
@@ -184,9 +184,31 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     |> assign_shown()
   end
 
-  # What the reading pane needs, read when it changes and not on every render.
+  # What the reading pane needs, prepared when the list is read or the choice
+  # changes — render only shows it.
   defp assign_shown(socket) do
-    socket |> assign_attachments() |> assign_objects()
+    socket
+    |> assign_objects()
+    |> assign_letters()
+    |> then(&assign(&1, can_pick?: linkable?(&1.assigns), now: DateTime.utc_now()))
+  end
+
+  # The letters of the chosen conversation, each with its body as HTML and its
+  # files as this viewer may see them (the host's attachment policy, one batch).
+  defp assign_letters(%{assigns: %{scope: scope, threads: threads, selected: selected}} = socket) do
+    entries = shown(threads, selected)
+    files = Attachments.list_for_viewer_many(scope, Enum.map(entries, & &1.message.uuid))
+
+    letters =
+      Enum.map(entries, fn entry ->
+        %{
+          entry: entry,
+          html: Body.html(entry.message),
+          attachments: Map.get(files, entry.message.uuid, [])
+        }
+      end)
+
+    assign(socket, :letters, letters)
   end
 
   # What the host says about each object the pane shows or may offer to link
@@ -252,16 +274,6 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     )
 
     nil
-  end
-
-  # The files of the letters in the reading pane, as this viewer may see them
-  # (the host's attachment policy, one batch): read when the pane changes,
-  # not on every render.
-  defp assign_attachments(
-         %{assigns: %{scope: scope, threads: threads, selected: selected}} = socket
-       ) do
-    uuids = threads |> shown(selected) |> Enum.map(& &1.message.uuid)
-    assign(socket, :attachments, Attachments.list_for_viewer_many(scope, uuids))
   end
 
   defp keep_or_first(selected, threads) do
@@ -445,12 +457,6 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   end
 
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:letters, shown(assigns.threads, assigns.selected))
-      |> assign(:can_pick?, linkable?(assigns))
-      |> assign(:now, DateTime.utc_now())
-
     ~H"""
     <div id={"mail-explorer-#{@id}"} class="flex flex-col gap-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
@@ -507,10 +513,11 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
             {gettext("Select a conversation to read it.")}
           </p>
           <.letter
-            :for={entry <- @letters}
+            :for={letter <- @letters}
             id={@id}
-            entry={entry}
-            attachments={Map.get(@attachments, entry.message.uuid, [])}
+            entry={letter.entry}
+            html={letter.html}
+            attachments={letter.attachments}
             link_access={@link_access}
             link_labels={@link_labels}
             reply?={is_function(@compose, 1)}
@@ -580,6 +587,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   attr(:id, :string, required: true)
   attr(:entry, :map, required: true)
+  attr(:html, :any, default: nil)
   attr(:attachments, :list, default: [])
   attr(:link_access, :map, default: %{})
   attr(:link_labels, :map, default: %{})
@@ -589,7 +597,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   defp letter(assigns) do
     message = assigns.entry.message
-    assigns = assign(assigns, message: message, html: Body.html(message))
+    assigns = assign(assigns, :message, message)
 
     ~H"""
     <article
