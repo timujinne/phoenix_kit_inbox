@@ -358,13 +358,40 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       assert_receive {:inbox_compose, "demo", :cancelled}
     end
 
-    test "pressing enter in a field sends nothing and leaves the page alone",
+    # Enter in the subject is an implicit submission of the form. A browser
+    # fires it at the form's first submit button and does nothing at all when
+    # that button is disabled. The real Send button sits outside the form
+    # (bound by `form=`), so the form holds a disabled one of its own, first.
+    # Confirmed here by the markup, not by a browser.
+    test "Enter in the subject cannot send: the form's own submit button is disabled",
          %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft())
       view |> form("#compose-demo-form") |> render_submit()
 
-      refute_receive {:inbox_compose, _, _}, 100
-      assert has_element?(view, "#compose-form-demo")
+      buttons = "#compose-demo-form button[type=submit]"
+      assert has_element?(view, buttons <> "[disabled][tabindex='-1'][aria-hidden=true]")
+
+      assert view
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query(buttons)
+             |> Enum.count() ==
+               1
+
+      assert has_element?(view, "input#compose-demo-subject")
+      assert has_element?(view, "#compose-demo-form input#compose-demo-subject")
+    end
+
+    test "the Send button is outside the form, bound to it, and active", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+
+      refute has_element?(view, "#compose-demo-form button[type=submit]:not([disabled])")
+
+      assert has_element?(
+               view,
+               "button[type=submit][form=compose-demo-form]:not([disabled])",
+               "Send"
+             )
     end
 
     test "an unknown block is not opened", %{conn: conn} = ctx do

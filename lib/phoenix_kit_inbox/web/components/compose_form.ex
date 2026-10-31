@@ -1269,6 +1269,11 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           value={@body}
           rows="10"
         />
+        <%!-- Enter in the subject must not send the letter. A browser answers
+        it by clicking the form's first submit button, and by doing nothing if
+        that one is disabled; the real Send button is outside the form (bound
+        to it by form=), so the form holds this dead one, first. --%>
+        <button type="submit" class="hidden" disabled tabindex="-1" aria-hidden="true"></button>
       </.form>
 
       <div id={"compose-#{@id}-attachments"} class="flex flex-col gap-1">
