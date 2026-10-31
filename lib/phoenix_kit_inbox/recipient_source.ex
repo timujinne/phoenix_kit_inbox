@@ -29,6 +29,17 @@ defmodule PhoenixKitInbox.RecipientSource do
   `:context`): the object the mail is about, say. A source reads the
   viewer from `scope` and must show only what that viewer may address.
 
+  ## Where `c:suggest/3` runs
+
+  The form waits for the sources while the person types: each is asked in a
+  process of its own (a task), for at most 1.5 seconds, and one that is not
+  done by then is skipped. A task starts with the caller's language (the
+  Gettext locale, of the global Gettext and of each backend that was given
+  one) and nothing else of the caller's process: any other context the source
+  relies on (a host's list of clients kept in the process dictionary, a
+  tenant, a database sandbox) it sets itself inside `c:suggest/3`, from
+  `scope` and `context`.
+
   ## Merging
 
   `suggest_all/4` asks every source and merges the answers into one list
@@ -87,7 +98,8 @@ defmodule PhoenixKitInbox.RecipientSource do
   not answered by then is skipped and logged, by its module only), and
   their answers are put together in the order of `sources`. A task is another
   process: what a source reads from the caller's process dictionary is not
-  there — it takes what it needs from `scope` and `context`. A source answers
+  there (but for the language, see above) — it takes what it needs from
+  `scope` and `context`. A source answers
   from an index or a small query, not from a remote service. Of one source,
   the first 50 entries are taken.
   """
