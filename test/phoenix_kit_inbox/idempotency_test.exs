@@ -10,6 +10,7 @@ defmodule PhoenixKitInbox.IdempotencyTest do
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
+  alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.Schemas.Message
@@ -103,6 +104,9 @@ defmodule PhoenixKitInbox.IdempotencyTest do
 
     assert again.uuid == first.uuid
     assert again.subject == "Once"
+    # No external recipients: as the first send answered.
+    assert first.external_status == :none
+    assert again.external_status == :none
     assert message_count("Once") == 1
     assert [%{message: %{uuid: uuid}}] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
     assert uuid == first.uuid
@@ -168,22 +172,11 @@ defmodule PhoenixKitInbox.IdempotencyTest do
     assert {:ok, again} = send_keyed(ctx, "form-1", extra)
 
     assert again.uuid == first.uuid
+    assert again.external_status == :pending
     refute_receive {:outbound, _, _, _}, 300
     refute_receive {:inbox_external_updated, _}, 100
     assert length(list_activities()) == activities
     assert [_] = External.list(first.uuid)
-  end
-
-  test "concurrent sends with one key create one message", ctx do
-    results =
-      1..2
-      |> Task.async_stream(fn _ -> send_keyed(ctx, "form-1") end, timeout: 10_000)
-      |> Enum.map(fn {:ok, result} -> result end)
-
-    assert [{:ok, a}, {:ok, b}] = results
-    assert a.uuid == b.uuid
-    assert message_count("Once") == 1
-    assert [_] = key_rows()
   end
 
   test "the loser of a race gets the winner's message and leaves no snapshot", ctx do
@@ -247,6 +240,70 @@ defmodule PhoenixKitInbox.IdempotencyTest do
     refute first.uuid == second.uuid
     assert message_count("Once") == 2
     assert key_rows() == []
+  end
+
+  test "a key that does not fit the column is refused, not a crash", ctx do
+    too_long = String.duplicate("k", 256)
+    # 128 graphemes, 256 code points: the database counts code points.
+    decomposed = String.duplicate("e\u0301", 128)
+
+    for key <- [too_long, decomposed, "ab\0cd", <<0xFF, 0xFE>>] do
+      assert {:error, :invalid_idempotency_key} = send_keyed(ctx, key)
+    end
+
+    assert message_count("Once") == 0
+    assert key_rows() == []
+
+    # The longest allowed one is fine.
+    assert {:ok, _} = send_keyed(ctx, String.duplicate("e\u0301", 127) <> "k")
+  end
+
+  test "a repeat writes no links and announces nothing", ctx do
+    :ok = Links.subscribe("order", "o-1")
+    :ok = Links.subscribe("order", "o-2")
+
+    {:ok, first} = send_keyed(ctx, "form-1", %{}, links: [%{kind: "order", ref: "o-1"}])
+    first_uuid = first.uuid
+    assert_receive {:inbox_message_linked, ^first_uuid}
+
+    {:ok, again} = send_keyed(ctx, "form-1", %{}, links: [%{kind: "order", ref: "o-2"}])
+
+    assert again.uuid == first.uuid
+    assert [%{ref: "o-1"}] = Links.for_message(first.uuid)
+    refute_receive {:inbox_message_linked, _}, 100
+  end
+
+  test "a draft sent twice with one key is one message", ctx do
+    {:ok, draft} = Messages.save_draft(ctx.scope, ctx.alice_mb, attrs(ctx))
+
+    assert {:ok, first} = send_keyed(ctx, "form-1", %{"uuid" => draft.uuid})
+    assert {:ok, again} = send_keyed(ctx, "form-1", %{"uuid" => draft.uuid})
+
+    assert first.uuid == draft.uuid
+    assert again.uuid == first.uuid
+    assert message_count("Once") == 1
+  end
+
+  test "a draft sent by two at once: the loser gets the winner's message", ctx do
+    {:ok, draft} = Messages.save_draft(ctx.scope, ctx.alice_mb, attrs(ctx))
+    attachment = [attachments_data: [%{binary: "bytes", filename: "a.txt"}]]
+    rival_attrs = attrs(ctx, %{"uuid" => draft.uuid})
+
+    Application.put_env(:phoenix_kit_inbox, :attachment_policy, {RacingPolicy, :race})
+
+    Application.put_env(
+      :phoenix_kit_inbox,
+      :rival,
+      {ctx.scope, ctx.alice_mb, rival_attrs, attachment ++ [idempotency_key: "form-1"]}
+    )
+
+    assert {:ok, loser} = send_keyed(ctx, "form-1", %{"uuid" => draft.uuid}, attachment)
+
+    winner = Application.fetch_env!(:phoenix_kit_inbox, :rival_result)
+    assert loser.uuid == winner.uuid
+    assert message_count("Once") == 1
+    assert [_] = key_rows()
+    assert length(snapshot_files()) == 1
   end
 
   test "an empty key is no key", ctx do

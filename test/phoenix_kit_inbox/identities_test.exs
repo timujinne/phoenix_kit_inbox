@@ -247,6 +247,44 @@ defmodule PhoenixKitInbox.IdentitiesTest do
     end
   end
 
+  describe "personalize_from_name" do
+    test "a shared identity takes it, on create and on update", ctx do
+      identity =
+        shared!(ctx,
+          label: "Desk",
+          integration_uuid: ctx.system_smtp,
+          personalize_from_name: true
+        )
+
+      assert identity.personalize_from_name
+
+      assert {:ok, %Identity{personalize_from_name: false}} =
+               Identities.update_identity(scope_for(ctx.admin, @manage), identity, %{
+                 "personalize_from_name" => "false"
+               })
+    end
+
+    test "a personal identity never takes it, on create or on update", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid})
+      scope = scope_for(ctx.alice)
+
+      assert {:ok, %Identity{personalize_from_name: false} = identity} =
+               Identities.create_personal(scope, %{
+                 "label" => "Mine",
+                 "integration_uuid" => own,
+                 "personalize_from_name" => true
+               })
+
+      assert {:ok, %Identity{personalize_from_name: false, label: "Renamed"}} =
+               Identities.update_identity(scope, identity, %{
+                 "label" => "Renamed",
+                 "personalize_from_name" => true
+               })
+
+      assert Repo.get!(Identity, identity.uuid).personalize_from_name == false
+    end
+  end
+
   describe "update_identity/3 and delete_identity/2" do
     test "a shared identity needs inbox.manage_shared", ctx do
       identity = shared!(ctx, label: "Desk", integration_uuid: ctx.system_smtp)
