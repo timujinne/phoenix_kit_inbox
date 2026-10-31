@@ -61,6 +61,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     defp hold(draft, send_fun) do
       receive do
         :go -> send_fun.(draft)
+        :stop -> {:error, {:refused, "Stopped by the test."}}
       after
         5_000 -> {:error, :never_released}
       end
@@ -653,9 +654,12 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       refute has_element?(view, "[role=alert]")
       assert send_button_disabled?(view)
 
-      send(task, :go)
-      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
-      assert messages() == 1
+      # Nothing is stored for the test: the worker is told to stop, and it
+      # takes its own copy of the file away with it.
+      send(task, :stop)
+      eventually(fn -> not File.exists?(path) end)
+      eventually(fn -> not send_button_disabled?(view) end)
+      assert messages() == 0
     end
 
     test "a worker that can not be started is a plain error and cleans up", %{conn: conn} = ctx do
