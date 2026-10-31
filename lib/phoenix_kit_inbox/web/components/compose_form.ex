@@ -14,8 +14,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         recipient_sources={[MyHost.ClientSource]}
       />
 
-  The form is a thin view over `PhoenixKitInbox.Web.Components.ComposePipeline`
-  and trusts nothing the browser says. The draft (`ComposeDraft`) lives in the
+  The form keeps its own state (the chips, the sender, the uploads, the send
+  task) and leaves every check that matters to
+  `PhoenixKitInbox.Web.Components.ComposePipeline`, which runs again at the
+  send; it trusts nothing the browser says. The draft (`ComposeDraft`) lives in the
   component's assigns; the recipients are server-side structures; the sender is
   chosen from a list the server made, and a choice the browser sends is looked
   up in that list. Nothing the draft does not offer the person is a field of
@@ -25,8 +27,11 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
     * `id`, `scope` (the viewer's `PhoenixKit.Users.Auth.Scope`), `draft`
       (a `ComposeDraft`) — required; a new draft starts the form afresh
-    * `around_send`, `authorize_attachments`, `recipient_sources` — the host's
-      callbacks and recipient sources, as for the pipeline
+    * `around_send`, `authorize_attachments` — the host's callbacks, as the
+      pipeline takes them (`ComposePipeline.run/4`)
+    * `recipient_sources` — the host's modules implementing
+      `PhoenixKitInbox.RecipientSource`, asked next to the module's own
+      members; the pipeline has no such option
     * `attachment_picker` — an optional slot for the host's file picker
 
   ## Recipients

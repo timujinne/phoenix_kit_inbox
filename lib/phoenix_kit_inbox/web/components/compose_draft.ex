@@ -5,6 +5,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
   rely on. It lives on the server — in the host's assigns — and is never sent
   to the browser as a right: what the browser sends back
   (`PhoenixKitInbox.Web.Components.ComposePipeline`) is checked against it.
+  A plain struct, with no LiveView in it: an API host can build one and call
+  the pipeline.
 
   ## Fields
 
@@ -36,7 +38,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeDraft do
       message its conversation
     * `:idempotency_key` — issued by the form on every opening (a key the
       host puts here is replaced); a repeated send with the same key is one
-      message
+      message. A host that sends without the form, with its own keys, makes
+      them unguessable (a UUID): all senders share one space of keys, and one
+      already used by another sender is refused
     * `:html_body` — the host's ready-made HTML for the email to outside
       recipients; never shown in the form, never read from it
     * `:context` — a map of the host's own, passed through to its recipient

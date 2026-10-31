@@ -26,7 +26,9 @@ defmodule PhoenixKitInbox.Messages do
   notification for a message that got rolled back would be a lie, and an
   outbound-email failure must never roll back a successfully delivered
   internal message. The host's subject resolvers (`PhoenixKitInbox.Links`)
-  run last of all, so a slow one delays nothing.
+  run last of all, after the commit and the notifications: they can not undo
+  the send, but a slow one delays `send_message/4` returning to its caller
+  (the letter itself is already stored and on its way).
 
   ## Reads
 
@@ -696,7 +698,10 @@ defmodule PhoenixKitInbox.Messages do
       host's resolvers find in the subject come last, after the commit, and
       never lose the message. A `"links"` entry in `attrs` is ignored.
     * `idempotency_key: key` — a string (at most 255 characters, no NUL byte) the host
-      issues per opening of its form. Repeating a send with a key already used
+      issues per opening of its form. Make it unguessable (a UUID, say): keys
+      are one space for all senders, a key already used by someone else is
+      refused (`:idempotency_key_taken`), and a guessable one lets a stranger
+      take yours first. Repeating a send with a key already used
       returns `{:ok, message}` with the message the first send made (its
       `external_status` as that send answered it) and does nothing else: no
       second message, email, nudge or notification. Two sends racing with one

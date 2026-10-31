@@ -6,7 +6,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   allow, and the message goes out through `PhoenixKitInbox.Messages.send_message/4`,
   which checks what is its to check (`write` on the mailbox, `inbox.send_external`
   for outside addresses) — this does not duplicate those checks, relax them or
-  go around them.
+  go around them. It does not depend on a LiveView (no socket, no component):
+  a host with an API can call `run/4` with the params of a request.
 
       ComposePipeline.run(scope, form_params, draft, %{
         around_send: &MyHost.around_send/3,

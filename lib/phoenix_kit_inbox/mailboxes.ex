@@ -299,13 +299,13 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   def user_handle(%{email: email}), do: email
 
-  @doc """
-  The text that addresses the user `user_uuid` in a To/Cc/Bcc field by the
-  `route` chosen for them: their handle (`user_handle/1`) for `:internal`,
-  their login email for `:email`. Says nothing about whether they may be
-  addressed that way — the send decides — and `{:error, :recipient_not_found}`
-  only for no such user.
-  """
+  @doc false
+  # Server-side only, for a user uuid the host's own draft names (never one
+  # from a browser: see `member_recipient_address/1`). The text that addresses
+  # the user `user_uuid` in a To/Cc/Bcc field by the `route` chosen for them:
+  # their handle (`user_handle/1`) for `:internal`, their login email for
+  # `:email`. Says nothing about whether they may be addressed that way — the
+  # send decides — and `{:error, :recipient_not_found}` only for no such user.
   @spec recipient_address(term(), :internal | :email) ::
           {:ok, String.t()} | {:error, :recipient_not_found}
   def recipient_address(user_uuid, route)
@@ -322,10 +322,11 @@ defmodule PhoenixKitInbox.Mailboxes do
   def recipient_address(_user_uuid, _route), do: {:error, :recipient_not_found}
 
   @doc """
-  `recipient_address(user_uuid, :internal)` for a user the browser named: the
-  handle only when the user is inside the recipient circle (`Members.member?/1`),
-  else `{:error, :recipient_not_found}` — the same answer as for no such user,
-  so it tells nobody who exists.
+  The inside address of a user the browser named: their handle
+  (`user_handle/1`: `"@username"`, or the login email of a user who has no
+  username) only when the user is inside the recipient circle
+  (`Members.member?/1`), else `{:error, :recipient_not_found}` — the same
+  answer as for no such user, so it tells nobody who exists.
   """
   @spec member_recipient_address(term()) :: {:ok, String.t()} | {:error, :recipient_not_found}
   def member_recipient_address(user_uuid) when is_binary(user_uuid) do
