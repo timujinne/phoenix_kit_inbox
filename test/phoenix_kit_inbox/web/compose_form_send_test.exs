@@ -693,6 +693,63 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 1
     end
 
+    test "a new draft from the parent during a send is taken once the send has failed",
+         %{conn: conn} = ctx do
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, _}, 2000
+
+      send(view.pid, {:test_assigns, %{draft: draft(ctx, subject: "Another letter")}})
+      render(view)
+      assert has_element?(view, ~s(input#compose-demo-subject[value="Offer"]))
+
+      send(task, :stop)
+      eventually(fn -> not send_button_disabled?(view) end)
+
+      assert has_element?(view, ~s(input#compose-demo-subject[value="Another letter"]))
+      assert messages() == 0
+    end
+
+    test "a new draft from the parent during a send is taken once the letter went",
+         %{conn: conn} = ctx do
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, _}, 2000
+
+      send(view.pid, {:test_assigns, %{draft: draft(ctx, subject: "Another letter")}})
+      render(view)
+
+      send(task, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{subject: "Offer"}}}, 2000
+
+      eventually(fn ->
+        has_element?(view, ~s(input#compose-demo-subject[value="Another letter"]))
+      end)
+
+      refute send_button_disabled?(view)
+      assert messages() == 1
+    end
+
+    test "a draft that went back to the one the form has is not taken later",
+         %{conn: conn} = ctx do
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+      submit(view)
+      assert_receive {:around, task, _}, 2000
+
+      send(view.pid, {:test_assigns, %{draft: draft(ctx, subject: "Another letter")}})
+      render(view)
+      send(view.pid, {:test_assigns, %{draft: draft(ctx)}})
+      render(view)
+
+      send(task, :stop)
+      eventually(fn -> not send_button_disabled?(view) end)
+
+      assert has_element?(view, ~s(input#compose-demo-subject[value="Offer"]))
+    end
+
     test "a result that is not for the attempt that runs is dropped", %{conn: conn} = ctx do
       mode(:hold)
       view = mount_form(ctx, conn, draft(ctx))

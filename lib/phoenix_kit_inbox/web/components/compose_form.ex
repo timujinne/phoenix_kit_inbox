@@ -162,7 +162,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # The send task answers the component that started it, by send_update. An
   # answer to an attempt that is no longer the current one is not for this page.
   def update(%{send_result: {ref, result}}, %{assigns: %{send_ref: ref}} = socket),
-    do: {:ok, finish_send(socket, result)}
+    do: {:ok, socket |> finish_send(result) |> open_pending_draft()}
 
   def update(%{send_lost: ref}, %{assigns: %{send_ref: ref, sending: true}} = socket) do
     {:ok,
@@ -184,16 +184,46 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
 
     draft = normalize_draft(assigns[:draft] || socket.assigns[:source_draft])
+    socket = forget_pending_draft(socket, draft)
     scope_changed? = socket.assigns[:options_scope] != socket.assigns.scope
 
     cond do
-      not socket.assigns.allowed? -> {:ok, socket}
+      not socket.assigns.allowed? ->
+        {:ok, socket}
+
       # A letter on its way is not the parent's to take back: its text, its
-      # key and its answer stay until it is over.
-      draft != socket.assigns[:source_draft] and socket.assigns[:sending] == true -> {:ok, socket}
-      draft != socket.assigns[:source_draft] -> {:ok, open_draft(socket, draft)}
-      scope_changed? -> {:ok, socket |> assign_sender(socket.assigns.from) |> refresh_summary()}
-      true -> {:ok, socket}
+      # key and its answer stay until it is over. The draft is kept for then,
+      # for a parent that does not say it twice.
+      draft != socket.assigns[:source_draft] and socket.assigns[:sending] == true ->
+        {:ok, assign(socket, :pending_draft, draft)}
+
+      draft != socket.assigns[:source_draft] ->
+        {:ok, open_draft(socket, draft)}
+
+      scope_changed? ->
+        {:ok, socket |> assign_sender(socket.assigns.from) |> refresh_summary()}
+
+      true ->
+        {:ok, socket}
+    end
+  end
+
+  # A parent that is back to the draft the form has has taken back what it
+  # offered during the send.
+  defp forget_pending_draft(socket, draft) do
+    if draft == socket.assigns[:source_draft],
+      do: assign(socket, :pending_draft, nil),
+      else: socket
+  end
+
+  # The draft the parent offered while a send ran, once the answer is in (the
+  # letter went, or it failed): the form opens it as it would have then. Not
+  # after a send that was lost: that one may still turn out to have gone, and
+  # the next try must keep its key.
+  defp open_pending_draft(socket) do
+    case socket.assigns[:pending_draft] do
+      nil -> socket
+      draft -> open_draft(socket, draft)
     end
   end
 
@@ -218,6 +248,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     socket
     |> assign(
       source_draft: draft,
+      pending_draft: nil,
       subject: text(draft.subject),
       body: text(draft.body),
       recipients: recipients,
