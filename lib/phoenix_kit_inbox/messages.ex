@@ -644,10 +644,11 @@ defmodule PhoenixKitInbox.Messages do
       `filename:`, `content_type:` and `flags:` — bytes the host made,
       stored as they are
     * `links: [%{kind: kind, ref: ref}]` — objects of the host the message is
-      linked to (source `"host"`, see `PhoenixKitInbox.Links`). Written after
-      the message is stored, together with the links the conversation and the
-      host's resolvers add; a failure there is logged and never loses the
-      message. A `"links"` entry in `attrs` is ignored.
+      linked to (source `"host"`, see `PhoenixKitInbox.Links`). Stored in the
+      send's own transaction: if that fails the send fails with
+      `{:error, :links_failed}` and nothing is sent. The links the
+      conversation and the host's resolvers add come after the commit and
+      never lose the message. A `"links"` entry in `attrs` is ignored.
 
   Returns `{:error, {:unknown_recipients, ["typo@example.com"]}}` when an
   address doesn't resolve — the whole send is refused so the sender finds out
@@ -711,13 +712,15 @@ defmodule PhoenixKitInbox.Messages do
                attrs,
                {recipients, externals, sender_record},
                existing,
-               items
+               items,
+               Keyword.get(opts, :links, [])
              )
            end)
            |> finish_attachments(created) do
       # After the commit, not inside it: the host's resolvers run here, and a
       # failing query of theirs would poison the transaction of a message
-      # that is otherwise fine. `apply_to_new_message/2` never raises.
+      # that is otherwise fine. The host's own links are already stored (in
+      # `do_send/7`). `apply_to_new_message/2` never raises.
       Links.apply_to_new_message(message, Keyword.get(opts, :links, []))
 
       if items != [], do: Folders.lay_out_sent(message, mailbox)
@@ -892,7 +895,8 @@ defmodule PhoenixKitInbox.Messages do
          attrs,
          {recipients, externals, sender_record},
          existing,
-         items
+         items,
+         host_links
        ) do
     base = existing || %Message{}
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -921,6 +925,9 @@ defmodule PhoenixKitInbox.Messages do
     Multi.new()
     |> Multi.run(:message, fn repo, _ -> write_message(repo, changeset, existing) end)
     |> Multi.run(:thread, &backfill_thread_uuid/2)
+    |> Multi.run(:links, fn _repo, %{thread: message} ->
+      with :ok <- Links.write_host(message.uuid, host_links), do: {:ok, :written}
+    end)
     |> Multi.run(:sender_copy, fn repo, %{thread: message} ->
       # Moves the draft's own delivery row from "drafts" to "sent" when
       # promoting a draft, or creates it outright for a fresh send.

@@ -78,17 +78,38 @@ defmodule PhoenixKitInbox.Links do
   end
 
   @doc """
-  Writes the links of a message that was just sent: the `host_links` the host
-  gave (source `"host"`), the links of the other messages of its conversation
-  (`"thread"`), and the objects the host's resolvers find in its subject
-  (`"subject"` — see `PhoenixKitInbox.LinkResolver`).
+  Stores the links the host gave a message (source `"host"`), for the send's
+  own transaction: the message and its host links are committed together or
+  not at all. Entries that are not a `kind`/`ref` pair within the limits are
+  dropped first; a database failure on valid ones is `{:error, :links_failed}`
+  (logged), for the caller to roll back. Announces nothing — the message is
+  not committed yet; `apply_to_new_message/2` does that.
+  """
+  @spec write_host(binary(), [link()]) :: :ok | {:error, :links_failed}
+  def write_host(message_uuid, host_links) when is_binary(message_uuid) do
+    insert(message_uuid, normalize(host_links), "host", nil)
+  rescue
+    e ->
+      Logger.error(
+        "[Inbox] host links failed, the send is rolled back:\n" <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
 
-  Never raises and never fails the send: a failure in any of the three steps,
-  a crashing resolver included, is logged and the rest goes on.
+      {:error, :links_failed}
+  end
+
+  @doc """
+  After a message was committed: announces its `host_links` (already stored by
+  `write_host/2`), then writes the links of the other messages of its
+  conversation (`"thread"`) and the objects the host's resolvers find in its
+  subject (`"subject"` — see `PhoenixKitInbox.LinkResolver`).
+
+  Never raises and never fails the send: a failure in either step, a crashing
+  resolver included, is logged and the rest goes on.
   """
   @spec apply_to_new_message(Message.t(), [link()]) :: :ok
   def apply_to_new_message(%Message{} = message, host_links) do
-    guarded("host links", fn -> record(message.uuid, host_links, "host") end)
+    host_links |> normalize() |> Enum.each(&broadcast(&1, message.uuid))
     guarded("thread links", fn -> record(message.uuid, thread_links(message), "thread") end)
     guarded("subject links", fn -> record(message.uuid, subject_links(message), "subject") end)
     :ok

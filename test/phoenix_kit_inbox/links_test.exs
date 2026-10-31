@@ -82,6 +82,57 @@ defmodule PhoenixKitInbox.LinksTest do
       assert uuid == message.uuid
     end
 
+    test "host links are committed together with the message", ctx do
+      message =
+        send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{"subject" => "Committed"},
+          links: [@order]
+        )
+
+      # Stored by the send's own transaction, so already there when it returns
+      # and not dependent on the work done after the commit: a resolver that
+      # fails changes nothing about it.
+      resolvers([RaisingResolver], [])
+
+      assert capture_log(fn ->
+               other = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
+               assert links_of(other) == [{"order", "o-1", "host"}]
+             end) =~ "RaisingResolver"
+
+      assert links_of(message) == [{"order", "o-1", "host"}]
+    end
+
+    test "a failing host link insert rolls the send back", ctx do
+      # A rule the table did not have: the one link below cannot be stored.
+      # DDL is transactional, so the sandbox takes it away again.
+      Repo.query!(
+        "ALTER TABLE phoenix_kit_inbox_message_links ADD CONSTRAINT links_test_no_boom CHECK (ref <> 'boom')"
+      )
+
+      :ok = Links.subscribe("order", "boom")
+
+      capture_log(fn ->
+        assert {:error, :links_failed} =
+                 Messages.send_message(
+                   ctx.alice_scope,
+                   ctx.alice_mb,
+                   %{"to" => ctx.bob.email, "subject" => "Rolled back", "body" => "Body"},
+                   links: [@order, %{kind: "order", ref: "boom"}]
+                 )
+      end)
+
+      # No message, no delivery, no link of the other entry, no announcement.
+      assert Messages.list_folder(ctx.alice_mb.uuid, "sent") == []
+      assert Messages.list_folder(ctx.bob_mb.uuid, "inbox") == []
+
+      assert Repo.aggregate(
+               from(m in PhoenixKitInbox.Schemas.Message, where: m.subject == "Rolled back"),
+               :count
+             ) == 0
+
+      assert Repo.aggregate(Link, :count) == 0
+      refute_received {:inbox_message_linked, _}
+    end
+
     test "reply inherits the thread's links", ctx do
       root = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
       reply = reply_to(ctx.bob_scope, ctx.bob_mb, ctx.alice, root)
