@@ -140,8 +140,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     socket =
       socket
       |> assign(Map.take(assigns, ~w(id scope around_send authorize_attachments)a))
-      |> assign(:recipient_sources, Map.get(assigns, :recipient_sources, []))
-      |> assign(:attachment_picker, Map.get(assigns, :attachment_picker, []))
+      |> assign(:recipient_sources, list_of(Map.get(assigns, :recipient_sources)))
+      |> assign(:attachment_picker, list_of(Map.get(assigns, :attachment_picker)))
       |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
 
     draft = normalize_draft(assigns[:draft] || socket.assigns[:source_draft])
@@ -154,6 +154,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       true -> {:ok, socket}
     end
   end
+
+  # An attribute a host leaves out or sets to nil is an empty list.
+  defp list_of(list) when is_list(list), do: list
+  defp list_of(_other), do: []
 
   defp normalize_draft(%ComposeDraft{} = draft), do: draft
 
@@ -214,25 +218,62 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp chips(_other, _role, from), do: {[], from}
 
+  # What the pipeline reads as a recipient, the form reads: atom or string
+  # keys, a bare text for an outside address. A field left empty names nobody
+  # and is dropped. Anything else that gives no address (a user who is gone,
+  # an entry that is no recipient) stays as a chip with `address: nil`, shown
+  # as an error: a recipient is never lost silently, and never sent without.
+  defp chip(text) when is_binary(text), do: chip(%{address: text})
+
   defp chip(%{} = entry) when not is_struct(entry) do
-    route = if Map.get(entry, :route) == :internal, do: :internal, else: :email
-    user = if is_binary(Map.get(entry, :user)), do: entry.user
-    address = Map.get(entry, :address)
-    label = Map.get(entry, :label)
+    route = if field(entry, :route) in [:internal, "internal"], do: :internal, else: :email
 
-    address =
-      cond do
-        is_binary(address) and address != "" -> address
-        user -> resolved_address(user, route)
-        true -> nil
-      end
+    user =
+      if is_binary(field(entry, :user)) and field(entry, :user) != "", do: field(entry, :user)
 
-    if is_nil(address) and is_nil(user),
-      do: [],
-      else: [%{user: user, address: address, label: blank_to_nil(label), route: route}]
+    address = field(entry, :address)
+    label = field(entry, :label)
+
+    cond do
+      is_binary(address) and String.trim(address) != "" ->
+        [%{user: user, address: String.trim(address), label: blank_to_nil(label), route: route}]
+
+      user ->
+        [
+          %{
+            user: user,
+            address: resolved_address(user, route),
+            label: blank_to_nil(label),
+            route: route
+          }
+        ]
+
+      blank_entry?(entry) ->
+        []
+
+      true ->
+        [%{user: nil, address: nil, label: blank_to_nil(label), route: route}]
+    end
   end
 
-  defp chip(_), do: []
+  defp chip(_), do: [%{user: nil, address: nil, label: nil, route: :email}]
+
+  defp blank_entry?(entry) do
+    values = [field(entry, :user), field(entry, :address)]
+    Enum.any?(values, &is_binary/1) and Enum.all?(values, &(is_nil(&1) or String.trim(&1) == ""))
+  end
+
+  # A key of a map that is the draft's (atoms) or the browser's (strings).
+  defp field(map, key), do: Map.get(map, key, Map.get(map, Atom.to_string(key)))
+
+  defp unresolved?(chip), do: is_nil(chip.address)
+
+  # Nothing can be sent while a chip has no address.
+  defp blocked?(assigns),
+    do:
+      Enum.any?([:to, :cc, :bcc], fn role ->
+        Enum.any?(assigns.recipients[role], &unresolved?/1)
+      end)
 
   defp resolved_address(user, route) do
     case Mailboxes.recipient_address(user, route) do
@@ -249,7 +290,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp chip_text(%{label: label}) when is_binary(label), do: label
   defp chip_text(%{address: address}) when is_binary(address), do: address
-  defp chip_text(_), do: "?"
+  defp chip_text(_), do: gettext("Unknown recipient")
 
   # ── who it is from ──────────────────────────────────────────────────────────
 
@@ -499,7 +540,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> assign(error: nil)
       |> add_pending_input()
 
-    if socket.assigns.recipient_error,
+    if socket.assigns.recipient_error || blocked?(socket.assigns),
       do: {:noreply, socket},
       else: {:noreply, start_send(socket)}
   end
@@ -741,7 +782,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp outside_addresses(socket) do
     r = socket.assigns.recipients
-    typed = for role <- [:to, :cc, :bcc], c <- r[role], c.route == :email, do: {role, c}
+
+    typed =
+      for role <- [:to, :cc, :bcc],
+          c <- r[role],
+          c.route == :email,
+          is_binary(c.address),
+          do: {role, c}
 
     with [_ | _] <- typed,
          {:ok, email} <- Outbound.preview(preview_email(typed), preview_context(socket)) do
@@ -1094,6 +1141,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> assign(:editable?, editable?(assigns))
       |> assign(:reply_to, reply_to(assigns))
       |> assign(:subject_max, @subject_max)
+      |> assign(:blocked?, blocked?(assigns))
 
     ~H"""
     <div id={"compose-form-#{@id}"} class="flex flex-col gap-3">
@@ -1323,7 +1371,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           type="submit"
           form={"compose-#{@id}-form"}
           variant="primary"
-          disabled={@sending or @sent}
+          disabled={@sending or @sent or @blocked?}
           aria-busy={to_string(@sending)}
         >
           {if @sending, do: gettext("Sending…"), else: gettext("Send")}
@@ -1341,7 +1389,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     error =
       case assigns.recipient_error do
         {^role, message} -> message
-        _ -> nil
+        _ -> if Enum.any?(assigns.recipients[role], &unresolved?/1), do: unresolved_message()
       end
 
     %{
@@ -1353,6 +1401,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       picker_open?: match?(%{kind: :picker}, list)
     }
   end
+
+  defp unresolved_message,
+    do:
+      gettext(
+        "A recipient here has no address, so nothing can be sent to them. Remove them to send."
+      )
 
   attr(:id, :string, required: true)
   attr(:role, :string, required: true)
@@ -1377,8 +1431,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         <li
           :for={chip <- @line.chips}
           id={"compose-#{@id}-chip-#{chip.key}"}
-          class="badge badge-outline gap-1"
+          class={["badge badge-outline gap-1", unresolved?(chip) && "badge-error"]}
           data-route={chip.route}
+          data-unresolved={unresolved?(chip) || nil}
           title={chip.address}
         >
           <.internal_marker :if={chip.route == :internal} />

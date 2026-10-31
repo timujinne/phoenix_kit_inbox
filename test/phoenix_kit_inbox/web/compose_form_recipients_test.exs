@@ -423,4 +423,43 @@ defmodule PhoenixKitInbox.Web.ComposeFormRecipientsTest do
       assert Enum.sort(Enum.uniq(names)) == ["query", "role", "subject"]
     end
   end
+
+  describe "a draft written the way the pipeline reads one" do
+    test "string keys and bare texts are recipients too", %{conn: conn} = ctx do
+      draft =
+        draft(
+          to: [
+            %{"address" => "str@example.com", "label" => "Str Keys", "route" => "email"},
+            "bare@example.com",
+            %{"user" => ctx.bob.uuid, "route" => "internal"}
+          ]
+        )
+
+      view = mount_form(ctx, conn, draft)
+
+      assert has_element?(view, ~s(#compose-demo-to li[data-route=email]), "Str Keys")
+      assert has_element?(view, ~s(#compose-demo-to li[data-route=email]), "bare@example.com")
+      assert has_element?(view, ~s(#compose-demo-to li[data-route=internal]), "@")
+      refute has_element?(view, "#compose-demo-to li[data-unresolved]")
+    end
+
+    test "an entry that can not be read is shown as an error, not lost", %{conn: conn} = ctx do
+      for junk <- [42, %{}, %{label: "No address"}, [:x], {:a, :b}] do
+        view = mount_form(ctx, conn, draft(to: [junk, @anna]))
+
+        assert has_element?(view, "#compose-demo-to li[data-unresolved]"), inspect(junk)
+        assert has_element?(view, "#compose-demo-to-error[role=alert]")
+        assert has_element?(view, "#compose-demo-to li", "Anna Client")
+      end
+    end
+
+    test "no sources at all is no sources", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(), %{recipient_sources: nil})
+
+      refute has_element?(view, "button[phx-click=toggle_picker]")
+      type_into(view, "to", "bobby")
+
+      assert has_element?(view, "#compose-demo-to-suggestions", "Bobby Member")
+    end
+  end
 end

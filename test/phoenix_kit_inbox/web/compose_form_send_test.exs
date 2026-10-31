@@ -399,6 +399,49 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     end
   end
 
+  describe "a recipient of the draft that has no address" do
+    test "shows as an error, blocks the send, and the page still mounts", %{conn: conn} = ctx do
+      for user <- [Ecto.UUID.generate(), "not-a-uuid"], route <- [:email, :internal] do
+        draft = draft(ctx, to: [%{user: user, route: route}])
+
+        view = mount_form(ctx, conn, draft)
+
+        assert has_element?(view, "#compose-demo-to li[data-unresolved]")
+        assert has_element?(view, "#compose-demo-to-error[role=alert]")
+        assert send_button_disabled?(view)
+
+        submit(view)
+        refute_receive {:around, _, _}, 100
+        assert messages() == 0
+
+        view |> element("#compose-demo-to li button[phx-click=remove]") |> render_click()
+        refute has_element?(view, "#compose-demo-to li[data-unresolved]")
+      end
+    end
+
+    test "takes the other recipients' send along once it is removed", %{conn: conn} = ctx do
+      draft =
+        draft(ctx,
+          to: [
+            %{user: Ecto.UUID.generate(), route: :email},
+            %{address: "@#{ctx.bob.username}", label: "Bob", route: :internal}
+          ]
+        )
+
+      view = mount_form(ctx, conn, draft)
+
+      view
+      |> element("#compose-demo-to li[data-unresolved] button[phx-click=remove]")
+      |> render_click()
+
+      refute send_button_disabled?(view)
+
+      submit(view)
+
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+    end
+  end
+
   describe "what goes to the pipeline" do
     test "the recipients are the chips, whatever the browser sent", %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft(ctx))
