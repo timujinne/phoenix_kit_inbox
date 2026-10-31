@@ -54,6 +54,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
@@ -73,6 +74,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   @email_shape ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/u
 
   # ── the component ───────────────────────────────────────────────────────────
+
+  @impl true
+  def mount(socket) do
+    {:ok,
+     allow_upload(socket, :attachments,
+       accept: :any,
+       max_entries: Attachments.max_files(),
+       max_file_size: Attachments.max_upload_bytes(),
+       auto_upload: true,
+       progress: &upload_progress/3
+     )}
+  end
+
+  # The browser's change event is the early check; this one holds too, wherever
+  # an upload came from.
+  defp upload_progress(:attachments, _entry, socket), do: {:noreply, limit_uploads(socket)}
 
   @impl true
   def update(assigns, socket) do
@@ -119,6 +136,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       list: nil,
       list_seq: 0,
       recipient_error: nil,
+      host_files: host_files(draft.attachments),
+      picked: [],
+      file_seq: length(List.wrap(draft.attachments)) + 1,
+      files_error: nil,
       open: %{cc: recipients.cc != [], bcc: recipients.bcc != [], signature: false},
       signature_uuid: "",
       signature_block: "",
@@ -375,6 +396,32 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end
   end
 
+  # Only what the draft holds can be taken off, by the key the server gave it.
+  def handle_event("remove_attachment", %{"key" => key}, socket) when is_binary(key) do
+    %{host_files: host, picked: picked} = socket.assigns
+
+    {:noreply,
+     assign(socket,
+       host_files: Enum.reject(host, &(&1.key == key)),
+       picked: Enum.reject(picked, &(&1.key == key)),
+       files_error: nil
+     )}
+  end
+
+  # The host's picker names files by uuid; they count once the host's callback
+  # has vouched for them (the send asks it again).
+  def handle_event("pick_attachments", %{"uuids" => uuids}, socket) when is_list(uuids),
+    do: {:noreply, pick(socket, uuids)}
+
+  def handle_event("validate_upload", _params, socket),
+    do: {:noreply, limit_uploads(socket)}
+
+  def handle_event("cancel_upload", %{"ref" => ref}, socket) when is_binary(ref) do
+    if Enum.any?(socket.assigns.uploads.attachments.entries, &(&1.ref == ref)),
+      do: {:noreply, cancel_upload(socket, :attachments, ref)},
+      else: {:noreply, socket}
+  end
+
   def handle_event("change", params, socket) do
     {:noreply,
      socket
@@ -395,6 +442,95 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp keep(socket, key, value) when is_binary(value), do: assign(socket, key, value)
   defp keep(socket, _key, _value), do: socket
+
+  # ── attachments ─────────────────────────────────────────────────────────────
+
+  defp host_files(list) when is_list(list) do
+    for {%{} = item, n} <- Enum.with_index(list, 1),
+        not is_struct(item),
+        do: %{key: "h-#{n}", item: item}
+  end
+
+  defp host_files(_), do: []
+
+  defp held_uuids(%{host_files: host, picked: picked}) do
+    from_host =
+      for %{item: item} <- host,
+          uuid = Map.get(item, :file_uuid) || Map.get(item, "file_uuid"),
+          is_binary(uuid),
+          do: String.downcase(uuid)
+
+    from_host ++ Enum.map(picked, & &1.file_uuid)
+  end
+
+  defp file_count(socket) do
+    %{host_files: host, picked: picked, uploads: uploads} = socket.assigns
+    length(host) + length(picked) + length(uploads.attachments.entries)
+  end
+
+  defp pick(socket, raw) do
+    case cast_uuids(raw) do
+      {:ok, uuids} -> pick_new(socket, uuids -- held_uuids(socket.assigns))
+      :error -> socket
+    end
+  end
+
+  defp cast_uuids(raw) when length(raw) <= 50 do
+    Enum.reduce_while(raw, {:ok, []}, fn value, {:ok, acc} ->
+      with true <- is_binary(value), {:ok, uuid} <- Ecto.UUID.cast(value) do
+        {:cont, {:ok, Enum.uniq(acc ++ [uuid])}}
+      else
+        _ -> {:halt, :error}
+      end
+    end)
+  end
+
+  defp cast_uuids(_), do: :error
+
+  defp pick_new(socket, []), do: socket
+
+  defp pick_new(socket, uuids) do
+    max = Attachments.max_files()
+
+    if file_count(socket) + length(uuids) > max do
+      assign(socket, files_error: Errors.message({:too_many_attachments, max}))
+    else
+      case ComposePipeline.authorize_picks(
+             socket.assigns.scope,
+             socket.assigns.source_draft,
+             uuids,
+             socket.assigns.authorize_attachments
+           ) do
+        {:ok, _items} -> add_picks(socket, uuids)
+        {:error, reason} -> assign(socket, files_error: Errors.message(reason))
+      end
+    end
+  end
+
+  defp add_picks(socket, uuids) do
+    {picks, seq} =
+      Enum.map_reduce(uuids, socket.assigns.file_seq, fn uuid, n ->
+        {%{key: "p-#{n}", file_uuid: uuid}, n + 1}
+      end)
+
+    assign(socket, picked: socket.assigns.picked ++ picks, file_seq: seq, files_error: nil)
+  end
+
+  # An upload that would take the message over its count is taken off again.
+  defp limit_uploads(socket) do
+    max = Attachments.max_files()
+    entries = socket.assigns.uploads.attachments.entries
+    over = file_count(socket) - max
+
+    if over > 0 do
+      entries
+      |> Enum.take(-over)
+      |> Enum.reduce(socket, &cancel_upload(&2, :attachments, &1.ref))
+      |> assign(files_error: Errors.message({:too_many_attachments, max}))
+    else
+      assign(socket, files_error: nil)
+    end
+  end
 
   # ── the recipients' lines ───────────────────────────────────────────────────
 
@@ -722,14 +858,73 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           class="flex flex-wrap items-center gap-1"
           aria-labelledby={"compose-#{@id}-attachments-label"}
         >
+          <.file_chip
+            :for={file <- @host_files}
+            id={"compose-#{@id}-file-#{file.key}"}
+            name={attachment_name(file.item)}
+            key={file.key}
+            target={@myself}
+          />
+          <.file_chip
+            :for={file <- @picked}
+            id={"compose-#{@id}-file-#{file.key}"}
+            name={gettext("File %{id}", id: String.slice(file.file_uuid, 0, 8))}
+            key={file.key}
+            target={@myself}
+          />
           <li
-            :for={attachment <- @source_draft.attachments}
-            class="badge badge-outline gap-1"
+            :for={entry <- @uploads.attachments.entries}
+            id={"compose-#{@id}-upload-#{entry.ref}"}
+            data-upload
+            class={["badge badge-outline gap-1", entry.valid? == false && "badge-error"]}
           >
-            <.icon name="hero-paper-clip" class="w-3 h-3" />
-            {attachment_name(attachment)}
+            <.icon name="hero-arrow-up-tray" class="w-3 h-3" />
+            {Attachments.clean_filename(entry.client_name)}
+            <span :if={entry.valid? and not entry.done?} class="text-xs">{entry.progress}%</span>
+            <span :for={error <- upload_errors(@uploads.attachments, entry)} class="text-xs">
+              {upload_error_text(error)}
+            </span>
+            <button
+              type="button"
+              class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
+              aria-label={gettext("Cancel upload")}
+              phx-click="cancel_upload"
+              phx-value-ref={entry.ref}
+              phx-target={@myself}
+            >
+              <.icon name="hero-x-mark" class="w-3 h-3" />
+            </button>
           </li>
         </ul>
+        <p
+          :for={error <- upload_errors(@uploads.attachments)}
+          class="text-xs text-error"
+          role="alert"
+        >
+          {upload_error_text(error)}
+        </p>
+        <p
+          :if={@files_error}
+          id={"compose-#{@id}-files-error"}
+          role="alert"
+          class="text-xs text-error"
+        >
+          {@files_error}
+        </p>
+        <div class="flex flex-wrap items-center gap-1">
+          <form
+            id={"compose-#{@id}-upload-form"}
+            phx-change="validate_upload"
+            phx-target={@myself}
+          >
+            <label class="btn btn-ghost btn-xs btn-outline">
+              <.icon name="hero-arrow-up-tray" class="w-3 h-3" />
+              {gettext("Upload files")}
+              <.live_file_input upload={@uploads.attachments} class="hidden" />
+            </label>
+          </form>
+          {render_slot(@attachment_picker, %{target: @myself, event: "pick_attachments"})}
+        </div>
       </div>
 
       <div class="flex justify-end gap-2">
@@ -930,6 +1125,35 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     </.button>
     """
   end
+
+  attr(:id, :string, required: true)
+  attr(:name, :string, required: true)
+  attr(:key, :string, required: true)
+  attr(:target, :any, required: true)
+
+  defp file_chip(assigns) do
+    ~H"""
+    <li id={@id} data-file class="badge badge-outline gap-1">
+      <.icon name="hero-paper-clip" class="w-3 h-3" />
+      {@name}
+      <button
+        type="button"
+        class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
+        aria-label={gettext("Remove %{name}", name: @name)}
+        phx-click="remove_attachment"
+        phx-value-key={@key}
+        phx-target={@target}
+      >
+        <.icon name="hero-x-mark" class="w-3 h-3" />
+      </button>
+    </li>
+    """
+  end
+
+  defp upload_error_text(:too_large), do: gettext("Larger than the upload limit.")
+  defp upload_error_text(:too_many_files), do: gettext("Too many files.")
+  defp upload_error_text(:not_accepted), do: gettext("This file type is not accepted.")
+  defp upload_error_text(_), do: gettext("The upload failed.")
 
   defp attachment_name(%{} = attachment) do
     Map.get(attachment, :name) || Map.get(attachment, :filename) || gettext("File")

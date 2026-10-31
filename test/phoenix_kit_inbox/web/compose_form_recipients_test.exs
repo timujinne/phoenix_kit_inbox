@@ -416,7 +416,10 @@ defmodule PhoenixKitInbox.Web.ComposeFormRecipientsTest do
 
       # Only the query and the role line to write in are inputs; a chip is
       # text, never a field the browser could rewrite before sending.
-      names = nodes(view, "#compose-form-demo input[name]") |> LazyHTML.attribute("name")
+      names =
+        nodes(view, "#compose-form-demo input[name]:not([type=file])")
+        |> LazyHTML.attribute("name")
+
       assert Enum.sort(Enum.uniq(names)) == ["query", "role", "subject"]
     end
   end

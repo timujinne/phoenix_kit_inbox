@@ -1677,9 +1677,14 @@ defmodule PhoenixKitInbox.Attachments do
 
   def safe_content_type(_), do: "application/octet-stream"
 
-  # The browser's (or host's) name, reduced to a base name without control
-  # characters, fit for the 255-character column with its extension kept.
-  defp clean_filename(name) do
+  @doc """
+  A file name from the browser (or a host) reduced to a base name without
+  control characters, fit for the 255-character column with its extension
+  kept; `"attachment"` when nothing is left. What a send stores, and what a
+  form shows.
+  """
+  @spec clean_filename(term()) :: String.t()
+  def clean_filename(name) do
     name =
       name
       |> to_string()

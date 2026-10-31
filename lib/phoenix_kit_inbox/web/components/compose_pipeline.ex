@@ -517,6 +517,20 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp picked_uuids(_), do: {:error, :invalid_attachments}
 
+  @doc """
+  Asks the host's `authorize_attachments` (`fun`, arity 3) about `uuids` picked
+  for `draft`, with the context `run/4` would give it: the draft's `:context`
+  plus its `:links`. `{:ok, attachments}` (in the shape of the draft's) when it
+  said `:ok`, the host's `{:error, reason}`, and `{:error,
+  {:attachment_forbidden, uuid}}` when there is no callback or it answers
+  anything else — no callback, no pick. For a form to tell the person at the
+  pick; `run/4` asks again at the send.
+  """
+  @spec authorize_picks(Scope.t(), ComposeDraft.t(), [binary()], term()) ::
+          {:ok, [map()]} | {:error, term()}
+  def authorize_picks(scope, %ComposeDraft{} = draft, [_ | _] = uuids, fun),
+    do: authorize(scope, draft, uuids, %{authorize_attachments: valid_fun(fun, 3, nil)})
+
   defp authorize(scope, draft, uuids, %{authorize_attachments: fun}) when is_function(fun, 3) do
     context = Map.put(draft.context || %{}, :links, draft.links)
 

@@ -158,7 +158,7 @@ msgstr ""
 msgid "Back to mailbox"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:656
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:805
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1033
 #, elixir-autogen, elixir-format
 msgid "Bcc"
@@ -169,7 +169,7 @@ msgstr ""
 msgid "Broken"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:724
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:932
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1089
 #: lib/phoenix_kit_inbox/web/identity_editor.ex:354
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
@@ -177,12 +177,13 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:890
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1191
 #, elixir-autogen, elixir-format
 msgid "Cancel upload"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:648
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:797
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1027
 #, elixir-autogen, elixir-format
 msgid "Cc"
@@ -315,8 +316,8 @@ msgstr ""
 msgid "Forward"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:588
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:595
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:737
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:744
 #: lib/phoenix_kit_inbox/web/compose_live.ex:995
 #, elixir-autogen, elixir-format
 msgid "From"
@@ -345,6 +346,7 @@ msgstr ""
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1153
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1244
 #, elixir-autogen, elixir-format
 msgid "Larger than the upload limit."
@@ -413,7 +415,7 @@ msgstr ""
 msgid "Markdown: **bold**, _italic_, [link](https://…), - lists."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:698
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:847
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1063
 #, elixir-autogen, elixir-format
 msgid "Message"
@@ -498,7 +500,7 @@ msgstr ""
 msgid "No shared mailboxes yet."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:673
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:822
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1074
 #, elixir-autogen, elixir-format
 msgid "No signature"
@@ -695,8 +697,8 @@ msgstr ""
 msgid "Shared mailboxes you are given access to appear here."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:638
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:671
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:787
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:820
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1069
 #, elixir-autogen, elixir-format
 msgid "Signature"
@@ -739,7 +741,7 @@ msgstr ""
 msgid "Star"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:691
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:840
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1062
 #, elixir-autogen, elixir-format
 msgid "Subject"
@@ -825,12 +827,13 @@ msgstr ""
 msgid "The email log shows the email may have gone out, so it is not sent again."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:554
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:703
 #: lib/phoenix_kit_inbox/web/compose_live.ex:387
 #, elixir-autogen, elixir-format
 msgid "The signature in the message was edited, so it was left as it is."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1156
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1247
 #, elixir-autogen, elixir-format
 msgid "The upload failed."
@@ -861,6 +864,7 @@ msgstr ""
 msgid "These options need the sender's scope."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1155
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1246
 #, elixir-autogen, elixir-format
 msgid "This file type is not accepted."
@@ -881,12 +885,13 @@ msgstr ""
 msgid "This message can't be sent again from here."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:620
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:769
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1020
 #, elixir-autogen, elixir-format
 msgid "To"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1154
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1245
 #, elixir-autogen, elixir-format
 msgid "Too many files."
@@ -908,6 +913,7 @@ msgstr ""
 msgid "Unseen only"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:922
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1203
 #, elixir-autogen, elixir-format
 msgid "Upload files"
@@ -1472,84 +1478,90 @@ msgstr ""
 msgid "Show more"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:199
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:233
 #, elixir-autogen, elixir-format
 msgid "%{name} (personal)"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:630
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:779
 #, elixir-autogen, elixir-format
 msgid "+ Bcc"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:626
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:775
 #, elixir-autogen, elixir-format
 msgid "+ Cc"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:706
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:855
 #, elixir-autogen, elixir-format
 msgid "Attachments"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:922
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:925
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1159
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1162
 #, elixir-autogen, elixir-format
 msgid "File"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:608
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:757
 #, elixir-autogen, elixir-format
 msgid "From your personal mailbox: only you will see this letter."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:625
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:774
 #, elixir-autogen, elixir-format
 msgid "More fields"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:599
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:748
 #, elixir-autogen, elixir-format
 msgid "Replies go to %{address}"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:248
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:282
 #, elixir-autogen, elixir-format
 msgid "Unavailable sender"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:838
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1046
 #, elixir-autogen, elixir-format
 msgid "+ From client or CRM addresses"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:814
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1022
 #, elixir-autogen, elixir-format
 msgid "Add"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:806
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1014
 #, elixir-autogen, elixir-format
 msgid "Name or email"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:859
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1067
 #, elixir-autogen, elixir-format
 msgid "No addresses found."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:784
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:992
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1142
 #, elixir-autogen, elixir-format
 msgid "Remove %{name}"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:459
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:465
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:608
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:614
 #, elixir-autogen, elixir-format
 msgid "That is not an email address."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/compose_form.ex:885
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:1093
 #, elixir-autogen, elixir-format
 msgid "internal"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex:871
+#, elixir-autogen, elixir-format
+msgid "File %{id}"
 msgstr ""
