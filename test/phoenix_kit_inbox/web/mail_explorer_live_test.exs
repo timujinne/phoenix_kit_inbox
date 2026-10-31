@@ -96,12 +96,25 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
   def allow(_scope, _kind, _ref), do: true
   defp counting, do: {:capture, __MODULE__, :counting, 3}
 
-  # The update arrives through PubSub and a send_update: wait for it.
-  defp eventually(fun, tries \\ 40) do
+  # The update arrives through PubSub and a send_update, after the hook's
+  # moment of gathering: look again until it has, up to a deadline. Each look
+  # is a call to the page, answered after the messages sent to it before.
+  defp eventually(fun, timeout \\ 3_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    wait_until(fun, deadline)
+  end
+
+  defp wait_until(fun, deadline) do
     cond do
-      fun.() -> :ok
-      tries == 0 -> flunk("the page did not change")
-      true -> Process.sleep(50) && eventually(fun, tries - 1)
+      fun.() ->
+        :ok
+
+      System.monotonic_time(:millisecond) > deadline ->
+        flunk("the page did not change")
+
+      true ->
+        Process.sleep(10)
+        wait_until(fun, deadline)
     end
   end
 

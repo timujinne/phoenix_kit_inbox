@@ -36,6 +36,7 @@ defmodule PhoenixKitInbox.ObjectMailTest do
     grant_fixture(desk, alice, "read")
 
     %{
+      admin: admin,
       alice: alice,
       bob: bob,
       carol: carol,
@@ -313,6 +314,19 @@ defmodule PhoenixKitInbox.ObjectMailTest do
       assert depths[b.uuid] == 1
       assert depths[c.uuid] == 2
       assert depths[child.uuid] == 3
+    end
+
+    test "the letters of an archived shared mailbox are not read, and come back with it", ctx do
+      letter = mail(ctx, :bob, ctx.desk.address, %{"subject" => "To the desk"}, links: [@order])
+      assert uuids(threads(ctx.alice_scope)) == [letter.uuid]
+
+      admin_scope = scope_for(ctx.admin, ["inbox", "inbox.manage_shared"])
+      assert {:ok, _} = Mailboxes.archive_mailbox(admin_scope, ctx.desk)
+      assert threads(ctx.alice_scope) == []
+      assert ObjectMail.link_candidates(ctx.alice_scope) == []
+
+      assert {:ok, _} = Mailboxes.restore_mailbox(admin_scope, ctx.desk)
+      assert uuids(threads(ctx.alice_scope)) == [letter.uuid]
     end
 
     test "letter seen through two mailboxes appears once", ctx do

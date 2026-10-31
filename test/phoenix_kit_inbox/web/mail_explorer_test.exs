@@ -265,6 +265,121 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
     end
   end
 
+  describe "hostile content and forged events" do
+    test "nothing a sender or a body says becomes markup", %{conn: conn} = ctx do
+      evil =
+        user_fixture(%{
+          first_name: "<img src=x onerror=alert(1)>",
+          last_name: "<script>alert(2)</script>"
+        })
+
+      {:ok, evil_mb} = Mailboxes.ensure_user_mailbox(evil)
+      ctx = Map.merge(ctx, %{evil: evil, evil_mb: evil_mb, evil_scope: scope_for(evil)})
+
+      bodies = [
+        {"text", "<script>alert(4)</script> plain"},
+        {"html", "<script>alert(5)</script><b>bold</b>"},
+        {"markdown",
+         "<script>alert(6)</script>\n\n[click](javascript:alert(7))\n\n<img src=x onerror=alert(8)>"}
+      ]
+
+      letters =
+        for {format, body} <- bodies do
+          mail(
+            ctx,
+            :evil,
+            handle(ctx.alice),
+            %{
+              "subject" => "<script>alert(3)</script> #{format}",
+              "body" => body,
+              "body_format" => format
+            },
+            links: [@order]
+          )
+        end
+
+      view = mount_explorer(ctx, conn, %{compose: composing(), can_link?: allowing()})
+
+      for letter <- letters do
+        view |> element("#mail-row-demo-#{letter.uuid}") |> render_click()
+        html = render(element(view, "#mail-explorer-demo"))
+
+        refute html =~ "<script"
+        refute html =~ "<img src=x"
+        refute html =~ ~r/<[^>]*\sonerror\s*=/i
+        refute html =~ ~r/href="javascript:/i
+        assert html =~ "&lt;script&gt;alert(3)&lt;/script&gt;"
+      end
+    end
+
+    test "a deep reply is indented to the deepest step", %{conn: conn} = ctx do
+      root = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "L0"}, links: [@order])
+      l1 = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "L1", "parent_uuid" => root.uuid})
+      l2 = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "L2", "parent_uuid" => l1.uuid})
+      l3 = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "L3", "parent_uuid" => l2.uuid})
+      l4 = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "L4", "parent_uuid" => l3.uuid})
+
+      view = mount_explorer(ctx, conn)
+
+      for {letter, class} <- [{l1, "ml-4"}, {l2, "ml-8"}, {l3, "ml-12"}, {l4, "ml-12"}] do
+        assert has_element?(view, "#mail-row-demo-#{letter.uuid}.#{class}")
+      end
+
+      refute has_element?(view, "#mail-row-demo-#{root.uuid}.ml-4")
+    end
+
+    test "a letter linked to two objects of the filter is one letter with both links",
+         %{conn: conn} = ctx do
+      both = %{kind: "order", ref: "o-2"}
+      letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Both"}, links: [@order, both])
+
+      view = mount_explorer(ctx, conn, %{filter: [@order, both]})
+
+      assert length(Regex.scan(~r/id="mail-row-demo-/, render(view))) == 1
+      assert has_element?(view, "#mail-row-demo-#{letter.uuid}")
+
+      assert length(
+               Regex.scan(
+                 ~r/hero-link/,
+                 render(element(view, "#mail-letter-demo-#{letter.uuid}"))
+               )
+             ) ==
+               2
+    end
+
+    test "events about letters that are not on the page do nothing", %{conn: conn} = ctx do
+      shown = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Shown"}, links: [@order])
+      foreign = mail(ctx, :bob, handle(ctx.bob), %{"subject" => "Not Alice"}, links: [@order])
+      unlinked = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Unlinked"})
+      [foreign_link] = Links.for_message(foreign.uuid)
+
+      view = mount_explorer(ctx, conn, %{compose: composing(), can_link?: allowing()})
+      detail = fn -> render(element(view, "#mail-detail-demo")) end
+      before = detail.()
+      assert before =~ "Shown"
+
+      for uuid <- [foreign.uuid, unlinked.uuid, Ecto.UUID.generate(), "not-a-uuid"] do
+        forge(view, "reply", %{"uuid" => uuid})
+        forge(view, "select", %{"kind" => "message", "uuid" => uuid})
+        forge(view, "select", %{"kind" => "thread", "uuid" => uuid})
+        forge(view, "select", %{"kind" => "other", "uuid" => uuid})
+      end
+
+      for link <- [foreign_link.uuid, Ecto.UUID.generate(), "x"] do
+        forge(view, "unlink", %{"link" => link})
+      end
+
+      forge(view, "no_such_event", %{})
+      forge(view, "folder", %{"folder" => 1})
+
+      refute_receive {:inbox_explorer, _, _}, 100
+      assert detail.() == before
+      assert [_] = Links.for_message(foreign.uuid)
+      assert has_element?(view, "#mail-row-demo-#{shown.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{foreign.uuid}")
+    end
+  end
+
   describe "more than a page" do
     # Fifty-two conversations, the first two the oldest.
     defp many(ctx, links) do
