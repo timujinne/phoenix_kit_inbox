@@ -349,6 +349,8 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
 
       refute render(view) =~ "<script>alert"
       assert String.length(text(view, "[role=alert]")) <= 320
+    end
+
     test "a crash of the wrapper is logged where to look, not with what it carried",
          %{conn: conn} = ctx do
       mode(:raise)
@@ -812,6 +814,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       eventually(fn -> send_button_disabled?(view) end)
       refute has_element?(view, "#compose-demo-replay-note")
     end
+  end
 
   describe "files the host attached as bytes" do
     test "keep their ids when another one is taken off", %{conn: conn} = ctx do
@@ -834,7 +837,6 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert [%{filename: "b.txt", id: "data-1"}, %{filename: "c.txt", id: "data-2"}] =
                given.attachments
     end
-
   end
 
   def allow(_scope, _context, uuids) do

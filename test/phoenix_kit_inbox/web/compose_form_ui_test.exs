@@ -367,7 +367,6 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
     test "Enter in the subject cannot send: the form's own submit button is disabled",
          %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft())
-      view |> form("#compose-demo-form") |> render_submit()
 
       buttons = "#compose-demo-form button[type=submit]"
       assert has_element?(view, buttons <> "[disabled][tabindex='-1'][aria-hidden=true]")
@@ -405,6 +404,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       refute has_element?(view, "#compose-demo-cc")
     end
   end
+
   describe "for people who do not use a mouse" do
     test "the file input is hidden from the eye but not from the keyboard", %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft())
@@ -441,7 +441,6 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       assert has_element?(view, "#compose-demo-to-suggestions[role=listbox]")
       assert has_element?(view, "#compose-demo-to-suggestions [role=option]")
     end
-
   end
 
   describe "what the draft says, read the way the pipeline reads it" do
@@ -569,6 +568,5 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
 
       refute has_element?(view, "#compose-demo-from-error")
     end
-
   end
 end

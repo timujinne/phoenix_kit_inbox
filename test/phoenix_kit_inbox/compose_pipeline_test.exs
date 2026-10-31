@@ -929,7 +929,6 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       # Params that are no map are no params, as for `run/4`.
       assert {:ok, nil} = ComposePipeline.effective_identity(ctx.alice_scope, draft(ctx), "x")
     end
-
   end
 
   describe "the draft" do
