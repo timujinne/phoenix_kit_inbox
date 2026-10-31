@@ -1305,7 +1305,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           class="alert alert-warning alert-soft py-1 text-sm"
         >
           <.icon name="hero-eye-slash" class="w-4 h-4" />
-          <span>{gettext("From your personal mailbox: only you will see this letter.")}</span>
+          <span>
+            {gettext("This message will not appear in the shared feed: only you will see it.")}
+          </span>
         </div>
       </div>
 

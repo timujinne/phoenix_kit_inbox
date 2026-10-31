@@ -461,6 +461,13 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       assert render(element(view, "#compose-demo-reply-to")) =~ "desk@company.test"
     end
 
+    test "the personal mailbox's note says where the letter will not be", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+
+      note = render(element(view, "#compose-demo-personal-note"))
+      assert note =~ "will not appear in the shared feed"
+      assert note =~ "only you"
+    end
   end
 
   describe "outside mail and the sender it will go as" do
