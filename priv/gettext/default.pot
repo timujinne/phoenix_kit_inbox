@@ -26,6 +26,9 @@ msgstr ""
 #: lib/phoenix_kit_inbox/notify.ex:242
 #: lib/phoenix_kit_inbox/notify.ex:243
 #: lib/phoenix_kit_inbox/notify.ex:365
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:395
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:421
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:93
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:758
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:836
 #, elixir-autogen, elixir-format
@@ -192,6 +195,7 @@ msgstr ""
 msgid "Choose a sender under “Send as” to write to addresses outside this application."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:377
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:838
 #, elixir-autogen, elixir-format
 msgid "Close"
@@ -317,6 +321,7 @@ msgid "Grant access"
 msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:195
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:502
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:77
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1077
 #, elixir-autogen, elixir-format
@@ -342,6 +347,7 @@ msgstr ""
 #: lib/phoenix_kit_inbox.ex:180
 #: lib/phoenix_kit_inbox.ex:240
 #: lib/phoenix_kit_inbox.ex:272
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:79
 #: lib/phoenix_kit_inbox/web/settings_live.ex:31
 #, elixir-autogen, elixir-format
 msgid "Mail"
@@ -570,6 +576,7 @@ msgstr ""
 msgid "Remove attachment"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:493
 #: lib/phoenix_kit_inbox/web/compose_live.ex:440
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1002
 #, elixir-autogen, elixir-format
@@ -659,6 +666,7 @@ msgstr ""
 msgid "Sending to addresses outside this application is turned off."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:503
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1078
 #, elixir-autogen, elixir-format
 msgid "Sent"
@@ -907,6 +915,7 @@ msgstr ""
 msgid "Where replies to your messages go by default: your email, or a shared mailbox you write to."
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:358
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:542
 #, elixir-autogen, elixir-format
 msgid "Write"
@@ -966,21 +975,25 @@ msgstr ""
 msgid "a file"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:518
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:956
 #, elixir-autogen, elixir-format
 msgid "not delivered"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:519
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:957
 #, elixir-autogen, elixir-format
 msgid "sending…"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:517
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:955
 #, elixir-autogen, elixir-format
 msgid "sent"
 msgstr ""
 
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:520
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:958
 #, elixir-autogen, elixir-format
 msgid "unknown — check the email log"
@@ -1284,4 +1297,91 @@ msgstr ""
 #: lib/phoenix_kit_inbox/errors.ex:168
 #, elixir-autogen, elixir-format
 msgid "The email's HTML cannot be sent as it is."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:97
+#, elixir-autogen, elixir-format
+msgid "%{count} letter"
+msgid_plural "%{count} letters"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:501
+#, elixir-autogen, elixir-format
+msgid "All"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:288
+#, elixir-autogen, elixir-format
+msgid "Folder"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:131
+#, elixir-autogen, elixir-format
+msgid "Incoming"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:310
+#, elixir-autogen, elixir-format
+msgid "Link a letter"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:385
+#, elixir-autogen, elixir-format
+msgid "No letters without a link."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:326
+#, elixir-autogen, elixir-format
+msgid "No letters yet."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:348
+#, elixir-autogen, elixir-format
+msgid "Other people's personal mail is not shown here."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:132
+#, elixir-autogen, elixir-format
+msgid "Outgoing"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:373
+#, elixir-autogen, elixir-format
+msgid "Pick a letter to link"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:332
+#, elixir-autogen, elixir-format
+msgid "Select a conversation to read it."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:466
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:467
+#, elixir-autogen, elixir-format
+msgid "Unlink"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:124
+#, elixir-autogen, elixir-format
+msgctxt "mail link source"
+msgid "host"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:125
+#, elixir-autogen, elixir-format
+msgctxt "mail link source"
+msgid "manual"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:127
+#, elixir-autogen, elixir-format
+msgctxt "mail link source"
+msgid "subject"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_tree.ex:126
+#, elixir-autogen, elixir-format
+msgctxt "mail link source"
+msgid "thread"
 msgstr ""

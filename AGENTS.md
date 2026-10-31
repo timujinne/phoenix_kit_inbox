@@ -187,6 +187,7 @@ lib/phoenix_kit_inbox/
 ├── outbound.ex, outbound/mailer.ex       # THE way mail leaves: checks, filter, core call
 ├── external.ex                           # external recipients: rows, task, status, retry
 ├── links.ex, link_resolver.ex            # message ↔ host-object links (+ the resolver behaviour)
+├── object_mail.ex                        # an object's mail as one viewer may read it (visible mailboxes only)
 ├── access_events.ex                      # PubSub: grant/mailbox/sender changes for open pages
 ├── email_log.ex                          # reads phoenix_kit_emails' log (soft dependency)
 ├── migrations.ex                         # version coordinator
@@ -195,6 +196,7 @@ lib/phoenix_kit_inbox/
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
     web/{signature_editor,identity_editor}.ex   # editors the pages share
     web/scope_refresh.ex                  # scope copy + access-event subscriptions the pages share
+    web/components/{mail_explorer,mail_tree}.ex   # the embeddable per-object mail component
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.

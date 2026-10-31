@@ -10,6 +10,10 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
 
   Mounted at `/component-host`; tests put the three keys into the session
   with `Plug.Test.init_test_session/2`.
+
+  A session cannot carry a function (it is signed as a non-executable term),
+  so an attribute that must be one is given as `{:capture, module, name,
+  arity}` and turned into the capture here.
   """
 
   use Phoenix.LiveView
@@ -19,7 +23,7 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
     {:ok,
      socket
      |> assign(:component, Map.fetch!(session, "component"))
-     |> assign(:component_assigns, Map.get(session, "assigns", %{}))
+     |> assign(:component_assigns, session |> Map.get("assigns", %{}) |> captures())
      |> assign(:test_pid, Map.fetch!(session, "test_pid"))}
   end
 
@@ -38,6 +42,13 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp captures(assigns) do
+    Map.new(assigns, fn
+      {key, {:capture, module, name, arity}} -> {key, Function.capture(module, name, arity)}
+      pair -> pair
+    end)
+  end
 
   defp inbox_message?(message) do
     case elem(message, 0) do
