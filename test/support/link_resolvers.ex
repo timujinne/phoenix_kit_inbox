@@ -66,3 +66,21 @@ defmodule PhoenixKitInbox.Test.WaitingResolver do
     true
   end
 end
+
+defmodule PhoenixKitInbox.Test.ClauseErrorResolver do
+  @moduledoc """
+  A resolver whose `extract/1` fails with a `FunctionClauseError` — the kind
+  of error whose message carries the argument, here the subject.
+  """
+
+  @behaviour PhoenixKitInbox.LinkResolver
+
+  @impl true
+  def kind, do: "order"
+
+  @impl true
+  def extract("a subject nobody sends"), do: []
+
+  @impl true
+  def exists?(_ref), do: true
+end

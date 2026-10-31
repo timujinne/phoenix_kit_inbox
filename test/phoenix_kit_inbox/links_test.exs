@@ -133,6 +133,37 @@ defmodule PhoenixKitInbox.LinksTest do
       refute_received {:inbox_message_linked, _}
     end
 
+    test "a failing thread link insert rolls the reply back", ctx do
+      root = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
+
+      # An inherited link that cannot be stored; DDL is transactional, so the
+      # sandbox takes the rule away again.
+      Repo.query!(
+        "ALTER TABLE phoenix_kit_inbox_message_links ADD CONSTRAINT links_test_no_inherit CHECK (source <> 'thread')"
+      )
+
+      capture_log(fn ->
+        assert {:error, :links_failed} =
+                 Messages.send_message(
+                   ctx.bob_scope,
+                   ctx.bob_mb,
+                   %{
+                     "to" => ctx.alice.email,
+                     "subject" => "Rolled back",
+                     "body" => "Body",
+                     "parent_uuid" => root.uuid
+                   }
+                 )
+      end)
+
+      assert Repo.aggregate(
+               from(m in PhoenixKitInbox.Schemas.Message, where: m.subject == "Rolled back"),
+               :count
+             ) == 0
+
+      assert Messages.list_folder(ctx.alice_mb.uuid, "inbox") == []
+    end
+
     test "reply inherits the thread's links", ctx do
       root = send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
       reply = reply_to(ctx.bob_scope, ctx.bob_mb, ctx.alice, root)
@@ -181,6 +212,63 @@ defmodule PhoenixKitInbox.LinksTest do
 
         assert log =~ "RaisingResolver"
       end
+    end
+
+    test "a failing resolver is logged without the subject it was given", ctx do
+      resolvers([PhoenixKitInbox.Test.ClauseErrorResolver], [])
+
+      log =
+        capture_log(fn ->
+          message =
+            send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{
+              "subject" => "Quote for Mrs Private-Person #99"
+            })
+
+          assert message.status == "sent"
+        end)
+
+      assert log =~ "ClauseErrorResolver"
+      assert log =~ "FunctionClauseError"
+      refute log =~ "Private-Person"
+      refute log =~ "#99"
+    end
+
+    test "a thrown or exited resolver is logged by kind, not by what it carried", ctx do
+      resolvers([RaisingResolver], [])
+
+      for failure <- [:throw, :exit] do
+        Application.put_env(:phoenix_kit_inbox, :test_resolver_failure, failure)
+
+        log =
+          capture_log(fn ->
+            send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{"subject" => "Secret subject"})
+          end)
+
+        assert log =~ "#{failure}"
+        refute log =~ "Secret subject"
+      end
+    end
+
+    test "the link events of the host come right after the commit, before the notifications",
+         ctx do
+      :ok = Links.subscribe("order", "o-1")
+      :ok = PhoenixKit.PubSub.Manager.subscribe(PhoenixKit.Activity.pubsub_topic())
+
+      send_to(ctx.alice_scope, ctx.alice_mb, ctx.bob, %{}, links: [@order])
+
+      {:messages, mailbox} = Process.info(self(), :messages)
+
+      position = fn match -> Enum.find_index(mailbox, match) end
+      linked = position.(&match?({:inbox_message_linked, _}, &1))
+
+      sent =
+        position.(fn
+          {:activity_logged, %{action: "inbox.message_sent"}} -> true
+          _ -> false
+        end)
+
+      assert linked != nil and sent != nil
+      assert linked < sent
     end
 
     test "links in attrs are ignored; links in opts are used", ctx do

@@ -782,6 +782,10 @@ defmodule PhoenixKitInbox.Messages do
              })
            end)
            |> finish_attachments(created) do
+      # The watchers of the objects hear of the links first; they cost one
+      # read of our own table.
+      Links.announce(message)
+
       if items != [], do: Folders.lay_out_sent(message, mailbox)
 
       # Post-commit, deliberately: see the moduledoc.
@@ -796,7 +800,8 @@ defmodule PhoenixKitInbox.Messages do
       # host's resolvers run here, and a slow or failing one must not hold
       # back the external send or poison the transaction of a message that is
       # otherwise fine. The links of the host and of the conversation are
-      # already stored (in `do_send/1`). `apply_to_new_message/1` never raises.
+      # already stored (in `do_send/1`) and announced. `apply_to_new_message/1`
+      # never raises.
       Links.apply_to_new_message(message)
 
       # The HTML was for the email (it travelled in `message`); the caller

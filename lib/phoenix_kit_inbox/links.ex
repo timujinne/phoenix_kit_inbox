@@ -125,21 +125,29 @@ defmodule PhoenixKitInbox.Links do
   end
 
   @doc false
-  # After a message was committed: announces the links it was given in the
-  # transaction (host and thread), then writes the objects the host's
-  # resolvers find in its subject ("subject" — see
-  # `PhoenixKitInbox.LinkResolver`). The resolvers are host code, so this runs
-  # last. Never raises and never fails the send: a failure in either step, a
-  # crashing resolver included, is logged and the rest goes on. No access
-  # check: server code only.
-  @spec apply_to_new_message(Message.t()) :: :ok
-  def apply_to_new_message(%Message{} = message) do
+  # Right after a message was committed: announces the links it was given in
+  # the transaction (host and thread) to whoever watches those objects. Never
+  # raises. No access check: server code only.
+  @spec announce(Message.t()) :: :ok
+  def announce(%Message{} = message) do
     guarded("link events", fn ->
       message.uuid
       |> for_message()
       |> Enum.each(&broadcast(&1, message.uuid))
     end)
 
+    :ok
+  end
+
+  @doc false
+  # After a message was committed, and last of all: writes the objects the
+  # host's resolvers find in its subject ("subject" — see
+  # `PhoenixKitInbox.LinkResolver`) and announces them. The resolvers are host
+  # code, so this runs after everything else. Never raises and never fails the
+  # send: a failure, a crashing resolver included, is logged and the rest goes
+  # on. No access check: server code only.
+  @spec apply_to_new_message(Message.t()) :: :ok
+  def apply_to_new_message(%Message{} = message) do
     guarded("subject links", fn -> record(message.uuid, subject_links(message), "subject") end)
     :ok
   end
@@ -188,15 +196,25 @@ defmodule PhoenixKitInbox.Links do
   defp guarded(what, fun) do
     fun.()
   rescue
-    e -> log_failure(what, Exception.format(:error, e, __STACKTRACE__))
+    e -> log_failure(what, "(#{inspect(e.__struct__)})")
   catch
-    kind, reason -> log_failure(what, Exception.format(kind, reason, __STACKTRACE__))
+    kind, reason -> log_failure(what, "(#{kind} of #{term_type(reason)})")
   end
 
-  defp log_failure(what, formatted) do
-    Logger.error("[Inbox] #{what} failed, the message is kept without them:\n#{formatted}")
+  # Only what failed and the kind of the error: the message of an exception
+  # (a FunctionClauseError, say) carries its arguments, which here are the
+  # subject of a person's message.
+  defp log_failure(what, kind) do
+    Logger.error("[Inbox] #{what} failed #{kind}, the message is kept without them")
     :error
   end
+
+  defp term_type(term) when is_atom(term), do: "an atom"
+  defp term_type(term) when is_binary(term), do: "text"
+  defp term_type(term) when is_tuple(term), do: "a tuple"
+  defp term_type(term) when is_map(term), do: "a map"
+  defp term_type(term) when is_list(term), do: "a list"
+  defp term_type(_term), do: "another term"
 
   defp insert(_message_uuids, [], _source, _linked_by), do: :ok
 
