@@ -43,6 +43,7 @@ defmodule PhoenixKitInbox.Messages do
   alias PhoenixKitInbox.Schemas.ExternalRecipient
   alias PhoenixKitInbox.Schemas.Mailbox
   alias PhoenixKitInbox.Schemas.Message
+  alias PhoenixKitInbox.Schemas.SendKey
 
   @default_limit 50
   @recipient_roles ~w(to cc bcc)
@@ -649,6 +650,15 @@ defmodule PhoenixKitInbox.Messages do
       `{:error, :links_failed}` and nothing is sent. The links the
       conversation and the host's resolvers add come after the commit and
       never lose the message. A `"links"` entry in `attrs` is ignored.
+    * `idempotency_key: key` — a string (at most 255 characters) the host
+      issues per opening of its form. Repeating a send with a key already used
+      returns `{:ok, message}` with the message the first send made (its
+      `external_status` as that send answered it) and does nothing else: no
+      second message, email, nudge or notification. Two sends racing with one
+      key make one message. A key used by another sender is
+      `{:error, :idempotency_key_taken}`, a longer one
+      `{:error, :invalid_idempotency_key}`. Keys are kept 30 days. A blank
+      key, or an `"idempotency_key"` in `attrs`, means no key.
 
   Returns `{:error, {:unknown_recipients, ["typo@example.com"]}}` when an
   address doesn't resolve — the whole send is refused so the sender finds out
@@ -691,8 +701,10 @@ defmodule PhoenixKitInbox.Messages do
   # `scope` is nil for the three-argument form.
   defp deliver(mailbox, sender_user_uuid, attrs, scope, opts) do
     attrs = normalize_attrs(attrs)
+    key = send_key(opts)
 
-    with :ok <- ensure_active(mailbox),
+    with :ok <- check_send_key(key, mailbox, sender_user_uuid),
+         :ok <- ensure_active(mailbox),
          {:ok, sender_record} <- sender_options(scope, mailbox, attrs),
          {:ok, recipients, externals} <- resolve_recipients(attrs),
          {:ok, externals} <- admit_externals(scope, mailbox, sender_record, externals),
@@ -713,6 +725,7 @@ defmodule PhoenixKitInbox.Messages do
                {recipients, externals, sender_record},
                existing,
                items,
+               key,
                Keyword.get(opts, :links, [])
              )
            end)
@@ -732,7 +745,105 @@ defmodule PhoenixKitInbox.Messages do
       })
 
       {:ok, start_external(message, external_rows, scope, mailbox)}
+    else
+      {:replay, message} -> {:ok, message}
+      # Lost the race for the key: the rival's message is the answer.
+      {:error, :send_key_taken} -> replay_send_key(key, mailbox, sender_user_uuid)
+      other -> other
     end
+  end
+
+  # ── idempotency key ─────────────────────────────────────────────────────────
+
+  @send_key_max_chars 255
+  @send_key_ttl_days 30
+  @send_key_purge_batch 100
+
+  # The key comes from the server-side `opts` only (never from `attrs`). Blank
+  # or non-string means no key: the send behaves as it always did.
+  defp send_key(opts) do
+    case Keyword.get(opts, :idempotency_key) do
+      key when is_binary(key) and key != "" -> key
+      _ -> nil
+    end
+  end
+
+  # Before anything is stored or sent: a key already used answers with its
+  # message, and nothing else happens. Only the sender who used the key gets
+  # the message back; anyone else is refused.
+  defp check_send_key(nil, _mailbox, _sender_user_uuid), do: :ok
+
+  defp check_send_key(key, mailbox, sender_user_uuid) do
+    if String.length(key) > @send_key_max_chars do
+      {:error, :invalid_idempotency_key}
+    else
+      case replay_send_key(key, mailbox, sender_user_uuid) do
+        {:ok, message} -> {:replay, message}
+        {:error, :not_found} -> :ok
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  defp replay_send_key(key, mailbox, sender_user_uuid) do
+    from(m in Message,
+      join: k in SendKey,
+      on: k.message_uuid == m.uuid,
+      where: k.key == ^key
+    )
+    |> repo().one()
+    |> case do
+      nil ->
+        {:error, :not_found}
+
+      %Message{sender_mailbox_uuid: mailbox_uuid, sender_user_uuid: user_uuid} = message
+      when mailbox_uuid == mailbox.uuid and user_uuid == sender_user_uuid ->
+        {:ok, %{message | external_status: replayed_external_status(message)}}
+
+      %Message{} ->
+        {:error, :idempotency_key_taken}
+    end
+  end
+
+  # What the first send answered: pending when the message has external
+  # recipients, else none.
+  defp replayed_external_status(message) do
+    if External.list(message.uuid) == [], do: :none, else: :pending
+  end
+
+  # In the send's own transaction. A key that is already there fails the
+  # unique index, which rolls the whole send back. Keys older than the
+  # retention go along, a batch at a time: the module has no cron of its own.
+  defp record_send_key(multi, nil), do: multi
+
+  defp record_send_key(multi, key) do
+    Multi.run(multi, :send_key, fn repo, %{thread: message} ->
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      purge_expired_send_keys(repo, now)
+
+      %SendKey{key: key, message_uuid: message.uuid, inserted_at: now}
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.unique_constraint(:key)
+      |> repo.insert()
+      |> case do
+        {:ok, row} -> {:ok, row}
+        {:error, %Ecto.Changeset{errors: [key: _]}} -> {:error, :send_key_taken}
+        {:error, changeset} -> {:error, changeset}
+      end
+    end)
+  end
+
+  defp purge_expired_send_keys(repo, now) do
+    cutoff = DateTime.add(now, -@send_key_ttl_days * 86_400, :second)
+
+    expired =
+      from(k in SendKey,
+        where: k.inserted_at < ^cutoff,
+        limit: @send_key_purge_batch,
+        select: k.key
+      )
+
+    repo.delete_all(from(k in SendKey, where: k.key in subquery(expired)))
   end
 
   # External addresses need a scope (the three-argument form has none), the
@@ -896,6 +1007,7 @@ defmodule PhoenixKitInbox.Messages do
          {recipients, externals, sender_record},
          existing,
          items,
+         send_key,
          host_links
        ) do
     base = existing || %Message{}
@@ -925,6 +1037,7 @@ defmodule PhoenixKitInbox.Messages do
     Multi.new()
     |> Multi.run(:message, fn repo, _ -> write_message(repo, changeset, existing) end)
     |> Multi.run(:thread, &backfill_thread_uuid/2)
+    |> record_send_key(send_key)
     |> Multi.run(:links, fn _repo, %{thread: message} ->
       with :ok <- Links.write_host(message.uuid, host_links), do: {:ok, :written}
     end)
