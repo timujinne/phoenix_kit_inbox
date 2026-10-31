@@ -197,6 +197,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   # ── recipients ──────────────────────────────────────────────────────────────
 
   defp recipients(draft, params) do
+    named = host_users(draft)
+
     Enum.reduce_while(@roles, {:ok, %{}}, fn role, {:ok, acc} ->
       source =
         case Map.fetch(params, Atom.to_string(role)) do
@@ -204,7 +206,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
           :error -> Map.fetch!(draft, role)
         end
 
-      case role_recipients(source, role) do
+      case role_recipients(source, role, named) do
         {:ok, list} -> {:cont, {:ok, Map.put(acc, role, list)}}
         {:error, _} = error -> {:halt, error}
       end
@@ -215,9 +217,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp role_recipients(source, role) do
+  defp role_recipients(source, role, named) do
     with {:ok, entries} <- entries(source),
-         {:ok, list} <- parse_entries(entries) do
+         {:ok, list} <- parse_entries(entries, named) do
       list = Enum.uniq_by(list, &String.downcase(&1.address))
       max = Map.fetch!(@max_per_role, role)
 
@@ -248,9 +250,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp parse_entries(entries) do
+  defp parse_entries(entries, named) do
     Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, acc} ->
-      case recipient(entry) do
+      case recipient(entry, named) do
         {:ok, recipient} -> {:cont, {:ok, [recipient | acc]}}
         {:error, _} = error -> {:halt, error}
       end
@@ -263,41 +265,89 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   # Text typed by hand: an outside address until the person picks it from the
   # inside suggestions.
-  defp recipient(text) when is_binary(text), do: recipient(%{address: text, route: :email})
+  defp recipient(text, named) when is_binary(text),
+    do: recipient(%{address: text, route: :email}, named)
 
-  defp recipient(%{} = entry) when not is_struct(entry) do
+  defp recipient(%{} = entry, named) when not is_struct(entry) do
     with {:ok, route} <- route(field(entry, :route)),
-         {:ok, base} <- identity(entry, route) do
+         {:ok, base} <- identity(entry, route, named) do
       {:ok, Map.merge(base, %{label: label(field(entry, :label)), route: route})}
     end
   end
 
-  defp recipient(_), do: {:error, :invalid_recipients}
+  defp recipient(_, _named), do: {:error, :invalid_recipients}
 
   defp route(nil), do: {:ok, :email}
   defp route(route) when route in [:internal, "internal"], do: {:ok, :internal}
   defp route(route) when route in [:email, "email"], do: {:ok, :email}
   defp route(_), do: {:error, :invalid_recipients}
 
-  # A user wins over a text: the host knows them by account.
-  defp identity(entry, route) do
-    case {field(entry, :user), field(entry, :address)} do
-      {user, _} when is_binary(user) ->
-        case Mailboxes.recipient_address(user, route) do
-          {:ok, address} -> {:ok, %{address: address, user: user}}
-          {:error, _} -> {:error, {:invalid_recipient, user}}
-        end
+  # The users the host's draft names (the form's own chips are in the draft
+  # too): theirs to name by any route. Anyone else the browser names by uuid
+  # is not looked up for a login address — that would tell the page who has
+  # which email, past the circle.
+  defp host_users(draft) do
+    for role <- @roles,
+        entries = Map.fetch!(draft, role),
+        is_list(entries),
+        %{} = entry <- entries,
+        not is_struct(entry),
+        user = field(entry, :user),
+        is_binary(user),
+        {:ok, uuid} <- [Ecto.UUID.cast(user)],
+        into: MapSet.new(),
+        do: uuid
+  end
 
-      {_, address} when is_binary(address) ->
-        address = String.trim(address)
+  # A user wins over a text when the host named them, or when the route is
+  # the inside one and they are in the circle; otherwise the entry is only
+  # the text it carries, if any, and the user is not echoed.
+  defp identity(entry, route, named) do
+    user = field(entry, :user)
+    address = field(entry, :address)
 
-        if address_ok?(address),
-          do: {:ok, %{address: address}},
-          else: {:error, {:invalid_recipient, address}}
+    cond do
+      is_binary(user) and named?(named, user) ->
+        by_account(user, route, &Mailboxes.recipient_address/2)
 
-      _ ->
+      is_binary(user) and route == :internal and not is_binary(address) ->
+        by_circle(user)
+
+      is_binary(address) ->
+        typed(address)
+
+      true ->
         {:error, :invalid_recipients}
     end
+  end
+
+  defp by_account(user, route, lookup) do
+    case lookup.(user, route) do
+      {:ok, address} -> {:ok, %{address: address, user: user}}
+      {:error, _} -> {:error, {:invalid_recipient, user}}
+    end
+  end
+
+  defp by_circle(user) do
+    case Mailboxes.member_recipient_address(user) do
+      {:ok, address} -> {:ok, %{address: address, user: user}}
+      {:error, _} -> {:error, :invalid_recipients}
+    end
+  end
+
+  defp named?(named, user) do
+    case Ecto.UUID.cast(user) do
+      {:ok, uuid} -> MapSet.member?(named, uuid)
+      :error -> false
+    end
+  end
+
+  defp typed(address) do
+    address = String.trim(address)
+
+    if address_ok?(address),
+      do: {:ok, %{address: address}},
+      else: {:error, {:invalid_recipient, address}}
   end
 
   defp address_ok?(address) do

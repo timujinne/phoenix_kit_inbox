@@ -321,6 +321,26 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   def recipient_address(_user_uuid, _route), do: {:error, :recipient_not_found}
 
+  @doc """
+  `recipient_address(user_uuid, :internal)` for a user the browser named: the
+  handle only when the user is inside the recipient circle (`Members.member?/1`),
+  else `{:error, :recipient_not_found}` — the same answer as for no such user,
+  so it tells nobody who exists.
+  """
+  @spec member_recipient_address(term()) :: {:ok, String.t()} | {:error, :recipient_not_found}
+  def member_recipient_address(user_uuid) when is_binary(user_uuid) do
+    with {:ok, uuid} <- Ecto.UUID.cast(user_uuid),
+         %User{} = user <- repo().get(User, uuid),
+         true <- Members.member?(user),
+         address when is_binary(address) <- user_handle(user) do
+      {:ok, address}
+    else
+      _ -> {:error, :recipient_not_found}
+    end
+  end
+
+  def member_recipient_address(_user_uuid), do: {:error, :recipient_not_found}
+
   defp address_for(user, :internal), do: user_handle(user)
   defp address_for(user, :email), do: user.email
 

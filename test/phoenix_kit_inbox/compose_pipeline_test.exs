@@ -320,6 +320,84 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
                run(ctx, %{}, draft(ctx, to: [%{user: Ecto.UUID.generate(), route: :internal}]))
     end
 
+    test "a user the browser names is not turned into a login address", ctx do
+      use_client_filter()
+      forged = %{"to" => [%{"user" => ctx.client.uuid, "route" => "email"}]}
+
+      result = run(ctx, forged, draft(ctx))
+
+      assert {:error, :invalid_recipients} = result
+      refute inspect(result) =~ ctx.client.email
+      refute inspect(result) =~ ctx.client.username
+      assert message_count() == 0
+
+      # A member's login email is no more to be had by uuid than a client's.
+      assert {:error, :invalid_recipients} =
+               run(ctx, %{"to" => [%{"user" => ctx.bob.uuid, "route" => "email"}]}, draft(ctx))
+
+      # Nobody at all answers the same as a user who is not to be had.
+      assert {:error, :invalid_recipients} =
+               run(
+                 ctx,
+                 %{"to" => [%{"user" => Ecto.UUID.generate(), "route" => "internal"}]},
+                 draft(ctx)
+               )
+
+      # Nor is one outside the circle by the inside route.
+      assert {:error, :invalid_recipients} =
+               run(
+                 ctx,
+                 %{"to" => [%{"user" => ctx.client.uuid, "route" => "internal"}]},
+                 draft(ctx)
+               )
+    end
+
+    test "a user named by the browser who is in the circle goes by the inside route", ctx do
+      form = %{"to" => [%{"user" => ctx.bob.uuid, "route" => "internal", "label" => "Bob"}]}
+      assert {:ok, message} = run(ctx, form, draft(ctx, to: []))
+      assert [%{"role" => "to", "handle" => "@staff_bob"}] = recipients(message)
+    end
+
+    test "a user the host's draft names is the host's to name, by any route", ctx do
+      use_client_filter()
+      test = self()
+
+      wrapper = fn _scope, seen, _send_fun ->
+        send(test, {:seen, seen.to})
+        {:error, :stop}
+      end
+
+      emailed = [%{user: ctx.client.uuid, route: :email}]
+      assert {:error, :stop} = run(ctx, %{}, draft(ctx, to: emailed), %{around_send: wrapper})
+      assert_received {:seen, [%{address: address, user: user}]}
+      assert address == ctx.client.email and user == ctx.client.uuid
+
+      # The form keeping that recipient in its own params keeps it.
+      echoed = %{"to" => [%{"user" => ctx.client.uuid, "route" => "email"}]}
+      assert {:error, :stop} = run(ctx, echoed, draft(ctx, to: emailed), %{around_send: wrapper})
+      assert_received {:seen, [%{address: ^address}]}
+    end
+
+    test "a user from the browser with an address of its own is that address typed", ctx do
+      form = %{
+        "to" => [
+          %{"user" => ctx.client.uuid, "address" => "typed@example.com", "route" => "email"}
+        ]
+      }
+
+      test = self()
+
+      wrapper = fn _scope, seen, _send_fun ->
+        send(test, {:seen, seen.to})
+        {:error, :stop}
+      end
+
+      assert {:error, :stop} = run(ctx, form, draft(ctx), %{around_send: wrapper})
+      assert_received {:seen, [seen]}
+      assert seen.address == "typed@example.com"
+      refute Map.has_key?(seen, :user)
+    end
+
     test "the form's recipients replace the draft's; absent, the draft's stay", ctx do
       assert {:ok, kept} = run(ctx, %{}, draft(ctx))
       assert [%{"role" => "to", "handle" => "@staff_bob"}] = recipients(kept)
