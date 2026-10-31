@@ -149,6 +149,8 @@ defmodule PhoenixKitInbox.MigrationsV07Test do
       assert fk_delete_rule(@probe, @links, "linked_by_user_uuid") == "n"
       assert fk_delete_rule(@probe, @keys, "message_uuid") == "c"
       assert index_exists?(@probe, "phoenix_kit_inbox_message_links_kind_ref_index")
+      assert index_exists?(@probe, "phoenix_kit_inbox_send_keys_inserted_at_index")
+      assert index_exists?(@probe, "phoenix_kit_inbox_send_keys_message_uuid_index")
       assert column_default(@probe, @identities, "personalize_from_name") == "false"
     end
 

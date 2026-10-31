@@ -17,7 +17,8 @@ defmodule PhoenixKitInbox.Migrations.V07 do
 
   `phoenix_kit_inbox_send_keys` — a key the host gave a send so that repeating
   it answers with the same message instead of sending twice. Unique on `key`;
-  the row goes with its message.
+  the row goes with its message. Indexed by `inserted_at` for the purge of old
+  keys and by `message_uuid` for the cascade.
 
   `phoenix_kit_inbox_identities.personalize_from_name` — whether a shared
   identity puts the sender's own name into the From name. Off for every
@@ -107,6 +108,8 @@ defmodule PhoenixKitInbox.Migrations.V07 do
     end
 
     create_if_not_exists(unique_index(:phoenix_kit_inbox_send_keys, [:key], prefix: prefix))
+    create_if_not_exists(index(:phoenix_kit_inbox_send_keys, [:inserted_at], prefix: prefix))
+    create_if_not_exists(index(:phoenix_kit_inbox_send_keys, [:message_uuid], prefix: prefix))
 
     alter table(:phoenix_kit_inbox_identities, prefix: prefix) do
       add_if_not_exists(:personalize_from_name, :boolean, null: false, default: false)
