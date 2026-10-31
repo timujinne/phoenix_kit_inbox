@@ -1104,7 +1104,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
              socket.assigns[:authorize_attachments]
            ) do
         {:ok, items} -> add_picks(socket, uuids, items)
-        {:error, reason} -> assign(socket, files_error: Errors.message(reason))
+        {:error, reason} -> assign(socket, files_error: Errors.user_message(reason))
       end
     end
   end

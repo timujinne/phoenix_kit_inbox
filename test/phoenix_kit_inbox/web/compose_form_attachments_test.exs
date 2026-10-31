@@ -25,6 +25,15 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
         context[:deny] ->
           {:error, {:attachment_forbidden, hd(uuids)}}
 
+        context[:raw] ->
+          {:error, "SQL timeout at db-7.internal:5432"}
+
+        context[:odd] ->
+          {:error, {:db_down, "10.0.0.7"}}
+
+        context[:refuse] ->
+          {:error, {:refused, "This file is private to the client."}}
+
         context[:named] ->
           {:ok, for(uuid <- uuids, do: %{file_uuid: uuid, name: "Price list.pdf"})}
 
@@ -290,6 +299,33 @@ defmodule PhoenixKitInbox.Web.ComposeFormAttachmentsTest do
                view,
                "#compose-demo-attachments li[data-file]",
                "File " <> String.slice(uuid, 0, 8)
+             )
+    end
+
+    test "what the host's callback says in raw text or in no known words is not shown",
+         %{conn: conn} = ctx do
+      for context <- [%{raw: true}, %{odd: true}] do
+        view = mount_form(ctx, conn, draft(attachments: [], context: context))
+        forge(view, "pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
+
+        html = render(view)
+        assert has_element?(view, "#compose-demo-files-error[role=alert]")
+        refute html =~ "db-7.internal"
+        refute html =~ "10.0.0.7"
+        refute html =~ "Unexpected error"
+        assert files(view) == 0
+      end
+    end
+
+    test "a refusal the host marks as its own is shown at the pick", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(attachments: [], context: %{refuse: true}))
+
+      forge(view, "pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
+
+      assert has_element?(
+               view,
+               "#compose-demo-files-error[role=alert]",
+               "This file is private to the client."
              )
     end
 
