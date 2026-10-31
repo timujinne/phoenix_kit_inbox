@@ -1300,30 +1300,53 @@ defmodule PhoenixKitInbox.Messages do
 
   @doc """
   The way each of `addresses` would travel if sent now, by the send path's own
-  lookup (the one `send_message/4` resolves recipients with, so the two cannot
-  disagree): `:internal` with the `mailbox_uuid` it lands in when the text
-  names a member or a shared mailbox (`@username`, an email, a mailbox name),
-  else `:email`. Text that is no address and names nobody — and one that
-  names two people — is `:email` too: the send refuses those itself.
+  lookup (`Mailboxes.fetch_mailbox_by_recipient/2`, the one `send_message/4`
+  resolves recipients with, so the two cannot disagree): `:internal` when the
+  text names a member or a shared mailbox (`@username`, an email, a mailbox
+  name) — with the `mailbox_uuid` it lands in, or `nil` for a member who has no
+  personal mailbox yet (the send makes it; this does not) — else `:email`.
+  Text that is no address and names nobody, and text that names two people, is
+  `:email` too: the send refuses those itself.
 
-  Reads the database (and, like the send, makes a member's personal mailbox
-  on demand); writes no message. The order and the spelling of `addresses` are
-  kept; entries that are not text are skipped. `scope` is the asker; today the
-  route of an address does not depend on who asks.
+  **One address per entry.** The send takes a recipient string apart at commas
+  and semicolons; this does not. An entry holding several addresses is
+  `:email`, whatever they are — pass them one by one. Padding around a single
+  address is trimmed, as in the send. The entries keep their order and their
+  spelling; entries that are not text are skipped.
+
+  Needs `Scope.can?(scope, "inbox")` like the other readers of this module;
+  without it (or without a scope) the answer is `[]`. Reads the database and
+  writes nothing — no message, no mailbox. Who counts as a member can depend
+  on the process it runs in (a host's `recipient_filter`, see
+  `PhoenixKitInbox.Members`, may read the process dictionary): ask in the same
+  context the send will run in, or the answer may differ from the send's.
   """
-  @spec resolve_recipient_routes(Scope.t(), [String.t()]) :: [
+  @spec resolve_recipient_routes(Scope.t() | nil, [String.t()]) :: [
           %{address: String.t(), route: :internal | :email, mailbox_uuid: binary() | nil}
         ]
-  def resolve_recipient_routes(%Scope{} = _scope, addresses) when is_list(addresses) do
-    for address <- addresses, is_binary(address), do: recipient_route(address)
+  def resolve_recipient_routes(%Scope{} = scope, addresses) when is_list(addresses) do
+    if Scope.can?(scope, "inbox"),
+      do: for(address <- addresses, is_binary(address), do: recipient_route(address)),
+      else: []
   end
 
-  defp recipient_route(address) do
-    case resolve_recipient({"to", address}, {[], [], [], []}) do
-      {[%{mailbox: mailbox}], _external, _unknown, _ambiguous} ->
-        %{address: address, route: :internal, mailbox_uuid: mailbox.uuid}
+  def resolve_recipient_routes(_scope, _addresses), do: []
 
-      _ ->
+  defp recipient_route(address) do
+    case parse_recipient_list(address) do
+      [entry] ->
+        case Mailboxes.fetch_mailbox_by_recipient(entry, create: false) do
+          {:ok, %Mailbox{} = mailbox} ->
+            %{address: address, route: :internal, mailbox_uuid: mailbox.uuid}
+
+          {:ok, {:member, _user}} ->
+            %{address: address, route: :internal, mailbox_uuid: nil}
+
+          {:error, _} ->
+            %{address: address, route: :email, mailbox_uuid: nil}
+        end
+
+      _none_or_several ->
         %{address: address, route: :email, mailbox_uuid: nil}
     end
   end

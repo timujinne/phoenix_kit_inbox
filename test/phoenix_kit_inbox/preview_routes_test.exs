@@ -117,8 +117,13 @@ defmodule PhoenixKitInbox.PreviewRoutesTest do
       {:ok, bob_mb} = Mailboxes.ensure_user_mailbox(bob)
       admin = user_fixture()
       desk = shared_mailbox_fixture(admin, %{name: "Desk", address: "desk@company.test"})
-      %{scope: scope_for(alice), bob: bob, bob_mb: bob_mb, desk: desk}
+      # A member who never opened Inbox: no mailbox yet.
+      carol = user_fixture(%{email: "carol@company.test"})
+
+      %{scope: scope_for(alice), alice: alice, bob: bob, bob_mb: bob_mb, desk: desk, carol: carol}
     end
+
+    defp mailbox_count, do: Repo.aggregate(PhoenixKitInbox.Schemas.Mailbox, :count)
 
     test "member address routes internal; unknown routes email", ctx do
       routes =
@@ -178,10 +183,112 @@ defmodule PhoenixKitInbox.PreviewRoutesTest do
       assert Messages.resolve_recipient_routes(ctx.scope, [nil, 5, :bob]) == []
     end
 
-    test "it writes no message", ctx do
-      before = Repo.aggregate(Message, :count)
-      Messages.resolve_recipient_routes(ctx.scope, ["bob@company.test", "client@example.com"])
-      assert Repo.aggregate(Message, :count) == before
+    test "it writes no message and makes no mailbox", ctx do
+      messages = Repo.aggregate(Message, :count)
+      mailboxes = mailbox_count()
+
+      Messages.resolve_recipient_routes(ctx.scope, [
+        "bob@company.test",
+        "carol@company.test",
+        "client@example.com"
+      ])
+
+      assert Repo.aggregate(Message, :count) == messages
+      assert mailbox_count() == mailboxes
+    end
+
+    test "a member without a mailbox is internal, and no mailbox is made", ctx do
+      before = mailbox_count()
+
+      assert [
+               %{address: "carol@company.test", route: :internal, mailbox_uuid: nil},
+               %{address: "@" <> _, route: :internal, mailbox_uuid: nil}
+             ] =
+               Messages.resolve_recipient_routes(ctx.scope, [
+                 "carol@company.test",
+                 "@" <> ctx.carol.username
+               ])
+
+      assert mailbox_count() == before
+      assert Repo.get_by(PhoenixKitInbox.Schemas.Mailbox, owner_uuid: ctx.carol.uuid) == nil
+    end
+
+    test "without the inbox permission there are no routes", ctx do
+      assert Messages.resolve_recipient_routes(scope_for(ctx.alice, []), ["bob@company.test"]) ==
+               []
+
+      assert Messages.resolve_recipient_routes(nil, ["bob@company.test"]) == []
+    end
+
+    test "one address per entry: a list in one string is not taken apart", ctx do
+      assert [
+               %{
+                 address: "bob@company.test, client@example.com",
+                 route: :email,
+                 mailbox_uuid: nil
+               },
+               %{address: "", route: :email, mailbox_uuid: nil}
+             ] =
+               Messages.resolve_recipient_routes(ctx.scope, [
+                 "bob@company.test, client@example.com",
+                 ""
+               ])
+
+      # Padding around one address is the send's trimming too.
+      assert [%{route: :internal}] =
+               Messages.resolve_recipient_routes(ctx.scope, ["  bob@company.test "])
+    end
+
+    test "internal and email are what the send does with the same addresses", ctx do
+      {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(ctx.alice)
+      scope = scope_for(ctx.alice)
+
+      addresses = [
+        "bob@company.test",
+        "carol@company.test",
+        "desk@company.test",
+        "client@example.com",
+        "nobody-here"
+      ]
+
+      routes = Messages.resolve_recipient_routes(scope, addresses)
+
+      assert Enum.map(routes, & &1.route) == [:internal, :internal, :internal, :email, :email]
+
+      for %{address: address, route: route} <- routes do
+        result =
+          Messages.send_message(scope, alice_mb, %{"to" => address, "subject" => "Route"})
+
+        case route do
+          # Delivered inside: a message with no external part.
+          :internal -> assert {:ok, %Message{external_status: :none}} = result
+          # Not inside: refused, for a sender who may not write outside.
+          :email -> assert {:error, {:unknown_recipients, [^address]}} = result
+        end
+      end
+    end
+
+    test ":email is what the send takes outside, for a sender who may", ctx do
+      smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+      role = grant_role!(ctx.alice, ["inbox", "inbox.send_external"])
+
+      {:ok, common} =
+        PhoenixKitInbox.Identities.create_shared(
+          scope_for(user_fixture(), ["inbox", "inbox.manage_shared"]),
+          %{"label" => "Common", "integration_uuid" => smtp}
+        )
+
+      {:ok, alice_mb} = Mailboxes.ensure_user_mailbox(ctx.alice)
+      scope = scope_for(ctx.alice, ["inbox", "inbox.send_external"], [role])
+
+      assert [%{route: :email}] = Messages.resolve_recipient_routes(scope, ["client@example.com"])
+
+      assert {:ok, %Message{external_status: :pending}} =
+               Messages.send_message(scope, alice_mb, %{
+                 "to" => "client@example.com",
+                 "subject" => "Out",
+                 "identity_uuid" => common.uuid
+               })
     end
   end
 end

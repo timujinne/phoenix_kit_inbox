@@ -132,16 +132,35 @@ defmodule PhoenixKitInbox.Mailboxes do
   """
   @spec fetch_mailbox_by_recipient(String.t()) ::
           {:ok, Mailbox.t()} | {:error, :recipient_not_found | :ambiguous_recipient}
-  def fetch_mailbox_by_recipient(term) when is_binary(term) do
+  def fetch_mailbox_by_recipient(term), do: fetch_mailbox_by_recipient(term, [])
+
+  @doc """
+  `fetch_mailbox_by_recipient/1` with options. `create: false` writes nothing:
+  a member who has no personal mailbox yet is answered `{:ok, {:member, user}}`
+  instead of getting one made. The default (`create: true`) is what a send does.
+  """
+  @spec fetch_mailbox_by_recipient(String.t(), keyword()) ::
+          {:ok, Mailbox.t() | {:member, User.t()}}
+          | {:error, :recipient_not_found | :ambiguous_recipient}
+  def fetch_mailbox_by_recipient(term, opts) when is_binary(term) do
+    create? = Keyword.get(opts, :create, true)
+
     case classify_recipient(term) do
-      :blank -> {:error, :recipient_not_found}
-      {:username, name} -> first_match([&user_by_username/1, &shared_by_handle/1], name)
-      {:email, email} -> first_match([&user_by_email/1, &shared_by_address/1], email)
-      {:bare, name} -> first_match([&shared_by_any/1, &user_by_username/1], name)
+      :blank ->
+        {:error, :recipient_not_found}
+
+      {:username, name} ->
+        first_match([&user_by_username(&1, create?), &shared_by_handle/1], name)
+
+      {:email, email} ->
+        first_match([&user_by_email(&1, create?), &shared_by_address/1], email)
+
+      {:bare, name} ->
+        first_match([&shared_by_any/1, &user_by_username(&1, create?)], name)
     end
   end
 
-  def fetch_mailbox_by_recipient(_), do: {:error, :recipient_not_found}
+  def fetch_mailbox_by_recipient(_, _), do: {:error, :recipient_not_found}
 
   defp classify_recipient(term) do
     case term |> String.trim() |> String.downcase() do
@@ -213,15 +232,15 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   # `lower/1` on both sides rather than `ilike`: this is an equality match,
   # and it stays one on cores where `username` is still a plain string.
-  defp user_by_username(term) do
-    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.username) == ^term) end)
+  defp user_by_username(term, create?) do
+    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.username) == ^term) end, create?)
   end
 
-  defp user_by_email(term) do
-    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.email) == ^term) end)
+  defp user_by_email(term, create?) do
+    users_matching(fn q -> where(q, [u], fragment("lower(?)", u.email) == ^term) end, create?)
   end
 
-  defp users_matching(narrow) do
+  defp users_matching(narrow, create?) do
     from(u in User, order_by: [asc: u.inserted_at])
     |> narrow.()
     |> Members.scope_query()
@@ -229,12 +248,19 @@ defmodule PhoenixKitInbox.Mailboxes do
     |> Members.keep()
     |> case do
       [] -> :none
-      [user] -> mailbox_for_user(user)
+      [user] -> mailbox_for_user(user, create?)
       _several -> {:error, :ambiguous_recipient}
     end
   end
 
-  defp mailbox_for_user(user) do
+  defp mailbox_for_user(user, false) do
+    case repo().get_by(Mailbox, owner_uuid: user.uuid, kind: "user") do
+      nil -> {:ok, {:member, user}}
+      mailbox -> {:ok, mailbox}
+    end
+  end
+
+  defp mailbox_for_user(user, true) do
     case ensure_user_mailbox(user) do
       {:ok, mailbox} ->
         {:ok, mailbox}
