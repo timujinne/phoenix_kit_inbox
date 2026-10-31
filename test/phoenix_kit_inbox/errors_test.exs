@@ -33,6 +33,19 @@ defmodule PhoenixKitInbox.ErrorsTest do
       assert text == "one two three four"
     end
 
+    test "the line that is full is named in the reader's language" do
+      for {locale, role, field} <- [
+            {"ru", :cc, "«Копия»"},
+            {"ru", :to, "«Кому»"},
+            {"et", :to, "«Kellele»"},
+            {"en", :bcc, "Bcc"}
+          ] do
+        Gettext.with_locale(PhoenixKitInbox.Gettext, locale, fn ->
+          assert Errors.message({:too_many_recipients, role, 5}) =~ field, "#{locale} #{role}"
+        end)
+      end
+    end
+
     test "characters that turn the text around or hide in it are taken out" do
       bidi = "\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069"
       c1 = "\u0080\u0085\u009F"

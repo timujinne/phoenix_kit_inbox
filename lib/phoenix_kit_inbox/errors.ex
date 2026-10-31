@@ -238,7 +238,7 @@ defmodule PhoenixKitInbox.Errors do
     do:
       gettext("At most %{max} addresses in %{field}.",
         max: max,
-        field: role |> to_string() |> String.capitalize()
+        field: role_label(role)
       )
 
   def message(:subject_too_long),
@@ -301,6 +301,12 @@ defmodule PhoenixKitInbox.Errors do
   def message(reason) when is_binary(reason), do: reason
 
   def message(reason), do: message_unexpected(reason)
+
+  # The name of a recipient line, as the form shows it.
+  defp role_label(:to), do: gettext("To")
+  defp role_label(:cc), do: gettext("Cc")
+  defp role_label(:bcc), do: gettext("Bcc")
+  defp role_label(other), do: other |> to_string() |> String.capitalize()
 
   # A host's words, made fit to show: valid text, one line, not too long, and
   # without the marks that turn the text around or hide in it (the C1 controls

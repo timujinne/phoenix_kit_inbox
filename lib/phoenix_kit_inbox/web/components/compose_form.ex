@@ -1790,7 +1790,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           phx-value-role={@role}
           phx-target={@target}
         >
-          {gettext("+ From client or CRM addresses")}
+          {gettext("+ More addresses")}
         </.button>
       </div>
     </div>

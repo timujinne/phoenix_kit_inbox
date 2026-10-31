@@ -541,7 +541,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       assert render(element(view, "button[phx-value-folder=sent]")) =~ "Sent"
     end
 
-    test "in Russian: Написать, Входящие, Исходящие" do
+    test "in Russian: Написать, Входящие, Отправленные — as in the Inbox itself" do
       Gettext.with_locale(PhoenixKitInbox.Gettext, "ru", fn ->
         assert Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Compose") == "Написать"
         assert Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Inbox") == "Входящие"
@@ -551,7 +551,18 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
                  "default",
                  "mail explorer folder",
                  "Sent"
-               ) == "Исходящие"
+               ) == "Отправленные"
+
+        assert Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Sent") == "Отправленные"
+      end)
+
+      Gettext.with_locale(PhoenixKitInbox.Gettext, "et", fn ->
+        assert Gettext.dpgettext(
+                 PhoenixKitInbox.Gettext,
+                 "default",
+                 "mail explorer folder",
+                 "Sent"
+               ) == Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Sent")
       end)
     end
   end
