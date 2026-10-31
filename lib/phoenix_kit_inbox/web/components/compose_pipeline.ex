@@ -140,10 +140,17 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   the same run answers what the first answered and sends nothing. The
   pipeline's answer does not follow the wrapper's: a letter that went is
   `{:ok, stored_message}` whatever the wrapper returns (a different answer is
-  logged); a send that failed is its `{:error, reason}`; with no call to
+  logged); the stored message is read back before it is called a send; a send that failed is its `{:error, reason}`; with no call to
   `send_fun` at all the wrapper's `{:error, reason}` is the answer, anything
   else `{:error, :send_failed}` — success is never claimed for a letter that
   did not go.
+
+  `send_fun` must not be called inside a database transaction of the host's
+  (`Repo.transaction/1` around it): the letter goes out from under it, and a
+  wrapper that fails afterwards takes the stored message back while the
+  recipients have it. When the message the send answered is not there to read,
+  the send is not called one: a wrapper that raised raises, one that answered
+  gets `{:error, :send_failed}` (or its own refusal).
 
   A wrapper that refuses on purpose — an unfilled `{{field}}`, an out-of-date
   attachment, a limit of the host's own — answers
@@ -319,16 +326,28 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   # logged where to look for it (the kind, the exception's module, the top
   # frames — never what it carried). Before the send, or after one that
   # failed, it is the wrapper's failure as it always was.
-  defp ended(kind, reason, stacktrace, {:sent, {:ok, %Message{}} = ok}) do
-    Logger.error(
-      "[Inbox] the host's wrapper ended with #{describe_failure(kind, reason, stacktrace)} " <>
-        "after the letter went, so the send is answered as sent"
-    )
+  defp ended(kind, reason, stacktrace, {:sent, {:ok, %Message{} = message} = ok}) do
+    if stored?(message) do
+      Logger.error(
+        "[Inbox] the host's wrapper ended with #{describe_failure(kind, reason, stacktrace)} " <>
+          "after the letter went, so the send is answered as sent"
+      )
 
-    ok
+      ok
+    else
+      :erlang.raise(kind, reason, stacktrace)
+    end
   end
 
   defp ended(kind, reason, stacktrace, _sent), do: :erlang.raise(kind, reason, stacktrace)
+
+  # The message the send answered is there to be read. A wrapper that put
+  # `send_fun` in a database transaction and failed took it back with the
+  # rest: the answer would be a message that does not exist.
+  defp stored?(%Message{uuid: uuid}) when is_binary(uuid),
+    do: not is_nil(PhoenixKit.RepoHelper.repo().get(Message, uuid))
+
+  defp stored?(_message), do: false
 
   @doc false
   # For a log line: what failed and where, never what it carried. The exception's
@@ -349,12 +368,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   defp settle({:error, _reason} = refusal, nil), do: refusal
   defp settle(_answer, nil), do: {:error, :send_failed}
 
-  # The stored message is the answer, whatever message the wrapper holds.
-  defp settle(answer, {:sent, {:ok, %Message{}} = ok}) do
-    if answer != ok,
-      do: Logger.warning("[Inbox] the host's wrapper answered something else after the send")
+  # The stored message is the answer, whatever message the wrapper holds. One
+  # that is not stored (the wrapper's transaction rolled it back) is no send.
+  defp settle(answer, {:sent, {:ok, %Message{} = message} = ok}) do
+    cond do
+      not stored?(message) ->
+        Logger.error("[Inbox] the send answered a message that is not stored: rolled back?")
+        settle(answer, nil)
 
-    ok
+      answer != ok ->
+        Logger.warning("[Inbox] the host's wrapper answered something else after the send")
+        ok
+
+      true ->
+        ok
+    end
   end
 
   defp settle(_answer, {:sent, {:error, _} = error}), do: error

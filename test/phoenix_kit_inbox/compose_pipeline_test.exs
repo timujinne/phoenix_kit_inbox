@@ -815,6 +815,45 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       end
     end
 
+    test "a send that a host transaction took back is not a letter that went", ctx do
+      rolled_back = fn _scope, draft, send_fun ->
+        Repo.transaction(fn ->
+          send_fun.(draft)
+          raise "late bug"
+        end)
+      end
+
+      assert_raise RuntimeError, "late bug", fn ->
+        run(ctx, %{}, draft(ctx), %{around_send: rolled_back})
+      end
+
+      assert message_count() == 0
+    end
+
+    test "an answer that follows a rolled-back send is not a success", ctx do
+      rolled_back = fn _scope, draft, send_fun ->
+        Repo.transaction(fn ->
+          send_fun.(draft)
+          Repo.rollback(:host_changed_its_mind)
+        end)
+
+        :done
+      end
+
+      assert {:error, :send_failed} = run(ctx, %{}, draft(ctx), %{around_send: rolled_back})
+      assert message_count() == 0
+
+      refusing = fn _scope, draft, send_fun ->
+        Repo.transaction(fn ->
+          send_fun.(draft)
+          Repo.rollback({:refused, "Not today."})
+        end)
+      end
+
+      assert {:error, {:refused, "Not today."}} =
+               run(ctx, %{}, draft(ctx), %{around_send: refusing})
+    end
+
     test "before the send they are not swallowed", ctx do
       assert_raise RuntimeError, "boom", fn ->
         run(ctx, %{}, draft(ctx), %{around_send: fn _, _, _ -> raise "boom" end})
