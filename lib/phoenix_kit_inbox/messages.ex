@@ -35,6 +35,7 @@ defmodule PhoenixKitInbox.Messages do
   alias PhoenixKitInbox.Attachments.Folders
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
+  alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Notify
   alias PhoenixKitInbox.Outbound
@@ -155,6 +156,34 @@ defmodule PhoenixKitInbox.Messages do
   end
 
   def fetch_for_mailbox(_, _), do: {:error, :message_not_found}
+
+  @doc """
+  Fetches one message as the person behind `scope` may read it: through the
+  first mailbox they can reach (their own or one they hold a grant on) that
+  has an active copy of it, the way `fetch_for_mailbox/2` reads it.
+
+  `{:error, :message_not_found}` when no such copy exists, when the person
+  cannot use the inbox at all, or when `message_uuid` is not a uuid — the same
+  answer for a message that does not exist and one that is not theirs.
+  """
+  @spec fetch_for_scope(Scope.t(), binary()) :: {:ok, listed()} | {:error, :message_not_found}
+  def fetch_for_scope(%Scope{} = scope, message_uuid) do
+    with true <- Scope.can?(scope, "inbox"),
+         {:ok, user_uuid} <- Mailboxes.scope_user_uuid(scope) do
+      user_uuid
+      |> Mailboxes.list_accessible_mailboxes()
+      |> Enum.find_value({:error, :message_not_found}, fn mailbox ->
+        case fetch_for_mailbox(mailbox.uuid, message_uuid) do
+          {:ok, _listed} = found -> found
+          {:error, _} -> nil
+        end
+      end)
+    else
+      _ -> {:error, :message_not_found}
+    end
+  end
+
+  def fetch_for_scope(_scope, _message_uuid), do: {:error, :message_not_found}
 
   defp fetch_delivered(mailbox_uuid, message_uuid) do
     query =
@@ -614,6 +643,11 @@ defmodule PhoenixKitInbox.Messages do
     * `attachments_data: [%{binary: bytes} | %{path: path}]` with
       `filename:`, `content_type:` and `flags:` — bytes the host made,
       stored as they are
+    * `links: [%{kind: kind, ref: ref}]` — objects of the host the message is
+      linked to (source `"host"`, see `PhoenixKitInbox.Links`). Written after
+      the message is stored, together with the links the conversation and the
+      host's resolvers add; a failure there is logged and never loses the
+      message. A `"links"` entry in `attrs` is ignored.
 
   Returns `{:error, {:unknown_recipients, ["typo@example.com"]}}` when an
   address doesn't resolve — the whole send is refused so the sender finds out
@@ -681,6 +715,11 @@ defmodule PhoenixKitInbox.Messages do
              )
            end)
            |> finish_attachments(created) do
+      # After the commit, not inside it: the host's resolvers run here, and a
+      # failing query of theirs would poison the transaction of a message
+      # that is otherwise fine. `apply_to_new_message/2` never raises.
+      Links.apply_to_new_message(message, Keyword.get(opts, :links, []))
+
       if items != [], do: Folders.lay_out_sent(message, mailbox)
 
       # Post-commit, deliberately: see the moduledoc.
