@@ -354,7 +354,9 @@ defmodule PhoenixKitInbox.ObjectMail do
   end
 
   # Parents before their replies, siblings in the order sent. A reply whose
-  # parent is not among the entries is a root.
+  # parent is not among the entries is a root; so, as a last resort, is the
+  # oldest letter of a cycle of parents that no root leads to (not data this
+  # module writes, but a conversation is never silently dropped for it).
   defp tree(entries) do
     known = MapSet.new(entries, & &1.message.uuid)
 
@@ -363,18 +365,46 @@ defmodule PhoenixKitInbox.ObjectMail do
         if m.parent_uuid in known and m.parent_uuid != m.uuid, do: m.parent_uuid
       end)
 
-    walk(Map.get(children, nil, []), children, 0)
+    {ordered, seen} = walk(Map.get(children, nil, []), children, 0, MapSet.new())
+    ordered ++ unreached(entries, children, seen)
   end
 
-  defp walk(entries, children, depth) do
+  # Entries not reached from a root, in rounds: the oldest of those left is
+  # taken as a root, with what hangs off it.
+  defp unreached(entries, children, seen) do
+    case Enum.reject(entries, &MapSet.member?(seen, &1.message.uuid)) do
+      [] ->
+        []
+
+      left ->
+        oldest =
+          Enum.min_by(left, &{&1.message.sent_at || ~U[1970-01-01 00:00:00Z], &1.message.uuid})
+
+        {ordered, seen} = walk([oldest], children, 0, seen)
+        ordered ++ unreached(entries, children, seen)
+    end
+  end
+
+  defp walk(entries, children, depth, seen) do
     entries
     |> Enum.sort_by(&{&1.message.sent_at, &1.message.uuid}, &sent_order/2)
-    |> Enum.flat_map(fn entry ->
-      [
-        %{entry | depth: depth}
-        | walk(Map.get(children, entry.message.uuid, []), children, depth + 1)
-      ]
+    |> Enum.reduce({[], seen}, fn entry, {ordered, seen} ->
+      walk_entry(entry, children, depth, ordered, seen)
     end)
+    |> then(fn {ordered, seen} -> {Enum.reverse(ordered), seen} end)
+  end
+
+  defp walk_entry(entry, children, depth, ordered, seen) do
+    uuid = entry.message.uuid
+
+    if MapSet.member?(seen, uuid) do
+      {ordered, seen}
+    else
+      {below, seen} =
+        walk(Map.get(children, uuid, []), children, depth + 1, MapSet.put(seen, uuid))
+
+      {Enum.reverse(below, [%{entry | depth: depth} | ordered]), seen}
+    end
   end
 
   defp sent_order({at_a, uuid_a}, {at_b, uuid_b}) do

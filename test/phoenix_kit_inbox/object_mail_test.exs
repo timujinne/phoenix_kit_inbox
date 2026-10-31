@@ -263,6 +263,51 @@ defmodule PhoenixKitInbox.ObjectMailTest do
       assert [%{source: "thread"}] = only.links
     end
 
+    test "a conversation four deep keeps its tree", ctx do
+      root = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "L0"}, links: [@order])
+      l1 = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "L1", "parent_uuid" => root.uuid})
+      l2 = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "L2", "parent_uuid" => l1.uuid})
+      l3 = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "L3", "parent_uuid" => l2.uuid})
+      side = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "S", "parent_uuid" => root.uuid})
+
+      [%{messages: entries}] = threads(ctx.alice_scope)
+      depths = Map.new(entries, &{&1.message.uuid, &1.depth})
+
+      assert depths == %{
+               root.uuid => 0,
+               l1.uuid => 1,
+               side.uuid => 1,
+               l2.uuid => 2,
+               l3.uuid => 3
+             }
+
+      # Parents come before their replies.
+      order = Enum.map(entries, & &1.message.uuid)
+      assert Enum.find_index(order, &(&1 == l1.uuid)) < Enum.find_index(order, &(&1 == l2.uuid))
+      assert Enum.find_index(order, &(&1 == l2.uuid)) < Enum.find_index(order, &(&1 == l3.uuid))
+    end
+
+    test "letters in a parent cycle are not lost: the oldest of them is a root", ctx do
+      a = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+      b = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "B", "parent_uuid" => a.uuid})
+      c = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "C", "parent_uuid" => b.uuid})
+      child = mail(ctx, :alice, handle(ctx.bob), %{"subject" => "D", "parent_uuid" => c.uuid})
+
+      # Corrupt data (nothing the module writes): A is a reply to C.
+      Repo.update_all(from(m in Message, where: m.uuid == ^a.uuid), set: [parent_uuid: c.uuid])
+
+      [%{messages: entries}] = threads(ctx.alice_scope)
+
+      assert Enum.sort(Enum.map(entries, & &1.message.uuid)) ==
+               Enum.sort([a.uuid, b.uuid, c.uuid, child.uuid])
+
+      depths = Map.new(entries, &{&1.message.uuid, &1.depth})
+      assert depths[a.uuid] == 0
+      assert depths[b.uuid] == 1
+      assert depths[c.uuid] == 2
+      assert depths[child.uuid] == 3
+    end
+
     test "letter seen through two mailboxes appears once", ctx do
       message =
         mail(ctx, :bob, handle(ctx.alice), %{"cc" => ctx.desk.address}, links: [@order])
