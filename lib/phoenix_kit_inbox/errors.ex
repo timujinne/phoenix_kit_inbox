@@ -28,8 +28,9 @@ defmodule PhoenixKitInbox.Errors do
 
   A host that means to tell the person why it refused answers
   `{:refused, text}`: its short, already translated text is shown as it is
-  (control characters taken out, at most #{@refused_max} characters). That is
-  the one way for a host's own words to get through.
+  (control and direction-changing characters taken out, at most
+  #{@refused_max} characters). That is the one way for a host's own words to
+  get through.
   """
   @spec user_message(term()) :: String.t()
   def user_message(reason) when is_binary(reason), do: message(:send_failed)
@@ -301,12 +302,18 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(reason), do: message_unexpected(reason)
 
-  # A host's words, made fit to show: valid text, one line, not too long.
+  # A host's words, made fit to show: valid text, one line, not too long, and
+  # without the marks that turn the text around or hide in it (the C1 controls
+  # and the left-to-right / right-to-left marks, embeddings and isolates).
   defp refused_text(text) do
     cleaned =
       text
       |> String.replace_invalid("")
       |> String.replace(~r/[\x00-\x1f\x7f]+/u, " ")
+      |> String.replace(
+        ~r/[\x{80}-\x{9F}\x{200E}\x{200F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u,
+        ""
+      )
       |> String.replace(~r/ {2,}/, " ")
       |> String.trim()
 

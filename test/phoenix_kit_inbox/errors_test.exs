@@ -33,6 +33,14 @@ defmodule PhoenixKitInbox.ErrorsTest do
       assert text == "one two three four"
     end
 
+    test "characters that turn the text around or hide in it are taken out" do
+      bidi = "\u202A\u202B\u202C\u202D\u202E\u2066\u2067\u2068\u2069"
+      c1 = "\u0080\u0085\u009F"
+      text = Errors.user_message({:refused, "Fill#{bidi} in#{c1} the name\u200E\u200F"})
+
+      assert text == "Fill in the name"
+    end
+
     test "a refusal that is not text, or has none, is the general message" do
       for bad <- [nil, "", "   \n", :atom, 12, %{a: 1}, ["x"], <<255, 254>>] do
         assert Errors.user_message({:refused, bad}) == @general
