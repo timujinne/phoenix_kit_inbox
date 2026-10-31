@@ -20,6 +20,14 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
   def allow(_scope, "order", "o-1"), do: true
   def allow(_scope, _kind, _ref), do: false
 
+  # What the host is asked, counted by the test through the app env.
+  def counting(_scope, kind, ref) do
+    send(Application.fetch_env!(:phoenix_kit_inbox, :explorer_test_pid), {:asked, kind, ref})
+    true
+  end
+
+  def raising(_scope, _kind, _ref), do: raise("host bug about o-1")
+
   # The host's attachment policy: refuses the files whose name it was told.
   def policy(_scope, _users, rows) do
     refused = Application.get_env(:phoenix_kit_inbox, :explorer_refused_file)
@@ -443,6 +451,57 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       # The download itself asks again, whatever uuid is put in a link.
       assert {:error, :not_found} =
                Attachments.fetch_for_download(ctx.alice_scope, foreign_file.uuid)
+    end
+  end
+
+  describe "the host's say on linking (can_link?)" do
+    setup do
+      Application.put_env(:phoenix_kit_inbox, :explorer_test_pid, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :explorer_test_pid) end)
+    end
+
+    defp asked(acc \\ []) do
+      receive do
+        {:asked, kind, ref} -> asked([{kind, ref} | acc])
+      after
+        100 -> Enum.reverse(acc)
+      end
+    end
+
+    test "is asked once per object per load, not on every render", %{conn: conn} = ctx do
+      root = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+      mail(ctx, :alice, handle(ctx.bob), %{"parent_uuid" => root.uuid}, links: [@order])
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "B"}, links: [@order])
+
+      view = mount_explorer(ctx, conn, %{can_link?: {:capture, __MODULE__, :counting, 3}})
+
+      # One question per load, and a page loads twice on mount (the static
+      # render, then the connected one); three letters, one object.
+      assert asked() == [{"order", "o-1"}, {"order", "o-1"}]
+
+      view |> element("#mail-row-#{root.uuid}") |> render_click()
+      render(view)
+      render(view)
+      assert asked() == []
+
+      assert has_element?(view, "button[phx-click=unlink]")
+      assert has_element?(view, "button[phx-click=open_picker]")
+    end
+
+    test "a host callback that raises hides the buttons and does not crash the page",
+         %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          view = mount_explorer(ctx, conn, %{can_link?: {:capture, __MODULE__, :raising, 3}})
+          assert render(view) =~ "A"
+          refute has_element?(view, "button[phx-click=unlink]")
+          refute has_element?(view, "button[phx-click=open_picker]")
+        end)
+
+      assert log =~ "can_link?"
+      refute log =~ "o-1"
     end
   end
 end

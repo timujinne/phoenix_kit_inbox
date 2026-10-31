@@ -50,6 +50,8 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   use PhoenixKitWeb, :live_component
   use Gettext, backend: PhoenixKitInbox.Gettext
 
+  require Logger
+
   alias PhoenixKit.Utils.Format
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Body
@@ -127,8 +129,65 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     |> assign(:threads, threads)
     |> assign(:selected, keep_or_first(socket.assigns[:selected], threads))
     |> assign(:picker, reload_picker(socket.assigns[:picker], scope))
-    |> assign_attachments()
+    |> assign(:link_access, %{})
+    |> assign_shown()
   end
+
+  # What the reading pane needs, read when it changes and not on every render.
+  defp assign_shown(socket) do
+    socket |> assign_attachments() |> assign_link_access()
+  end
+
+  # The host's say on each object the pane may offer to link or unlink (the
+  # filter's and those of the shown letters' links): asked once per object
+  # per load, kept until the next load. A callback that fails says no.
+  defp assign_link_access(%{assigns: %{can_link?: fun}} = socket) when is_function(fun, 3) do
+    %{scope: scope, filter: filter, threads: threads, selected: selected} = socket.assigns
+
+    objects =
+      threads
+      |> shown(selected)
+      |> Enum.flat_map(fn entry -> Enum.map(entry.links, &{&1.kind, &1.ref}) end)
+      |> Enum.concat(filter_objects(filter))
+      |> Enum.uniq()
+
+    access =
+      Enum.reduce(objects, socket.assigns.link_access, fn {kind, ref} = object, acc ->
+        Map.put_new_lazy(acc, object, fn -> host_allows?(fun, scope, kind, ref) end)
+      end)
+
+    assign(socket, :link_access, access)
+  end
+
+  defp assign_link_access(socket), do: socket
+
+  defp filter_objects(filter) when is_list(filter) do
+    for %{kind: kind, ref: ref} <- filter, do: {kind, ref}
+  end
+
+  defp filter_objects(_filter), do: []
+
+  defp host_allows?(fun, scope, kind, ref) do
+    fun.(scope, kind, ref) == true
+  rescue
+    exception -> refuse_failed(kind, exception)
+  catch
+    thrown_kind, _reason -> refuse_failed(kind, thrown_kind)
+  end
+
+  # Only the kind of object and the kind of failure: the ref and the
+  # exception's message may carry what the host keeps private.
+  defp refuse_failed(kind, failure) do
+    Logger.warning(
+      "[Inbox] MailExplorer: the host's can_link? failed for a #{inspect(kind)} " <>
+        "(#{inspect(failure_name(failure))}), taken as no"
+    )
+
+    false
+  end
+
+  defp failure_name(%{__struct__: module}), do: module
+  defp failure_name(other), do: other
 
   # The files of the letters in the reading pane, as this viewer may see them
   # (the host's attachment policy, one batch): read when the pane changes,
@@ -172,7 +231,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       end
 
     if selected && present?(socket.assigns.threads, selected),
-      do: {:noreply, socket |> assign(selected: selected, error: nil) |> assign_attachments()},
+      do: {:noreply, socket |> assign(selected: selected, error: nil) |> assign_shown()},
       else: {:noreply, socket}
   end
 
@@ -250,19 +309,12 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   defp link_opts(%{assigns: %{can_link?: fun}}) when is_function(fun, 3), do: [can_link?: fun]
   defp link_opts(_socket), do: []
 
-  # The picker is offered when the host lets this viewer link to the object.
-  defp linkable?(%{
-         assigns: %{can_link?: fun, scope: scope, filter: [%{kind: kind, ref: ref} | _]}
-       })
-       when is_function(fun, 3),
-       do: fun.(scope, kind, ref) == true
+  # The picker is offered when the host lets this viewer link to the object
+  # (as asked once in load/1).
+  defp linkable?(%{assigns: %{link_access: access, filter: [%{kind: kind, ref: ref} | _]}}),
+    do: Map.get(access, {kind, ref}, false)
 
   defp linkable?(_socket), do: false
-
-  defp unlinkable?(fun, scope, link) when is_function(fun, 3),
-    do: fun.(scope, link.kind, link.ref) == true
-
-  defp unlinkable?(_fun, _scope, _link), do: false
 
   defp find_entry(threads, message_uuid) do
     Enum.find_value(threads, fn thread ->
@@ -366,8 +418,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
             :for={entry <- @letters}
             entry={entry}
             attachments={Map.get(@attachments, entry.message.uuid, [])}
-            scope={@scope}
-            can_link?={@can_link?}
+            link_access={@link_access}
             reply?={is_function(@compose, 1)}
             target={@myself}
             now={@now}
@@ -434,8 +485,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   attr(:entry, :map, required: true)
   attr(:attachments, :list, default: [])
-  attr(:scope, :any, required: true)
-  attr(:can_link?, :any, default: nil)
+  attr(:link_access, :map, default: %{})
   attr(:reply?, :boolean, required: true)
   attr(:target, :any, required: true)
   attr(:now, :any, required: true)
@@ -493,7 +543,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
             {link.kind} · {link.ref}
             <span class="opacity-60">({MailTree.source_label(link.source)})</span>
             <button
-              :if={unlinkable?(@can_link?, @scope, link)}
+              :if={Map.get(@link_access, {link.kind, link.ref}, false)}
               type="button"
               class="btn btn-ghost btn-xs btn-circle h-4 min-h-0 w-4"
               title={gettext("Unlink")}
