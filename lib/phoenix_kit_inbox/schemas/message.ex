@@ -91,7 +91,21 @@ defmodule PhoenixKitInbox.Schemas.Message do
     |> validate_inclusion(:status, @statuses)
     |> validate_inclusion(:body_format, @body_formats)
     |> update_change(:subject, &single_line/1)
-    |> validate_length(:subject, max: 500)
+    |> validate_storable_text([:subject, :body])
+    |> validate_length(:subject, max: 500, count: :codepoints)
+  end
+
+  # What the database refuses with an exception instead of an error: a NUL
+  # byte, and bytes that are not UTF-8. `varchar(500)` counts code points, not
+  # graphemes, hence `count: :codepoints` above.
+  defp validate_storable_text(changeset, fields) do
+    Enum.reduce(fields, changeset, fn field, changeset ->
+      validate_change(changeset, field, fn _field, value ->
+        if is_binary(value) and (not String.valid?(value) or String.contains?(value, <<0>>)),
+          do: [{field, "contains characters that cannot be stored"}],
+          else: []
+      end)
+    end)
   end
 
   # The subject becomes a mail header (external recipients, the nudge): a line

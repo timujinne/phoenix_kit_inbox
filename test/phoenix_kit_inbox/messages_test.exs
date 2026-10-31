@@ -138,6 +138,51 @@ defmodule PhoenixKitInbox.MessagesTest do
                Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{"subject" => "To nobody"})
     end
 
+    test "the subject limit counts characters the way the database does", ctx do
+      send = fn subject ->
+        Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+          "to" => ctx.bob.email,
+          "subject" => subject,
+          "body" => "Body"
+        })
+      end
+
+      # One grapheme, five code points: 400 of them are 2000 characters.
+      family = "\u{1F468}\u200D\u{1F469}\u200D\u{1F467}"
+      assert String.length(family) == 1
+
+      assert {:error, changeset} = send.(String.duplicate(family, 400))
+      assert %{subject: [_ | _]} = errors_on(changeset)
+
+      # 500 characters fit, 501 do not.
+      assert {:ok, _} = send.(String.duplicate(family, 100))
+      assert {:error, %Ecto.Changeset{}} = send.(String.duplicate(family, 100) <> "x")
+    end
+
+    test "a NUL byte or broken text in the subject or body is refused, not a crash", ctx do
+      for {field, value} <- [
+            {"subject", "Hel\0lo"},
+            {"body", "Bo\0dy"},
+            {"subject", <<?a, 0xFF>>},
+            {"body", <<?a, 0xFF>>}
+          ] do
+        attrs =
+          Map.merge(%{"to" => ctx.bob.email, "subject" => "Hi", "body" => "Body"}, %{
+            field => value
+          })
+
+        assert {:error, changeset} = Messages.send_message(ctx.alice_mb, ctx.alice.uuid, attrs)
+        assert Map.has_key?(errors_on(changeset), String.to_atom(field))
+      end
+
+      assert {:error, changeset} =
+               Messages.save_draft(scope_for(ctx.alice), ctx.alice_mb, %{
+                 "subject" => "Dra\0ft"
+               })
+
+      assert %{subject: [_ | _]} = errors_on(changeset)
+    end
+
     test "an entirely blank message is refused", ctx do
       assert {:error, changeset} =
                Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
