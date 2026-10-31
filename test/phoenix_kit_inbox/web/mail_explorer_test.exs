@@ -237,7 +237,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       assert_receive {:inbox_explorer, "demo", {:compose, %{reply_to_message: nil}}}
     end
 
-    test "Write and Reply are there only when the host gives compose", %{conn: conn} = ctx do
+    test "Compose and Reply are there only when the host gives compose", %{conn: conn} = ctx do
       mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
       view = mount_explorer(ctx, conn)
 
@@ -262,6 +262,31 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
 
       refute_receive {:inbox_explorer, _, {:compose, _}}, 100
       assert render(view) =~ "Message not found."
+    end
+  end
+
+  describe "the words of the component" do
+    test "the button is Compose and the folders are Inbox and Sent", %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
+      view = mount_explorer(ctx, conn, %{compose: composing()})
+
+      assert render(element(view, "button[phx-click=write]")) =~ "Compose"
+      refute render(view) =~ "Write"
+      assert render(element(view, "button[phx-value-folder=sent]")) =~ "Sent"
+    end
+
+    test "in Russian: Написать, Входящие, Исходящие" do
+      Gettext.with_locale(PhoenixKitInbox.Gettext, "ru", fn ->
+        assert Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Compose") == "Написать"
+        assert Gettext.dgettext(PhoenixKitInbox.Gettext, "default", "Inbox") == "Входящие"
+
+        assert Gettext.dpgettext(
+                 PhoenixKitInbox.Gettext,
+                 "default",
+                 "mail explorer folder",
+                 "Sent"
+               ) == "Исходящие"
+      end)
     end
   end
 

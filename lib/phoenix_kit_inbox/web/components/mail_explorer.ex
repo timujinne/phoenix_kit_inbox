@@ -27,7 +27,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     * `folders` — the folder buttons to offer, of `:all`, `:inbox`, `:sent`
       (default all three)
     * `compose` — `nil` (default) or a function of one argument. With it the
-      component offers "Write" and "Reply"; on a click it calls
+      component offers "Compose" and "Reply"; on a click it calls
       `compose.(%{reply_to_message: message_uuid | nil})` and sends the
       result to the parent (below). The component never opens a form itself.
     * `can_link?` — `nil` (default) or `fn scope, kind, ref -> boolean end`,
@@ -511,7 +511,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
           phx-target={@myself}
         >
           <.icon name="hero-pencil-square" class="w-4 h-4" />
-          {gettext("Write")}
+          {gettext("Compose")}
         </button>
       </div>
     </div>
@@ -687,7 +687,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   defp folder_label(:all), do: gettext("All")
   defp folder_label(:inbox), do: gettext("Inbox")
-  defp folder_label(:sent), do: gettext("Sent")
+  defp folder_label(:sent), do: pgettext("mail explorer folder", "Sent")
 
   # The delivery state is for the sender; a reader sees only who it went to.
   defp external_class(:sent, row, now) do
