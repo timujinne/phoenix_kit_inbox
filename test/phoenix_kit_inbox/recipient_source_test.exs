@@ -64,6 +64,41 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
     def suggest(_scope, _context, query), do: exit({:gone, query})
   end
 
+  defmodule Remembers do
+    @moduledoc false
+    # Tells the test what it was asked to remember; fails as the test says.
+    @behaviour PhoenixKitInbox.RecipientSource
+    @impl true
+    def suggest(_scope, _context, _query), do: []
+
+    @impl true
+    def remember(_scope, context, address, label) do
+      send(context.pid, {:remembered, __MODULE__, address, label})
+
+      case context[:fail] do
+        :raise -> raise "secret lookup failed for #{address}"
+        :throw -> throw({:secret, address})
+        :exit -> exit({:secret, address})
+        :error -> {:error, {:secret, address}}
+        :slow -> Process.sleep(5_000)
+        _ -> :ok
+      end
+    end
+  end
+
+  defmodule AlsoRemembers do
+    @moduledoc false
+    @behaviour PhoenixKitInbox.RecipientSource
+    @impl true
+    def suggest(_scope, _context, _query), do: []
+
+    @impl true
+    def remember(_scope, context, address, label) do
+      send(context.pid, {:remembered, __MODULE__, address, label})
+      :ok
+    end
+  end
+
   defmodule LocaleEcho do
     @moduledoc false
     # Tells the language of the process it is asked in.
@@ -138,6 +173,80 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
     test "members source is empty without the inbox permission or a scope", ctx do
       assert Members.suggest(scope_for(ctx.alice, []), %{}, "bob") == []
       assert Members.suggest(nil, %{}, "bob") == []
+    end
+  end
+
+  describe "remember_all/4" do
+    @entries [
+      %{address: "one@example.com", label: "One Ltd"},
+      %{address: "two@example.com", label: "two@example.com"}
+    ]
+
+    test "each source that can remember is told each address with its label", ctx do
+      context = %{pid: self()}
+
+      assert :ok =
+               RecipientSource.remember_all(
+                 [Members, SourceA, Remembers, AlsoRemembers],
+                 ctx.scope,
+                 context,
+                 @entries
+               )
+
+      for module <- [Remembers, AlsoRemembers],
+          {address, label} <- [
+            {"one@example.com", "One Ltd"},
+            {"two@example.com", "two@example.com"}
+          ] do
+        assert_received {:remembered, ^module, ^address, ^label}
+      end
+
+      refute_received {:remembered, _, _, _}
+    end
+
+    test "nothing to remember, or no sources, is nothing", ctx do
+      assert :ok = RecipientSource.remember_all([Remembers], ctx.scope, %{pid: self()}, [])
+      assert :ok = RecipientSource.remember_all([], ctx.scope, %{pid: self()}, @entries)
+      assert :ok = RecipientSource.remember_all(nil, ctx.scope, %{pid: self()}, @entries)
+      refute_received {:remembered, _, _, _}
+    end
+
+    test "a source that fails costs nothing but its own memory, and the log has no address",
+         ctx do
+      for fail <- [:raise, :throw, :exit, :error] do
+        log =
+          capture_log(fn ->
+            assert :ok =
+                     RecipientSource.remember_all(
+                       [Remembers, AlsoRemembers],
+                       ctx.scope,
+                       %{pid: self(), fail: fail},
+                       @entries
+                     )
+          end)
+
+        assert log =~ "Remembers", inspect(fail)
+        refute log =~ "secret", inspect(fail)
+        refute log =~ "one@example.com", inspect(fail)
+        assert_received {:remembered, AlsoRemembers, "one@example.com", _}
+      end
+    end
+
+    test "a source that is too slow is left behind", ctx do
+      Application.put_env(:phoenix_kit_inbox, :recipient_source_timeout, 100)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :recipient_source_timeout) end)
+
+      {microseconds, :ok} =
+        :timer.tc(fn ->
+          RecipientSource.remember_all(
+            [Remembers],
+            ctx.scope,
+            %{pid: self(), fail: :slow},
+            @entries
+          )
+        end)
+
+      assert microseconds < 2_000_000
     end
   end
 

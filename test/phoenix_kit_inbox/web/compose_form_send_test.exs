@@ -989,4 +989,103 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       refute text(view, "#compose-demo-summary") =~ "The client"
     end
   end
+
+  defmodule Spy do
+    @moduledoc false
+    # A host source: offers one address, and tells the test what it is asked
+    # to remember (and fails when the draft's context says so).
+    @behaviour PhoenixKitInbox.RecipientSource
+    @impl true
+    def suggest(_scope, _context, _query),
+      do: [%{address: "known@example.com", label: "Known", route: :email}]
+
+    @impl true
+    def remember(_scope, context, address, label) do
+      send(context.pid, {:remembered, address, label})
+      if context[:fail], do: raise("secret failure for #{address}"), else: :ok
+    end
+  end
+
+  describe "addresses typed by hand, handed to the sources" do
+    setup ctx do
+      admin = user_fixture()
+      manager = scope_for(admin, ["inbox", "inbox.manage_shared"])
+      smtp = mail_integration_fixture(:system, username: "noreply@company.test")
+
+      {:ok, _} =
+        PhoenixKitInbox.Identities.create_shared(manager, %{
+          "label" => "Common",
+          "from_name" => "Company",
+          "integration_uuid" => smtp
+        })
+
+      %{spy_draft: draft(ctx, context: %{pid: self()})}
+    end
+
+    defp with_spy(ctx, conn, draft) do
+      mount_form(ctx, conn, draft, %{recipient_sources: [Spy]})
+    end
+
+    defp type_in_cc(view, address) do
+      view |> element("button[phx-click=toggle][phx-value-block=cc]") |> render_click()
+      view |> form("#compose-demo-cc-form", %{"query" => address}) |> render_change()
+      view |> form("#compose-demo-cc-form", %{"query" => address}) |> render_submit()
+    end
+
+    test "after a send that went, only what was typed by hand, and not before",
+         %{conn: conn} = ctx do
+      view = with_spy(ctx, conn, ctx.spy_draft)
+
+      # A pick from the list is the source's own address: not for remembering.
+      view |> form("#compose-demo-to-form", %{"query" => "known"}) |> render_change()
+      forge_to(view, "pick", %{"id" => "s-1"})
+      type_in_cc(view, "typed@example.com")
+      refute_received {:remembered, _, _}
+
+      submit(view)
+
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{}}}, 2000
+      assert_receive {:remembered, "typed@example.com", "typed@example.com"}, 2000
+      refute_receive {:remembered, _, _}, 200
+    end
+
+    test "a send that was refused remembers nothing", %{conn: conn} = ctx do
+      mode(:error)
+      view = with_spy(ctx, conn, ctx.spy_draft)
+      type_in_cc(view, "typed@example.com")
+
+      submit(view)
+
+      assert_receive {:around, _, _}, 2000
+      eventually(fn -> has_element?(view, "[role=alert]") end)
+      refute_receive {:remembered, _, _}, 300
+    end
+
+    test "a source that fails costs the sent message nothing", %{conn: conn} = ctx do
+      view = with_spy(ctx, conn, draft(ctx, context: %{pid: self(), fail: true}))
+      type_in_cc(view, "typed@example.com")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          submit(view)
+          assert_receive {:inbox_compose, "demo", {:sent, %Message{}}}, 2000
+          assert_receive {:remembered, "typed@example.com", _}, 2000
+          Process.sleep(200)
+        end)
+
+      refute log =~ "typed@example.com"
+      refute log =~ "secret failure"
+      assert messages() == 1
+    end
+
+    test "without a typed address nothing is remembered", %{conn: conn} = ctx do
+      view = with_spy(ctx, conn, ctx.spy_draft)
+      submit(view)
+      assert_receive {:inbox_compose, "demo", {:sent, %Message{}}}, 2000
+      refute_receive {:remembered, _, _}, 300
+    end
+
+    defp forge_to(view, event, value),
+      do: view |> with_target("#compose-form-demo") |> render_click(event, value)
+  end
 end

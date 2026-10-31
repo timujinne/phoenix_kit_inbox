@@ -23,7 +23,9 @@ defmodule PhoenixKitInbox.RecipientSource do
           message otherwise.
 
     * `c:remember/4` (optional) — told when a person typed an address
-      by hand and sent, so a source may keep it for next time.
+      by hand and the letter went, so a source may keep it for next time
+      (`remember_all/4`, called by the compose form; see there for when and
+      how).
 
   `context` is whatever the host puts into its form's draft (`ComposeDraft`'s
   `:context`): the object the mail is about, say. A source reads the
@@ -116,6 +118,76 @@ defmodule PhoenixKitInbox.RecipientSource do
   end
 
   def suggest_all(_sources, _scope, _context, _query), do: []
+
+  @doc """
+  Tells the `sources` that can remember (those that export `c:remember/4`)
+  each of the `entries` (`%{address: String.t(), label: String.t() | nil}`).
+  Always `:ok`: what a source does with it never reaches the send.
+
+  The compose form calls it after a send that **went**, for the addresses the
+  person typed by hand and added to the letter (not those picked from a list
+  and not those of the host's draft), with the draft's `:context`. It runs in
+  the send's worker, after the answer to the page: a send that failed or was
+  refused remembers nothing, and a source that is slow or fails delays and
+  breaks nothing.
+
+  Each source is called in a process of its own, for all the entries one
+  after the other, for at most the same time as `suggest_all/4` allows a source
+  (1.5 seconds); one that raises, throws, exits, answers `{:error, _}` or is too
+  slow is logged by its module only — never the address, nor what it said —
+  and the others go on. Of a source that cannot remember nothing is asked.
+  """
+  @spec remember_all([module()] | nil, Scope.t(), map(), [
+          %{address: String.t(), label: String.t() | nil}
+        ]) :: :ok
+  def remember_all(sources, scope, context, [_ | _] = entries) when is_list(sources) do
+    case Enum.filter(sources, &remembers?/1) do
+      [] -> :ok
+      able -> run_remember(able, scope, context, entries)
+    end
+  end
+
+  def remember_all(_sources, _scope, _context, _entries), do: :ok
+
+  defp remembers?(source) when is_atom(source) and not is_nil(source),
+    do: Code.ensure_loaded?(source) and function_exported?(source, :remember, 4)
+
+  defp remembers?(_source), do: false
+
+  defp run_remember(sources, scope, context, entries) do
+    PhoenixKitInbox.TaskSupervisor
+    |> Task.Supervisor.async_stream_nolink(
+      sources,
+      &remember_entries(&1, scope, context, entries),
+      timeout: timeout(),
+      on_timeout: :kill_task,
+      max_concurrency: min(length(sources), @max_concurrency),
+      zip_input_on_exit: true
+    )
+    |> Enum.each(fn
+      {:ok, _} -> :ok
+      {:exit, {source, :timeout}} -> skip(source, "was too slow to remember")
+      {:exit, {source, _reason}} -> skip(source, "ended without remembering")
+    end)
+  catch
+    # No supervisor to run them under: nothing is remembered.
+    :exit, _reason -> :ok
+  end
+
+  defp remember_entries(source, scope, context, entries) do
+    Enum.each(entries, fn %{address: address} = entry ->
+      try do
+        case source.remember(scope, context, address, entry[:label]) do
+          :ok -> :ok
+          _other -> skip(source, "did not remember")
+        end
+      rescue
+        e -> skip(source, "raised #{inspect(e.__struct__)} when asked to remember")
+      catch
+        kind, _reason -> skip(source, "ended with #{kind} when asked to remember")
+      end
+    end)
+  end
 
   # ── asking ──────────────────────────────────────────────────────────────────
 

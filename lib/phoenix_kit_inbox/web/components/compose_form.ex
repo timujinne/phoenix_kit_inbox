@@ -40,7 +40,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   names a person or mailbox inside is refused with "choose them from the
   list". Doubles within a line are dropped; a line stops at the pipeline's
   limit (20 To, 5 Cc, 5 Bcc). With host sources, a button lists their people
-  without a query.
+  without a query. After a send that went, the host's sources that export
+  `c:PhoenixKitInbox.RecipientSource.remember/4` are told the addresses typed
+  by hand (not the picked ones, not the draft's) with the draft's `:context`,
+  in the send's worker after the page has its answer
+  (`PhoenixKitInbox.RecipientSource.remember_all/4`); what they do with it
+  never changes the answer.
 
   Without `Scope.can?(scope, "inbox")` the component renders an empty
   container and ignores every event.
@@ -755,7 +760,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
     ref = System.unique_integer([:positive])
 
-    case start_task(scope, id, ref, params, draft, callbacks, links) do
+    told = %{
+      sources: socket.assigns.recipient_sources,
+      context: context(socket),
+      entries: typed_entries(socket.assigns.recipients)
+    }
+
+    case start_task(scope, id, ref, params, draft, callbacks, links, told) do
       :ok ->
         assign(socket, sending: true, send_ref: ref, send_started: DateTime.utc_now(), error: nil)
 
@@ -790,12 +801,40 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     |> Map.new()
   end
 
+  # The outside addresses the person typed by hand (and nothing else: no
+  # pick, no host's address), as the sources are told them: the label they
+  # were given, else the address.
+  defp typed_entries(recipients) do
+    for role <- [:to, :cc, :bcc],
+        %{manual: true, route: :email, address: address} = chip when is_binary(address) <-
+          recipients[role],
+        do: %{address: address, label: chip.label || address}
+  end
+
+  # After a send that went, once the page has its answer: the sources that
+  # can keep an address are told the typed ones. Whatever happens here is
+  # not the send's: it was answered above.
+  defp remember({:ok, %Message{}}, scope, told) do
+    RecipientSource.remember_all(
+      Enum.uniq(told.sources),
+      scope,
+      told.context,
+      told.entries
+    )
+  catch
+    kind, reason ->
+      failure = ComposePipeline.describe_failure(kind, reason, __STACKTRACE__)
+      Logger.warning("[Inbox] recipient sources were not told of the typed addresses: #{failure}")
+  end
+
+  defp remember(_result, _scope, _told), do: :ok
+
   # The send runs under the module's task supervisor, not linked to the page:
   # leaving or crashing the page between the commit and the external part must
   # not cut it. The answer finds its way back by send_update to the page's
   # pid, if it is still there. A second task watches the first: a send that
   # is killed, or takes longer than the timeout, is reported as lost.
-  defp start_task(scope, id, ref, params, draft, callbacks, links) do
+  defp start_task(scope, id, ref, params, draft, callbacks, links, told) do
     page = self()
 
     supervisor =
@@ -820,6 +859,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         end
 
       Phoenix.LiveView.send_update(page, __MODULE__, id: id, send_result: {ref, result})
+      remember(result, scope, told)
     end
 
     case Task.Supervisor.start_child(supervisor, work) do
@@ -1206,7 +1246,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       socket
     else
       case typed_entry(socket.assigns.scope, text) do
-        {:ok, entry} -> add_entry(socket, role, entry)
+        {:ok, entry} -> add_entry(socket, role, entry, manual: true)
         {:error, message} -> assign(socket, recipient_error: {role, message})
       end
     end
@@ -1235,7 +1275,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     match?([%{route: :internal}], Messages.resolve_recipient_routes(scope, [text]))
   end
 
-  defp add_entry(socket, role, entry) do
+  # `manual: true` marks an address the person typed (kept on its chip for
+  # the sources' `remember`), as against one picked or set by the host.
+  defp add_entry(socket, role, entry, opts \\ []) do
     %{recipients: recipients, chip_seq: seq} = socket.assigns
     line = recipients[role]
     max = ComposePipeline.max_recipients(role)
@@ -1252,7 +1294,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
             )
 
           true ->
-            chip = Map.put(chip, :key, "#{role}-#{seq}")
+            chip =
+              chip
+              |> Map.put(:key, "#{role}-#{seq}")
+              |> Map.put(:manual, opts[:manual] == true)
 
             socket
             |> assign(
