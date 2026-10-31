@@ -715,7 +715,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # is killed, or takes longer than the timeout, is reported as lost.
   defp start_task(scope, id, ref, params, draft, callbacks, links) do
     page = self()
-    supervisor = PhoenixKitInbox.TaskSupervisor
+
+    supervisor =
+      Application.get_env(
+        :phoenix_kit_inbox,
+        :compose_task_supervisor,
+        PhoenixKitInbox.TaskSupervisor
+      )
 
     work = fn ->
       result =
@@ -734,14 +740,32 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       Phoenix.LiveView.send_update(page, __MODULE__, id: id, send_result: {ref, result})
     end
 
-    with {:ok, worker} <- Task.Supervisor.start_child(supervisor, work),
-         {:ok, _watcher} <- Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref)) do
-      :ok
-    else
-      _ -> :error
+    case Task.Supervisor.start_child(supervisor, work) do
+      {:ok, worker} ->
+        watch_worker(supervisor, worker, page, id, ref)
+        :ok
+
+      _refused ->
+        :error
     end
   catch
     :exit, _reason -> :error
+  end
+
+  # The watcher is a courtesy: a worker that runs is the send, and the files
+  # it was given are its own. Without a watcher the page waits for the
+  # answer without a time limit, which is all that is lost.
+  defp watch_worker(supervisor, worker, page, id, ref) do
+    case Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref)) do
+      {:ok, _watcher} ->
+        :ok
+
+      _refused ->
+        Logger.warning("[Inbox] a compose send runs without a watcher: none could start")
+    end
+  catch
+    :exit, _reason ->
+      Logger.warning("[Inbox] a compose send runs without a watcher: none could start")
   end
 
   defp watch(worker, page, id, ref) do

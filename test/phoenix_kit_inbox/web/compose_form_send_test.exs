@@ -604,6 +604,57 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     end
   end
 
+  describe "the task and the page" do
+    defp put_env!(key, value) do
+      Application.put_env(:phoenix_kit_inbox, key, value)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, key) end)
+    end
+
+    defp forge_to_form(view, assigns),
+      do: Phoenix.LiveView.send_update(view.pid, ComposeForm, [{:id, "demo"} | assigns])
+
+    defp sending?(view), do: has_element?(view, "[data-sending]")
+
+    test "a watcher that can not be started does not undo a worker that runs",
+         %{conn: conn} = ctx do
+      {:ok, one_at_a_time} = Task.Supervisor.start_link(max_children: 1)
+      put_env!(:compose_task_supervisor, one_at_a_time)
+      mode(:hold)
+      view = mount_form(ctx, conn, draft(ctx))
+
+      file =
+        file_input(view, "#compose-demo-upload-form", :attachments, [
+          %{name: "kept.txt", content: "hi", type: "text/plain"}
+        ])
+
+      render_upload(file, "kept.txt")
+      submit(view)
+
+      assert_receive {:around, task, given}, 2000
+      assert [%{path: path}] = given.attachments
+      assert File.exists?(path)
+      refute has_element?(view, "[role=alert]")
+      assert send_button_disabled?(view)
+
+      send(task, :go)
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+      assert messages() == 1
+    end
+
+    test "a worker that can not be started is a plain error and cleans up", %{conn: conn} = ctx do
+      {:ok, full} = Task.Supervisor.start_link(max_children: 0)
+      put_env!(:compose_task_supervisor, full)
+      view = mount_form(ctx, conn, draft(ctx))
+
+      submit(view)
+
+      assert text(view, "[role=alert]") =~ "could not be sent"
+      refute send_button_disabled?(view)
+      assert messages() == 0
+    end
+
+  end
+
   describe "a key that was used before" do
     defp earlier_letter!(ctx, key, ago_seconds) do
       {:ok, mailbox} = Mailboxes.ensure_user_mailbox(ctx.alice)
