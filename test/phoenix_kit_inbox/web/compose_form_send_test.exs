@@ -349,6 +349,21 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
 
       refute render(view) =~ "<script>alert"
       assert String.length(text(view, "[role=alert]")) <= 320
+    test "a crash of the wrapper is logged where to look, not with what it carried",
+         %{conn: conn} = ctx do
+      mode(:raise)
+      view = mount_form(ctx, conn, draft(ctx))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          submit(view)
+          assert_receive {:around, _, _}, 2000
+          eventually(fn -> has_element?(view, "[role=alert]") end)
+        end)
+
+      assert log =~ "RuntimeError at"
+      assert log =~ "Host.act"
+      refute log =~ "secret-token"
     end
 
     test "a task that is killed gives a plain error and an active button",

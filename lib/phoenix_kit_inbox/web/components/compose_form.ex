@@ -738,9 +738,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           ComposePipeline.run(scope, params, draft, callbacks)
         catch
           kind, reason ->
-            # What failed, not what it carried: the text may name people.
-            what = if is_struct(reason), do: inspect(reason.__struct__), else: "a #{kind}"
-            Logger.error("[Inbox] a compose send ended with #{what}")
+            # What failed and where, not what it carried: the text may name people.
+            failure = ComposePipeline.describe_failure(kind, reason, __STACKTRACE__)
+            Logger.error("[Inbox] a compose send ended with #{failure}")
             {:error, :send_failed}
         after
           Enum.each(links, &File.rm/1)
@@ -1644,9 +1644,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         <.button
           :if={@line.picker?}
           type="button"
-          variant="ghost"
+          variant="outline"
           size="xs"
-          class="btn-outline"
           aria-expanded={to_string(@line.picker_open?)}
           phx-click="toggle_picker"
           phx-value-role={@role}
@@ -1726,9 +1725,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     ~H"""
     <.button
       type="button"
-      variant="ghost"
+      variant="outline"
       size="xs"
-      class={["btn-outline", @open && "btn-active"]}
+      class={@open && "btn-active"}
       aria-pressed={to_string(@open)}
       phx-click="toggle"
       phx-value-block={@block}

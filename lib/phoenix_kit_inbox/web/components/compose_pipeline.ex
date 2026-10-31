@@ -320,18 +320,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   # frames — never what it carried). Before the send, or after one that
   # failed, it is the wrapper's failure as it always was.
   defp ended(kind, reason, stacktrace, {:sent, {:ok, %Message{}} = ok}) do
-    what = if is_struct(reason), do: inspect(reason.__struct__), else: "a #{kind}"
-    frames = stacktrace |> Enum.take(3) |> Enum.map_join(" < ", &frame/1)
-
     Logger.error(
-      "[Inbox] the host's wrapper ended with #{what} after the letter went, " <>
-        "so the send is answered as sent; look at: #{frames}"
+      "[Inbox] the host's wrapper ended with #{describe_failure(kind, reason, stacktrace)} " <>
+        "after the letter went, so the send is answered as sent"
     )
 
     ok
   end
 
   defp ended(kind, reason, stacktrace, _sent), do: :erlang.raise(kind, reason, stacktrace)
+
+  @doc false
+  # For a log line: what failed and where, never what it carried. The exception's
+  # module (or the kind) and the top three frames as module.function/arity.
+  @spec describe_failure(Exception.kind(), term(), Exception.stacktrace()) :: String.t()
+  def describe_failure(kind, reason, stacktrace) do
+    what = if is_struct(reason), do: inspect(reason.__struct__), else: "a #{kind}"
+    frames = stacktrace |> Enum.take(3) |> Enum.map_join(" < ", &frame/1)
+    "#{what} at #{frames}"
+  end
 
   defp frame({module, function, arity, _location}) when is_atom(module) and is_atom(function),
     do: "#{inspect(module)}.#{function}/#{if is_list(arity), do: length(arity), else: arity}"
@@ -613,7 +620,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp subject_length(subject) do
     # In code points, as the schema counts (`count: :codepoints`), not graphemes.
-    if length(String.to_charlist(subject)) > @subject_max,
+    # No code point takes more than four bytes: a subject over four times the
+    # limit in bytes is too long without being counted.
+    if byte_size(subject) > @subject_max * 4 or length(String.to_charlist(subject)) > @subject_max,
       do: {:error, :subject_too_long},
       else: :ok
   end
