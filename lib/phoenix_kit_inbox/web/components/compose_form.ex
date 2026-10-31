@@ -1485,24 +1485,28 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
             phx-change="validate_upload"
             phx-target={@myself}
           >
-            <label class="btn btn-ghost btn-xs btn-outline">
+            <label class="btn btn-outline btn-xs focus-within:ring-2 focus-within:ring-primary">
               <.icon name="hero-arrow-up-tray" class="w-3 h-3" />
               {gettext("Upload files")}
-              <.live_file_input upload={@uploads.attachments} class="hidden" />
+              <%!-- sr-only, not hidden: a hidden input is out of the keyboard's reach --%>
+              <.live_file_input upload={@uploads.attachments} class="sr-only" />
             </label>
           </form>
           {render_slot(@attachment_picker, %{target: @myself, event: "pick_attachments"})}
         </div>
       </div>
 
-      <p
-        :if={@summary}
-        id={"compose-#{@id}-summary"}
-        class="text-sm text-base-content/70"
-        data-sending={@sending || nil}
-      >
-        {summary_text(@summary)}
-      </p>
+      <%!-- The region is always there: one that appears with its text is not announced. --%>
+      <div id={"compose-#{@id}-summary-live"} aria-live="polite">
+        <p
+          :if={@summary}
+          id={"compose-#{@id}-summary"}
+          class="text-sm text-base-content/70"
+          data-sending={@sending || nil}
+        >
+          {summary_text(@summary)}
+        </p>
+      </div>
 
       <div class="flex justify-end gap-2">
         <.button
@@ -1614,6 +1618,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           autocomplete="off"
           maxlength="320"
           phx-debounce="300"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={to_string(@line.list != nil)}
+          aria-controls={"compose-#{@id}-#{@role}-suggestions"}
           wrapper_class="grow"
           class="input-sm"
         />
@@ -1660,6 +1668,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     ~H"""
     <div
       id={"compose-#{@id}-#{@role}-suggestions"}
+      role="listbox"
+      aria-label={gettext("Suggestions")}
       class="flex flex-col gap-1 rounded-box border border-base-300 bg-base-100 p-1"
     >
       <p :if={@list.items == []} class="px-2 py-1 text-sm text-base-content/60">
@@ -1670,6 +1680,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         <button
           :for={item <- items}
           type="button"
+          role="option"
+          aria-selected="false"
           class="btn btn-ghost btn-sm justify-start gap-2 font-normal"
           phx-click="pick"
           phx-value-id={item.id}

@@ -405,6 +405,45 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       refute has_element?(view, "#compose-demo-cc")
     end
   end
+  describe "for people who do not use a mouse" do
+    test "the file input is hidden from the eye but not from the keyboard", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+
+      assert has_element?(view, "#compose-demo-upload-form input[type=file].sr-only")
+      refute has_element?(view, "#compose-demo-upload-form input[type=file].hidden")
+    end
+
+    test "the line above the button is announced when it changes", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+      assert has_element?(view, "#compose-demo-summary-live[aria-live=polite]")
+
+      view |> element("#compose-demo-to li button[phx-click=remove]") |> render_click()
+
+      # Still there when it has nothing to say: a region that appears with
+      # its text is not announced.
+      assert has_element?(view, "#compose-demo-summary-live[aria-live=polite]")
+    end
+
+    test "the suggestions are a list the field points at", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+      input = "#compose-demo-to-input"
+
+      assert has_element?(
+               view,
+               input <>
+                 "[role=combobox][aria-autocomplete=list][aria-expanded=false]" <>
+                 "[aria-controls=compose-demo-to-suggestions]"
+             )
+
+      view |> form("#compose-demo-to-form", %{"query" => "bob"}) |> render_change()
+
+      assert has_element?(view, input <> "[aria-expanded=true]")
+      assert has_element?(view, "#compose-demo-to-suggestions[role=listbox]")
+      assert has_element?(view, "#compose-demo-to-suggestions [role=option]")
+    end
+
+  end
+
   describe "what the draft says, read the way the pipeline reads it" do
     test "a from_editable that is not true is not editable", %{conn: conn} = ctx do
       for value <- [nil, false] do
