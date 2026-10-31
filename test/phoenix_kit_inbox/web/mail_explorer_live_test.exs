@@ -15,6 +15,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
   alias PhoenixKitInbox.Test.ComponentHostLive
   alias PhoenixKitInbox.Test.Repo
   alias PhoenixKitInbox.Web.Components.MailExplorer
+  alias PhoenixKitInbox.Web.Components.MailExplorerHooks
 
   @order %{kind: "order", ref: "o-1"}
   @other %{kind: "order", ref: "o-2"}
@@ -418,7 +419,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       socket = %Phoenix.LiveView.Socket{}
 
       assert {:cont, ^socket} =
-               PhoenixKitInbox.Web.Components.MailExplorerHooks.handle_info(
+               MailExplorerHooks.handle_info(
                  {:inbox_access_changed, :senders},
                  socket
                )
