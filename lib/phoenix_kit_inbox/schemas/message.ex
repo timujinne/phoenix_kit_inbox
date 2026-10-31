@@ -100,12 +100,14 @@ defmodule PhoenixKitInbox.Schemas.Message do
   # graphemes, hence `count: :codepoints` above.
   defp validate_storable_text(changeset, fields) do
     Enum.reduce(fields, changeset, fn field, changeset ->
-      validate_change(changeset, field, fn _field, value ->
-        if is_binary(value) and (not String.valid?(value) or String.contains?(value, <<0>>)),
-          do: [{field, "contains characters that cannot be stored"}],
-          else: []
-      end)
+      validate_change(changeset, field, &storable_errors/2)
     end)
+  end
+
+  defp storable_errors(field, value) do
+    if is_binary(value) and (not String.valid?(value) or String.contains?(value, <<0>>)),
+      do: [{field, "contains characters that cannot be stored"}],
+      else: []
   end
 
   # The subject becomes a mail header (external recipients, the nudge): a line
