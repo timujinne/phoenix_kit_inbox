@@ -112,6 +112,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   def run(_scope, _form_params, _draft, _callbacks), do: {:error, :forbidden}
 
+  @doc """
+  How many addresses a line (`:to`, `:cc`, `:bcc`) takes — the limit `run/4`
+  enforces, so a form can stop at the same number.
+  """
+  @spec max_recipients(:to | :cc | :bcc) :: pos_integer()
+  def max_recipients(role) when role in @roles, do: Map.fetch!(@max_per_role, role)
+
+  @doc """
+  Whether `address` is text `run/4` takes as an address of a recipient (not
+  that anyone lives there): non-empty, valid UTF-8, at most 320 characters, no
+  control characters, commas or semicolons.
+  """
+  @spec valid_address?(term()) :: boolean()
+  def valid_address?(address) when is_binary(address), do: address_ok?(address)
+  def valid_address?(_), do: false
+
   defp checked(scope, params, %ComposeDraft{} = draft, callbacks) do
     callbacks = callbacks(callbacks)
 

@@ -29,6 +29,19 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       callbacks and recipient sources, as for the pipeline
     * `attachment_picker` — an optional slot for the host's file picker
 
+  ## Recipients
+
+  Each line (To, Cc, Bcc) holds chips — server-side structures with the label,
+  the address and the route (`:internal` ones are marked). People are added
+  from suggestions (`PhoenixKitInbox.RecipientSource.suggest_all/4` over the
+  module's own members and the host's `recipient_sources`, on the draft's
+  `:context`) or by hand. A suggestion is named by its id in the list the
+  server made; a typed address is an outside one (`:email`), and one that
+  names a person or mailbox inside is refused with "choose them from the
+  list". Doubles within a line are dropped; a line stops at the pipeline's
+  limit (20 To, 5 Cc, 5 Bcc). With host sources, a button lists their people
+  without a query.
+
   Without `Scope.can?(scope, "inbox")` the component renders an empty
   container and ignores every event.
 
@@ -41,13 +54,23 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   use Gettext, backend: PhoenixKitInbox.Gettext
 
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitInbox.Errors
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
+  alias PhoenixKitInbox.Messages
+  alias PhoenixKitInbox.RecipientSource
+  alias PhoenixKitInbox.RecipientSources.Members
   alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Web.Components.ComposeDraft
+  alias PhoenixKitInbox.Web.Components.ComposePipeline
 
   @blocks ~w(cc bcc signature)
+  @roles ~w(to cc bcc)
   @subject_max 500
+  @query_max 320
+  @typed_shown 8
+  @picker_shown 30
+  @email_shape ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/u
 
   # ── the component ───────────────────────────────────────────────────────────
 
@@ -80,11 +103,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # A draft the form has not seen: everything it starts from is read again.
   defp open_draft(socket, %ComposeDraft{} = draft) do
-    recipients = %{
-      to: chips(draft.to, "to", 1),
-      cc: chips(draft.cc, "cc", 1),
-      bcc: chips(draft.bcc, "bcc", 1)
-    }
+    {to, seq} = chips(draft.to, "to", 1)
+    {cc, seq} = chips(draft.cc, "cc", seq)
+    {bcc, seq} = chips(draft.bcc, "bcc", seq)
+    recipients = %{to: to, cc: cc, bcc: bcc}
 
     socket
     |> assign(
@@ -92,6 +114,11 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       subject: text(draft.subject),
       body: text(draft.body),
       recipients: recipients,
+      chip_seq: seq,
+      inputs: %{to: "", cc: "", bcc: ""},
+      list: nil,
+      list_seq: 0,
+      recipient_error: nil,
       open: %{cc: recipients.cc != [], bcc: recipients.bcc != [], signature: false},
       signature_uuid: "",
       signature_block: "",
@@ -105,14 +132,16 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # ── recipients (server structures; the browser only names them) ─────────────
 
+  # The chips of a draft's line, keyed "<role>-<n>" from `from`; also the next
+  # free number. A key is only ever handed out once, so one that was removed
+  # cannot name a later chip.
   defp chips(list, role, from) when is_list(list) do
     list
     |> Enum.flat_map(&chip/1)
-    |> Enum.with_index(from)
-    |> Enum.map(fn {chip, n} -> Map.put(chip, :key, "#{role}-#{n}") end)
+    |> Enum.map_reduce(from, fn chip, n -> {Map.put(chip, :key, "#{role}-#{n}"), n + 1} end)
   end
 
-  defp chips(_other, _role, _from), do: []
+  defp chips(_other, _role, from), do: {[], from}
 
   defp chip(%{} = entry) when not is_struct(entry) do
     route = if Map.get(entry, :route) == :internal, do: :internal, else: :email
@@ -287,6 +316,65 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end
   end
 
+  # Typing in a line's field: the suggestions for it, from the server's sources.
+  def handle_event("suggest", %{"role" => role, "query" => query}, socket)
+      when is_binary(role) and is_binary(query) do
+    case role_atom(role) do
+      {:ok, role} -> {:noreply, suggest(socket, role, query)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  # Enter in a line's field: what was typed is an outside address or nothing.
+  def handle_event("add", %{"role" => role, "query" => text}, socket)
+      when is_binary(role) and is_binary(text) do
+    case role_atom(role) do
+      {:ok, role} -> {:noreply, add_typed(socket, role, text)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  # A suggestion of the list the server made, named by its id and nothing else:
+  # the person, the route and the line all come from the server's side.
+  def handle_event("pick", %{"id" => id}, socket) when is_binary(id) do
+    with %{role: role, items: items} <- socket.assigns.list,
+         %{entry: entry} <- Enum.find(items, &(&1.id == id)) do
+      {:noreply, add_entry(socket, role, entry)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("remove", %{"key" => key}, socket) when is_binary(key) do
+    recipients = socket.assigns.recipients
+
+    case Enum.find([:to, :cc, :bcc], &has_chip?(recipients[&1], key)) do
+      nil ->
+        {:noreply, socket}
+
+      role ->
+        line = Enum.reject(recipients[role], &(&1.key == key))
+
+        {:noreply,
+         assign(socket, recipients: Map.put(recipients, role, line), recipient_error: nil)}
+    end
+  end
+
+  def handle_event("toggle_picker", %{"role" => role}, socket) when is_binary(role) do
+    with {:ok, role} <- role_atom(role),
+         [_ | _] <- socket.assigns.recipient_sources do
+      case socket.assigns.list do
+        %{role: ^role, kind: :picker} ->
+          {:noreply, assign(socket, list: nil, recipient_error: nil)}
+
+        _ ->
+          {:noreply, open_picker(socket, role)}
+      end
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_event("change", params, socket) do
     {:noreply,
      socket
@@ -307,6 +395,144 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp keep(socket, key, value) when is_binary(value), do: assign(socket, key, value)
   defp keep(socket, _key, _value), do: socket
+
+  # ── the recipients' lines ───────────────────────────────────────────────────
+
+  defp role_atom(role) when role in @roles, do: {:ok, String.to_existing_atom(role)}
+  defp role_atom(_), do: :error
+
+  defp has_chip?(chips, key), do: Enum.any?(chips, &(&1.key == key))
+
+  # What the module knows of its own people, then whatever the host brought.
+  defp all_sources(socket), do: Enum.uniq([Members | socket.assigns.recipient_sources])
+
+  defp context(socket) do
+    case socket.assigns.source_draft.context do
+      %{} = context -> context
+      _ -> %{}
+    end
+  end
+
+  defp suggest(socket, role, query) do
+    query = String.slice(query, 0, @query_max)
+    socket = assign(socket, inputs: Map.put(socket.assigns.inputs, role, query))
+
+    entries =
+      if String.trim(query) == "",
+        do: [],
+        else:
+          socket
+          |> all_sources()
+          |> RecipientSource.suggest_all(socket.assigns.scope, context(socket), query)
+          |> Enum.take(@typed_shown)
+
+    socket |> assign(recipient_error: nil) |> assign_list(role, :typed, entries)
+  end
+
+  defp open_picker(socket, role) do
+    entries =
+      socket.assigns.recipient_sources
+      |> RecipientSource.suggest_all(socket.assigns.scope, context(socket), "")
+      |> Enum.take(@picker_shown)
+
+    socket |> assign(recipient_error: nil) |> assign_list(role, :picker, entries)
+  end
+
+  # Every suggestion gets an id of this list only; a new list voids the old ids.
+  defp assign_list(socket, _role, :typed, []), do: assign(socket, list: nil)
+
+  defp assign_list(socket, role, kind, entries) do
+    {items, seq} =
+      Enum.map_reduce(entries, socket.assigns.list_seq, fn entry, n ->
+        {%{id: "s-#{n + 1}", entry: entry}, n + 1}
+      end)
+
+    assign(socket, list: %{role: role, kind: kind, items: items}, list_seq: seq)
+  end
+
+  defp add_typed(socket, role, text) do
+    text = String.trim(text)
+
+    if text == "" do
+      socket
+    else
+      case typed_entry(socket.assigns.scope, text) do
+        {:ok, entry} -> add_entry(socket, role, entry)
+        {:error, message} -> assign(socket, recipient_error: {role, message})
+      end
+    end
+  end
+
+  # Typed by hand, a recipient is an outside address. One that names a person
+  # or mailbox inside is not taken (the send would refuse it): it is to be
+  # chosen from the list.
+  defp typed_entry(scope, text) do
+    cond do
+      not ComposePipeline.valid_address?(text) ->
+        {:error, gettext("That is not an email address.")}
+
+      internal?(scope, text) ->
+        {:error, Errors.message({:member_as_email, [text]})}
+
+      not Regex.match?(@email_shape, text) ->
+        {:error, gettext("That is not an email address.")}
+
+      true ->
+        {:ok, %{address: text, label: nil, route: :email}}
+    end
+  end
+
+  defp internal?(scope, text) do
+    match?([%{route: :internal}], Messages.resolve_recipient_routes(scope, [text]))
+  end
+
+  defp add_entry(socket, role, entry) do
+    %{recipients: recipients, chip_seq: seq} = socket.assigns
+    line = recipients[role]
+    max = ComposePipeline.max_recipients(role)
+
+    case chip(entry) do
+      [%{address: address} = chip] when is_binary(address) ->
+        cond do
+          Enum.any?(line, &same_person?(&1, chip)) ->
+            finish_add(socket, role)
+
+          length(line) >= max ->
+            assign(socket,
+              recipient_error: {role, Errors.message({:too_many_recipients, role, max})}
+            )
+
+          true ->
+            chip = Map.put(chip, :key, "#{role}-#{seq}")
+
+            socket
+            |> assign(
+              recipients: Map.put(recipients, role, line ++ [chip]),
+              chip_seq: seq + 1,
+              open: Map.replace(socket.assigns.open, role, true)
+            )
+            |> finish_add(role)
+        end
+
+      _ ->
+        socket
+    end
+  end
+
+  defp finish_add(socket, role) do
+    assign(socket,
+      inputs: Map.put(socket.assigns.inputs, role, ""),
+      list: nil,
+      recipient_error: nil
+    )
+  end
+
+  defp same_person?(%{user: user}, %{user: user}) when is_binary(user), do: true
+
+  defp same_person?(%{address: a}, %{address: b}) when is_binary(a) and is_binary(b),
+    do: String.downcase(a) == String.downcase(b)
+
+  defp same_person?(_, _), do: false
 
   # A block holding people stays open: closing it would hide who gets the letter.
   defp toggle(socket, :signature) do
@@ -401,7 +627,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         <span>{@error}</span>
       </div>
 
-      <.recipients id={@id} role="to" label={gettext("To")} chips={@recipients.to} />
+      <.recipients
+        id={@id}
+        role="to"
+        label={gettext("To")}
+        line={line(assigns, :to)}
+        target={@myself}
+      />
 
       <div class="flex flex-wrap items-center gap-1" role="group" aria-label={gettext("More fields")}>
         <.block_button id={@id} block="cc" label={gettext("+ Cc")} open={@open.cc} target={@myself} />
@@ -422,13 +654,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         />
       </div>
 
-      <.recipients :if={@open.cc} id={@id} role="cc" label={gettext("Cc")} chips={@recipients.cc} />
+      <.recipients
+        :if={@open.cc}
+        id={@id}
+        role="cc"
+        label={gettext("Cc")}
+        line={line(assigns, :cc)}
+        target={@myself}
+      />
       <.recipients
         :if={@open.bcc}
         id={@id}
         role="bcc"
         label={gettext("Bcc")}
-        chips={@recipients.bcc}
+        line={line(assigns, :bcc)}
+        target={@myself}
       />
 
       <form
@@ -501,30 +741,171 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     """
   end
 
+  # What one line of recipients shows: its chips, what is typed, the list under
+  # it (when it is this line's) and the last refusal (when it was this line's).
+  defp line(assigns, role) do
+    list = if match?(%{role: ^role}, assigns.list), do: assigns.list
+
+    error =
+      case assigns.recipient_error do
+        {^role, message} -> message
+        _ -> nil
+      end
+
+    %{
+      chips: assigns.recipients[role],
+      query: assigns.inputs[role],
+      list: list,
+      error: error,
+      picker?: assigns.recipient_sources != [],
+      picker_open?: match?(%{kind: :picker}, list)
+    }
+  end
+
   attr(:id, :string, required: true)
   attr(:role, :string, required: true)
   attr(:label, :string, required: true)
-  attr(:chips, :list, required: true)
+  attr(:line, :map, required: true)
+  attr(:target, :any, required: true)
 
   defp recipients(assigns) do
     ~H"""
     <div id={"compose-#{@id}-#{@role}"} class="flex flex-col gap-1">
-      <span class="text-sm font-medium" id={"compose-#{@id}-#{@role}-label"}>{@label}</span>
+      <label
+        class="text-sm font-medium"
+        id={"compose-#{@id}-#{@role}-label"}
+        for={"compose-#{@id}-#{@role}-input"}
+      >
+        {@label}
+      </label>
       <ul
         class="flex flex-wrap items-center gap-1"
         aria-labelledby={"compose-#{@id}-#{@role}-label"}
       >
         <li
-          :for={chip <- @chips}
+          :for={chip <- @line.chips}
           id={"compose-#{@id}-chip-#{chip.key}"}
           class="badge badge-outline gap-1"
+          data-route={chip.route}
           title={chip.address}
         >
+          <.internal_marker :if={chip.route == :internal} />
           {chip_text(chip)}
+          <button
+            type="button"
+            class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
+            aria-label={gettext("Remove %{name}", name: chip_text(chip))}
+            phx-click="remove"
+            phx-value-key={chip.key}
+            phx-target={@target}
+          >
+            <.icon name="hero-x-mark" class="w-3 h-3" />
+          </button>
         </li>
       </ul>
+      <form
+        id={"compose-#{@id}-#{@role}-form"}
+        class="flex items-center gap-1"
+        phx-change="suggest"
+        phx-submit="add"
+        phx-target={@target}
+      >
+        <input type="hidden" name="role" value={@role} />
+        <.input
+          id={"compose-#{@id}-#{@role}-input"}
+          name="query"
+          type="text"
+          value={@line.query}
+          placeholder={gettext("Name or email")}
+          autocomplete="off"
+          maxlength="320"
+          phx-debounce="300"
+          wrapper_class="grow"
+          class="input-sm"
+        />
+        <.button :if={String.trim(@line.query) != ""} type="submit" variant="ghost" size="xs">
+          {gettext("Add")}
+        </.button>
+      </form>
+      <p
+        :if={@line.error}
+        id={"compose-#{@id}-#{@role}-error"}
+        role="alert"
+        class="text-xs text-error"
+      >
+        {@line.error}
+      </p>
+      <.suggestions :if={@line.list} id={@id} role={@role} list={@line.list} target={@target} />
+      <div>
+        <.button
+          :if={@line.picker?}
+          type="button"
+          variant="ghost"
+          size="xs"
+          class="btn-outline"
+          aria-expanded={to_string(@line.picker_open?)}
+          phx-click="toggle_picker"
+          phx-value-role={@role}
+          phx-target={@target}
+        >
+          {gettext("+ From client or CRM addresses")}
+        </.button>
+      </div>
     </div>
     """
+  end
+
+  attr(:id, :string, required: true)
+  attr(:role, :string, required: true)
+  attr(:list, :map, required: true)
+  attr(:target, :any, required: true)
+
+  defp suggestions(assigns) do
+    assigns = assign(assigns, :groups, groups(assigns.list.items))
+
+    ~H"""
+    <div
+      id={"compose-#{@id}-#{@role}-suggestions"}
+      class="flex flex-col gap-1 rounded-box border border-base-300 bg-base-100 p-1"
+    >
+      <p :if={@list.items == []} class="px-2 py-1 text-sm text-base-content/60">
+        {gettext("No addresses found.")}
+      </p>
+      <div :for={{group, items} <- @groups} class="flex flex-col">
+        <p :if={group} class="px-2 pt-1 text-xs font-medium text-base-content/60">{group}</p>
+        <button
+          :for={item <- items}
+          type="button"
+          class="btn btn-ghost btn-sm justify-start gap-2 font-normal"
+          phx-click="pick"
+          phx-value-id={item.id}
+          phx-target={@target}
+        >
+          <.internal_marker :if={item.entry.route == :internal} />
+          {chip_text(item.entry)}
+          <span :if={item.entry[:label] && item.entry[:address]} class="text-xs text-base-content/60">
+            {item.entry.address}
+          </span>
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp internal_marker(assigns) do
+    ~H"""
+    <span data-internal-marker class="badge badge-info badge-soft badge-xs">
+      {gettext("internal")}
+    </span>
+    """
+  end
+
+  # The items under their group's heading, in the order the groups first appear.
+  defp groups(items) do
+    items
+    |> Enum.map(& &1.entry.group)
+    |> Enum.uniq()
+    |> Enum.map(fn group -> {group, Enum.filter(items, &(&1.entry.group == group))} end)
   end
 
   attr(:id, :string, required: true)

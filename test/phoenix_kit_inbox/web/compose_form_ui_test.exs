@@ -94,7 +94,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
   end
 
   # An event the page never offers, as a browser could still send it.
-  defp forge(view, event, value \\ %{}) do
+  defp forge(view, event, value) do
     view |> with_target("#compose-form-demo") |> render_click(event, value)
   end
 
