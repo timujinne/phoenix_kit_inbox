@@ -26,8 +26,8 @@ msgstr ""
 #: lib/phoenix_kit_inbox/notify.ex:242
 #: lib/phoenix_kit_inbox/notify.ex:243
 #: lib/phoenix_kit_inbox/notify.ex:365
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:552
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:580
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:628
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:657
 #: lib/phoenix_kit_inbox/web/components/mail_tree.ex:97
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:758
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:836
@@ -195,14 +195,14 @@ msgstr ""
 msgid "Choose a sender under “Send as” to write to addresses outside this application."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:534
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:603
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:838
 #, elixir-autogen, elixir-format
 msgid "Close"
 msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:209
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:514
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:582
 #, elixir-autogen, elixir-format
 msgid "Compose"
 msgstr ""
@@ -268,7 +268,7 @@ msgstr ""
 msgid "Discard this draft?"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:653
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:730
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:880
 #, elixir-autogen, elixir-format
 msgid "Download"
@@ -323,7 +323,7 @@ msgid "Grant access"
 msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:195
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:689
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:766
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:77
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1077
 #, elixir-autogen, elixir-format
@@ -349,7 +349,7 @@ msgstr ""
 #: lib/phoenix_kit_inbox.ex:180
 #: lib/phoenix_kit_inbox.ex:240
 #: lib/phoenix_kit_inbox.ex:272
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:123
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:128
 #: lib/phoenix_kit_inbox/web/settings_live.ex:31
 #, elixir-autogen, elixir-format
 msgid "Mail"
@@ -578,7 +578,7 @@ msgstr ""
 msgid "Remove attachment"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:680
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:757
 #: lib/phoenix_kit_inbox/web/compose_live.ex:440
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:1002
 #, elixir-autogen, elixir-format
@@ -975,25 +975,25 @@ msgstr ""
 msgid "a file"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:705
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:782
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:956
 #, elixir-autogen, elixir-format
 msgid "not delivered"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:706
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:783
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:957
 #, elixir-autogen, elixir-format
 msgid "sending…"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:704
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:781
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:955
 #, elixir-autogen, elixir-format
 msgid "sent"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:707
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:784
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:958
 #, elixir-autogen, elixir-format
 msgid "unknown — check the email log"
@@ -1238,7 +1238,7 @@ msgstr ""
 msgid "You no longer have access to “%{name}”."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:666
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:743
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1156
 #: lib/phoenix_kit_inbox/web/inbox_live.ex:893
 #, elixir-autogen, elixir-format
@@ -1307,12 +1307,12 @@ msgid_plural "%{count} letters"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:688
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:765
 #, elixir-autogen, elixir-format
 msgid "All"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:442
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:500
 #, elixir-autogen, elixir-format
 msgid "Folder"
 msgstr ""
@@ -1322,22 +1322,22 @@ msgstr ""
 msgid "Incoming"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:464
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:522
 #, elixir-autogen, elixir-format
 msgid "Link a letter"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:542
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:611
 #, elixir-autogen, elixir-format
 msgid "No letters without a link."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:480
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:538
 #, elixir-autogen, elixir-format
 msgid "No letters yet."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:504
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:572
 #, elixir-autogen, elixir-format
 msgid "Other people's personal mail is not shown here."
 msgstr ""
@@ -1347,18 +1347,18 @@ msgstr ""
 msgid "Outgoing"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:530
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:599
 #, elixir-autogen, elixir-format
 msgid "Pick a letter to link"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:486
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:553
 #, elixir-autogen, elixir-format
 msgid "Select a conversation to read it."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:625
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:626
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:702
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:703
 #, elixir-autogen, elixir-format
 msgid "Unlink"
 msgstr ""
@@ -1444,8 +1444,18 @@ msgstr ""
 msgid "These recipients would not be reached the way they were chosen: %{addresses}. Choose them again."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:690
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:767
 #, elixir-autogen, elixir-format
 msgctxt "mail explorer folder"
 msgid "Sent"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:618
+#, elixir-autogen, elixir-format
+msgid "Only the %{count} newest letters are shown."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/components/mail_explorer.ex:547
+#, elixir-autogen, elixir-format
+msgid "Show more"
 msgstr ""

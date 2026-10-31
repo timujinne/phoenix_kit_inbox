@@ -265,6 +265,72 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
     end
   end
 
+  describe "more than a page" do
+    # Fifty-two conversations, the first two the oldest.
+    defp many(ctx, links) do
+      for n <- 1..52 do
+        mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Letter #{n}"}, links: links)
+      end
+    end
+
+    defp rows(view),
+      do: view |> render() |> then(&Regex.scan(~r/id="mail-row-demo-/, &1)) |> length()
+
+    test "the list shows a page, and Show more adds the next", %{conn: conn} = ctx do
+      [oldest, second | _] = many(ctx, [@order])
+      view = mount_explorer(ctx, conn)
+
+      assert rows(view) == 50
+      refute has_element?(view, "#mail-row-demo-#{oldest.uuid}")
+      refute has_element?(view, "#mail-row-demo-#{second.uuid}")
+      assert has_element?(view, "button[phx-click=more]")
+
+      view |> element("button[phx-click=more]") |> render_click()
+
+      assert rows(view) == 52
+      assert has_element?(view, "#mail-row-demo-#{oldest.uuid}")
+      refute has_element?(view, "button[phx-click=more]")
+    end
+
+    test "a folder starts from the first page again", %{conn: conn} = ctx do
+      many(ctx, [@order])
+      view = mount_explorer(ctx, conn)
+      view |> element("button[phx-click=more]") |> render_click()
+      assert rows(view) == 52
+
+      view |> element("button[phx-value-folder=inbox]") |> render_click()
+      assert rows(view) == 50
+      assert has_element?(view, "button[phx-click=more]")
+    end
+
+    test "no Show more for a short list", %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
+      view = mount_explorer(ctx, conn)
+      refute has_element?(view, "button[phx-click=more]")
+      forge(view, "more", %{})
+      assert rows(view) == 1
+    end
+
+    test "the picker keeps the newest fifty and says so", %{conn: conn} = ctx do
+      [oldest | _] = many(ctx, [])
+      view = mount_explorer(ctx, conn, %{can_link?: allowing()})
+
+      view |> element("button[phx-click=open_picker]") |> render_click()
+
+      assert length(Regex.scan(~r/phx-click="link"/, render(view))) == 50
+      refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{oldest.uuid}']")
+      assert has_element?(view, "#mail-picker-demo-note")
+      assert render(element(view, "#mail-picker-demo-note")) =~ "50"
+    end
+
+    test "a short picker has no such note", %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{})
+      view = mount_explorer(ctx, conn, %{can_link?: allowing()})
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      refute has_element?(view, "#mail-picker-demo-note")
+    end
+  end
+
   describe "a viewer without the inbox right" do
     test "gets an empty container: no list, no buttons, no actions", %{conn: conn} = ctx do
       letter = mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
@@ -332,6 +398,7 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
         error: nil,
         picker: nil,
         can_pick?: false,
+        more?: false,
         threads: [],
         link_access: %{},
         link_labels: %{},

@@ -131,13 +131,15 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       |> assign_new(:can_link?, fn -> nil end)
       |> assign_new(:link_label, fn -> nil end)
       |> assign_new(:link_to, fn -> nil end)
+      |> assign_new(:pages, fn -> 1 end)
+      |> assign_new(:more?, fn -> false end)
       |> assign_new(:folder, fn -> nil end)
       |> assign_new(:selected, fn -> nil end)
       |> assign_new(:picker, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
       |> then(&assign(&1, :folder, offered_folder(&1.assigns.folder, &1.assigns.folders)))
 
-    {:ok, if(stale?, do: load(socket), else: socket)}
+    {:ok, if(stale?, do: socket |> assign(:pages, 1) |> load(), else: socket)}
   end
 
   # The objects, once each and in one order: another order of the same objects
@@ -167,21 +169,44 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   # the selection if it still points at something on the page.
   defp load(%{assigns: %{allowed?: false}} = socket) do
     socket
-    |> assign(threads: [], selected: nil, picker: nil, letters: [], can_pick?: false)
+    |> assign(
+      threads: [],
+      more?: false,
+      selected: nil,
+      picker: nil,
+      letters: [],
+      can_pick?: false
+    )
     |> assign(link_access: %{}, link_labels: %{})
   end
 
   defp load(socket) do
-    %{scope: scope, filter: filter, folder: folder} = socket.assigns
-    threads = ObjectMail.list_threads(scope, filter, folder: folder, limit: @page)
+    %{scope: scope, filter: filter, folder: folder, pages: pages} = socket.assigns
+    {threads, more?} = read_threads(scope, filter, folder, pages)
 
     socket
     |> assign(:threads, threads)
+    |> assign(:more?, more?)
     |> assign(:selected, keep_or_first(socket.assigns[:selected], threads))
     |> assign(:picker, reload_picker(socket.assigns[:picker], scope))
     |> assign(:link_access, %{})
     |> assign(:link_labels, %{})
     |> assign_shown()
+  end
+
+  defp page_size, do: @page
+
+  # The first `pages` pages of conversations, newest first, a page after the
+  # other (a conversation that moved between two reads is kept once), and
+  # whether the last page was full — there may be more.
+  defp read_threads(scope, filter, folder, pages) do
+    chunks =
+      for page <- 0..(pages - 1)//1 do
+        ObjectMail.list_threads(scope, filter, folder: folder, limit: @page, offset: page * @page)
+      end
+
+    threads = chunks |> Enum.concat() |> Enum.uniq_by(& &1.thread_uuid)
+    {threads, length(List.last(chunks, [])) == @page}
   end
 
   # What the reading pane needs, prepared when the list is read or the choice
@@ -287,7 +312,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   defp present?(threads, {:message, uuid}), do: find_entry(threads, uuid) != nil
 
   defp reload_picker(nil, _scope), do: nil
-  defp reload_picker(_open, scope), do: ObjectMail.link_candidates(scope)
+  defp reload_picker(_open, scope), do: ObjectMail.link_candidates(scope, limit: @page)
 
   # ── events ──────────────────────────────────────────────────────────────────
 
@@ -299,9 +324,12 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   def handle_event("folder", %{"folder" => name}, socket) do
     case Enum.find(socket.assigns.folders, &(Atom.to_string(&1) == name)) do
       nil -> {:noreply, socket}
-      folder -> {:noreply, socket |> assign(folder: folder, error: nil) |> load()}
+      folder -> {:noreply, socket |> assign(folder: folder, pages: 1, error: nil) |> load()}
     end
   end
+
+  def handle_event("more", _params, %{assigns: %{more?: true}} = socket),
+    do: {:noreply, socket |> update(:pages, &(&1 + 1)) |> load()}
 
   def handle_event("select", %{"kind" => kind, "uuid" => uuid}, socket) do
     selected =
@@ -348,7 +376,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     if linkable?(socket.assigns),
       do:
         {:noreply,
-         assign(socket, picker: ObjectMail.link_candidates(socket.assigns.scope), error: nil)},
+         assign(socket,
+           picker: ObjectMail.link_candidates(socket.assigns.scope, limit: @page),
+           error: nil
+         )},
       else: {:noreply, socket}
   end
 
@@ -498,7 +529,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         <span>{@error}</span>
       </div>
 
-      <.picker :if={@picker} id={@id} letters={@picker} target={@myself} />
+      <.picker :if={@picker} id={@id} letters={@picker} page={page_size()} target={@myself} />
 
       <div class="grid gap-4 md:grid-cols-[minmax(16rem,22rem)_1fr]">
         <div id={"mail-list-#{@id}"}>
@@ -506,6 +537,15 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
           <p :if={@threads == []} class="text-sm text-base-content/60">
             {gettext("No letters yet.")}
           </p>
+          <button
+            :if={@more?}
+            type="button"
+            class="btn btn-sm btn-ghost mt-2 w-full"
+            phx-click="more"
+            phx-target={@myself}
+          >
+            {gettext("Show more")}
+          </button>
         </div>
 
         <div id={"mail-detail-#{@id}"} class="flex flex-col gap-3">
@@ -548,6 +588,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   attr(:id, :string, required: true)
   attr(:letters, :list, required: true)
+  attr(:page, :integer, required: true)
   attr(:target, :any, required: true)
 
   defp picker(assigns) do
@@ -568,6 +609,13 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         </div>
         <p :if={@letters == []} class="text-sm text-base-content/60">
           {gettext("No letters without a link.")}
+        </p>
+        <p
+          :if={length(@letters) >= @page}
+          id={"mail-picker-#{@id}-note"}
+          class="text-xs text-base-content/60"
+        >
+          {gettext("Only the %{count} newest letters are shown.", count: @page)}
         </p>
         <button
           :for={entry <- @letters}
