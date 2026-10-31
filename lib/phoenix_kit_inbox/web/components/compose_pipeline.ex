@@ -297,6 +297,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   defp parse_entries(entries, named) do
     Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, acc} ->
       case recipient(entry, named) do
+        :blank -> {:cont, {:ok, acc}}
         {:ok, recipient} -> {:cont, {:ok, [recipient | acc]}}
         {:error, _} = error -> {:halt, error}
       end
@@ -313,13 +314,28 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     do: recipient(%{address: text, route: :email}, named)
 
   defp recipient(%{} = entry, named) when not is_struct(entry) do
-    with {:ok, route} <- route(field(entry, :route)),
-         {:ok, base} <- identity(entry, route, named) do
-      {:ok, Map.merge(base, %{label: label(field(entry, :label)), route: route})}
+    if blank_entry?(entry) do
+      :blank
+    else
+      with {:ok, route} <- route(field(entry, :route)),
+           {:ok, base} <- identity(entry, route, named) do
+        {:ok, Map.merge(base, %{label: label(field(entry, :label)), route: route})}
+      end
     end
   end
 
   defp recipient(_, _named), do: {:error, :invalid_recipients}
+
+  # An empty field of a form: it names nobody. An entry with neither key at
+  # all is not that — it is malformed.
+  defp blank_entry?(entry) do
+    values = [field(entry, :user), field(entry, :address)]
+    Enum.any?(values, &is_binary/1) and Enum.all?(values, &blank?/1)
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank?(_), do: false
 
   defp route(nil), do: {:ok, :email}
   defp route(route) when route in [:internal, "internal"], do: {:ok, :internal}

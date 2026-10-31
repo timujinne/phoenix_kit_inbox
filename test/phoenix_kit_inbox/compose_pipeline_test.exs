@@ -501,14 +501,34 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       for bad <- [
             "a@example.com, b@example.com",
             "a@example.com;b@example.com",
-            "x\ny@example.com",
-            ""
+            "x\ny@example.com"
           ] do
-        assert {:error, error} = run(ctx, %{"to" => [bad]}, draft(ctx))
-        assert error in [:no_recipients, {:invalid_recipient, bad}]
+        assert {:error, {:invalid_recipient, ^bad}} = run(ctx, %{"to" => [bad]}, draft(ctx))
       end
 
       assert message_count() == 0
+    end
+
+    test "a blank entry is nothing, not an invalid recipient", ctx do
+      blanks = ["", "   ", %{"user" => ""}, %{"address" => ""}, %{"user" => "", "address" => " "}]
+
+      for blank <- blanks do
+        assert {:error, :no_recipients} = run(ctx, %{"to" => [blank]}, draft(ctx))
+      end
+
+      # Beside a real one it is dropped.
+      inside = %{"address" => "@staff_bob", "route" => "internal"}
+      assert {:ok, message} = run(ctx, %{"to" => [inside | blanks]}, draft(ctx, to: []))
+      assert [%{"role" => "to", "handle" => "@staff_bob"}] = recipients(message)
+
+      # A blank user beside an address is that address.
+      form = %{"to" => [%{"user" => "", "address" => "@staff_bob", "route" => "internal"}]}
+      assert {:ok, _} = run(ctx, form, draft(ctx, to: []))
+      assert message_count() == 2
+
+      # Not a blank: a map with nothing to go by is still not a recipient.
+      assert {:error, :invalid_recipients} = run(ctx, %{"to" => [%{}]}, draft(ctx))
+      assert {:error, :invalid_recipients} = run(ctx, %{"to" => [42]}, draft(ctx))
     end
   end
 
