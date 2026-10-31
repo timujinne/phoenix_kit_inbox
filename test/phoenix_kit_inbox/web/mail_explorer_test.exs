@@ -28,6 +28,20 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
 
   def raising(_scope, _kind, _ref), do: raise("host bug about o-1")
 
+  def allow_all(_scope, _kind, _ref), do: true
+
+  def flipping(_scope, _kind, _ref),
+    do: Application.get_env(:phoenix_kit_inbox, :explorer_allow, true)
+
+  def labelling(%{kind: "order", ref: "o-1"}) do
+    send(Application.fetch_env!(:phoenix_kit_inbox, :explorer_test_pid), {:labelled, "o-1"})
+    "Order #1042"
+  end
+
+  def labelling(_object), do: nil
+
+  def label_raising(_object), do: raise("label bug about o-1")
+
   # The host's attachment policy: refuses the files whose name it was told.
   def policy(_scope, _users, rows) do
     refused = Application.get_env(:phoenix_kit_inbox, :explorer_refused_file)
@@ -295,17 +309,17 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       refute_receive {:inbox_explorer, _, {:unlinked, _}}, 100
     end
 
-    test "link refused without can_link?", %{conn: conn} = ctx do
+    test "link is not offered, and not done, without can_link?", %{conn: conn} = ctx do
       letter = mail(ctx, :bob, handle(ctx.alice), %{})
       view = mount_explorer(ctx, conn)
 
       refute has_element?(view, "button[phx-click=open_picker]")
 
+      # No picker open: a link event is not one the page could have sent.
       forge(view, "link", %{"uuid" => letter.uuid})
 
       assert Links.for_message(letter.uuid) == []
       refute_receive {:inbox_explorer, _, {:linked, _}}, 100
-      assert render(view) =~ "You don&#39;t have permission to do that."
 
       # Nor when the host answers no for this very object.
       view =
@@ -315,6 +329,23 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
 
       forge(view, "link", %{"uuid" => letter.uuid})
       assert Links.for_message(letter.uuid) == []
+    end
+
+    test "the host's no at the moment of the click is final", %{conn: conn} = ctx do
+      letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+      view = mount_explorer(ctx, conn, %{can_link?: {:capture, __MODULE__, :flipping, 3}})
+      Application.put_env(:phoenix_kit_inbox, :explorer_allow, true)
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :explorer_allow) end)
+
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      Application.put_env(:phoenix_kit_inbox, :explorer_allow, false)
+
+      view
+      |> element("#mail-picker-demo button[phx-value-uuid='#{letter.uuid}']")
+      |> render_click()
+
+      assert Links.for_message(letter.uuid) == []
+      assert render(view) =~ "You don&#39;t have permission to do that."
     end
 
     test "a letter without a link is picked and linked to the object", %{conn: conn} = ctx do
@@ -355,10 +386,13 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
       refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{mine.uuid}']")
       refute has_element?(view, "#mail-picker-demo button[phx-value-uuid='#{foreign.uuid}']")
 
-      # Someone else's letter is refused whatever the browser sends.
+      # A letter the picker did not show is not linked, whatever the browser
+      # sends: neither someone else's, nor one of the viewer's own.
       forge(view, "link", %{"uuid" => foreign.uuid})
+      forge(view, "link", %{"uuid" => mine.uuid})
       assert Links.for_message(foreign.uuid) == []
-      assert render(view) =~ "Message not found."
+      assert Links.for_message(mine.uuid) == []
+      refute_receive {:inbox_explorer, _, {:linked, _}}, 100
     end
   end
 
@@ -550,6 +584,104 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
 
       assert log =~ "can_link?"
       refute log =~ "o-1"
+    end
+  end
+
+  describe "what the host says about the objects (link_label, link_to)" do
+    setup do
+      Application.put_env(:phoenix_kit_inbox, :explorer_test_pid, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :explorer_test_pid) end)
+    end
+
+    @other_order %{kind: "order", ref: "o-2"}
+
+    test "a link shows the host's label of the object, asked once per load",
+         %{conn: conn} = ctx do
+      root = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+      mail(ctx, :alice, handle(ctx.bob), %{"parent_uuid" => root.uuid}, links: [@order])
+
+      view = mount_explorer(ctx, conn, %{link_label: {:capture, __MODULE__, :labelling, 1}})
+      view |> element("#mail-row-demo-#{root.uuid}") |> render_click()
+
+      assert render(element(view, "#mail-detail-demo")) =~ "Order #1042"
+      assert [:labelled, :labelled] = drain_labelled()
+      render(view)
+      assert [] = drain_labelled()
+    end
+
+    defp drain_labelled(acc \\ []) do
+      receive do
+        {:labelled, _} -> drain_labelled([:labelled | acc])
+      after
+        100 -> acc
+      end
+    end
+
+    test "without a label the raw ref is not printed, only how the link came about",
+         %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+      view = mount_explorer(ctx, conn)
+
+      html = render(view)
+      refute html =~ "o-1"
+      assert render(element(view, "#mail-detail-demo")) =~ "host"
+    end
+
+    test "a failing label callback is the same as none", %{conn: conn} = ctx do
+      mail(ctx, :bob, handle(ctx.alice), %{"subject" => "A"}, links: [@order])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          view =
+            mount_explorer(ctx, conn, %{link_label: {:capture, __MODULE__, :label_raising, 1}})
+
+          refute render(view) =~ "o-1"
+        end)
+
+      assert log =~ "link_label"
+      refute log =~ "o-1"
+    end
+
+    test "manual links go to link_to; two objects without it offer no linking",
+         %{conn: conn} = ctx do
+      free = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+      both = %{filter: [@order, @other_order], can_link?: {:capture, __MODULE__, :allow_all, 3}}
+
+      view = mount_explorer(ctx, conn, both)
+      refute has_element?(view, "button[phx-click=open_picker]")
+      forge(view, "open_picker", %{})
+      refute has_element?(view, "#mail-picker-demo")
+
+      view = mount_explorer(ctx, conn, Map.put(both, :link_to, @other_order))
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      view |> element("#mail-picker-demo button[phx-value-uuid='#{free.uuid}']") |> render_click()
+
+      assert [%{kind: "order", ref: "o-2", source: "manual"}] = Links.for_message(free.uuid)
+    end
+
+    test "one object in the filter is the target without link_to, whatever its keys",
+         %{conn: conn} = ctx do
+      free = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+      keyed = %{filter: [%{"kind" => "order", "ref" => "o-1"}], can_link?: allowing()}
+
+      view = mount_explorer(ctx, conn, keyed)
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      view |> element("#mail-picker-demo button[phx-value-uuid='#{free.uuid}']") |> render_click()
+      assert [%{ref: "o-1"}] = Links.for_message(free.uuid)
+    end
+
+    test "an empty or unusable filter renders, and forged events do nothing",
+         %{conn: conn} = ctx do
+      letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+
+      for filter <- [[], [%{}], [%{kind: 1, ref: nil}]] do
+        view = mount_explorer(ctx, conn, %{filter: filter, can_link?: allowing()})
+        assert render(view) =~ "No letters yet."
+        refute has_element?(view, "button[phx-click=open_picker]")
+        forge(view, "open_picker", %{})
+        forge(view, "link", %{"uuid" => letter.uuid})
+        assert Links.for_message(letter.uuid) == []
+      end
     end
   end
 end

@@ -32,8 +32,17 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       result to the parent (below). The component never opens a form itself.
     * `can_link?` — `nil` (default) or `fn scope, kind, ref -> boolean end`,
       the host's say on linking and unlinking. Without it nothing can be
-      linked or unlinked from here (`Links.link/5` refuses). A manual link
-      goes to the first object of `filter`.
+      linked or unlinked from here (`Links.link/5` refuses). Asked once per
+      object each time the list is read, never while rendering; a callback
+      that raises says no.
+    * `link_to` — `nil` (default) or `%{kind: ..., ref: ...}`: the object a
+      manual link goes to. Without it, the only object of `filter`; with
+      several and no `link_to` the page offers no manual linking.
+    * `link_label` — `nil` (default) or `fn %{kind: ..., ref: ...} ->
+      String.t() | nil end`, how the host names an object ("Order #1042").
+      Asked once per object each time the list is read; a callback that
+      raises, or none, shows no name — the reference itself is never printed,
+      only how the link came about (host, thread, subject, manual).
 
   ## Messages to the parent LiveView
 
@@ -100,11 +109,11 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   end
 
   def update(assigns, socket) do
-    assigns = normalize_filter(assigns)
+    assigns = assigns |> normalize_filter() |> normalize_link_to()
 
     stale? =
       not Map.has_key?(socket.assigns, :threads) or
-        Enum.any?(~w(scope filter folders)a, fn key ->
+        Enum.any?(~w(scope filter folders link_to)a, fn key ->
           Map.has_key?(assigns, key) and Map.get(socket.assigns, key) != assigns[key]
         end)
 
@@ -115,6 +124,8 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
       |> assign_new(:folders, fn -> @folders end)
       |> assign_new(:compose, fn -> nil end)
       |> assign_new(:can_link?, fn -> nil end)
+      |> assign_new(:link_label, fn -> nil end)
+      |> assign_new(:link_to, fn -> nil end)
       |> assign_new(:folder, fn -> nil end)
       |> assign_new(:selected, fn -> nil end)
       |> assign_new(:picker, fn -> nil end)
@@ -130,6 +141,14 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     do: %{assigns | filter: ObjectMail.normalize_filter(filter)}
 
   defp normalize_filter(assigns), do: assigns
+
+  defp normalize_link_to(%{link_to: link_to} = assigns),
+    do: %{
+      assigns
+      | link_to: link_to |> List.wrap() |> ObjectMail.normalize_filter() |> List.first()
+    }
+
+  defp normalize_link_to(assigns), do: assigns
 
   defp offered_folder(folder, folders) do
     cond do
@@ -150,64 +169,79 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     |> assign(:selected, keep_or_first(socket.assigns[:selected], threads))
     |> assign(:picker, reload_picker(socket.assigns[:picker], scope))
     |> assign(:link_access, %{})
+    |> assign(:link_labels, %{})
     |> assign_shown()
   end
 
   # What the reading pane needs, read when it changes and not on every render.
   defp assign_shown(socket) do
-    socket |> assign_attachments() |> assign_link_access()
+    socket |> assign_attachments() |> assign_objects()
   end
 
-  # The host's say on each object the pane may offer to link or unlink (the
-  # filter's and those of the shown letters' links): asked once per object
-  # per load, kept until the next load. A callback that fails says no.
-  defp assign_link_access(%{assigns: %{can_link?: fun}} = socket) when is_function(fun, 3) do
-    %{scope: scope, filter: filter, threads: threads, selected: selected} = socket.assigns
+  # What the host says about each object the pane shows or may offer to link
+  # (the link target and the links of the shown letters): asked once per object
+  # per load, kept until the next load. A callback that fails says "no" /
+  # "no label".
+  defp assign_objects(socket) do
+    objects = pane_objects(socket.assigns)
 
-    objects =
-      threads
-      |> shown(selected)
-      |> Enum.flat_map(fn entry -> Enum.map(entry.links, &{&1.kind, &1.ref}) end)
-      |> Enum.concat(filter_objects(filter))
-      |> Enum.uniq()
-
-    access =
-      Enum.reduce(objects, socket.assigns.link_access, fn {kind, ref} = object, acc ->
-        Map.put_new_lazy(acc, object, fn -> host_allows?(fun, scope, kind, ref) end)
+    socket
+    |> assign(
+      :link_access,
+      ask_host(socket.assigns.link_access, objects, socket.assigns.can_link?, 3, fn fun,
+                                                                                    {kind, ref} ->
+        fun.(socket.assigns.scope, kind, ref) == true
       end)
-
-    assign(socket, :link_access, access)
+    )
+    |> assign(
+      :link_labels,
+      ask_host(socket.assigns.link_labels, objects, socket.assigns.link_label, 1, fn fun,
+                                                                                     {kind, ref} ->
+        host_label(fun.(%{kind: kind, ref: ref}))
+      end)
+    )
   end
 
-  defp assign_link_access(socket), do: socket
-
-  defp filter_objects(filter) when is_list(filter) do
-    for %{kind: kind, ref: ref} <- filter, do: {kind, ref}
+  defp pane_objects(%{threads: threads, selected: selected} = assigns) do
+    threads
+    |> shown(selected)
+    |> Enum.flat_map(fn entry -> Enum.map(entry.links, &{&1.kind, &1.ref}) end)
+    |> Enum.concat(Enum.map(List.wrap(link_target(assigns)), &{&1.kind, &1.ref}))
+    |> Enum.uniq()
   end
 
-  defp filter_objects(_filter), do: []
+  defp ask_host(known, objects, fun, arity, ask) when is_function(fun, arity) do
+    Enum.reduce(objects, known, &ask_once(&2, &1, fun, ask))
+  end
 
-  defp host_allows?(fun, scope, kind, ref) do
-    fun.(scope, kind, ref) == true
+  defp ask_host(known, _objects, _fun, _arity, _ask), do: known
+
+  defp ask_once(known, {kind, _ref} = object, fun, ask) do
+    Map.put_new_lazy(known, object, fn -> guarded(kind, fn -> ask.(fun, object) end) end)
+  end
+
+  defp host_label(label) when is_binary(label) and label != "", do: label
+  defp host_label(_other), do: nil
+
+  # A host callback that fails answers nothing (`nil`, which is "no" for a
+  # yes/no question). Logged by the kind of object and of failure only: the
+  # ref and the exception's message may carry what the host keeps private.
+  defp guarded(kind, fun) do
+    fun.()
   rescue
-    exception -> refuse_failed(kind, exception)
+    exception -> failed(kind, exception.__struct__)
   catch
-    thrown_kind, _reason -> refuse_failed(kind, thrown_kind)
+    thrown, _reason -> failed(kind, thrown)
   end
 
-  # Only the kind of object and the kind of failure: the ref and the
-  # exception's message may carry what the host keeps private.
-  defp refuse_failed(kind, failure) do
+  defp failed(kind, failure) do
     Logger.warning(
-      "[Inbox] MailExplorer: the host's can_link? failed for a #{inspect(kind)} " <>
-        "(#{inspect(failure_name(failure))}), taken as no"
+      "[Inbox] MailExplorer: a host callback (can_link? or link_label) failed for a " <>
+        "#{inspect(kind)} (#{inspect(failure)}), taken as no answer"
     )
 
-    false
+    nil
   end
-
-  defp failure_name(%{__struct__: module}), do: module
-  defp failure_name(other), do: other
 
   # The files of the letters in the reading pane, as this viewer may see them
   # (the host's attachment policy, one batch): read when the pane changes,
@@ -284,7 +318,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   end
 
   def handle_event("open_picker", _params, socket) do
-    if linkable?(socket),
+    if linkable?(socket.assigns),
       do:
         {:noreply,
          assign(socket, picker: ObjectMail.link_candidates(socket.assigns.scope), error: nil)},
@@ -293,12 +327,16 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   def handle_event("close_picker", _params, socket), do: {:noreply, assign(socket, :picker, nil)}
 
+  # Only a letter the picker showed, to the object the host named.
   def handle_event("link", %{"uuid" => uuid}, socket) do
-    %{kind: kind, ref: ref} = hd(socket.assigns.filter)
-
-    case Links.link(socket.assigns.scope, uuid, kind, ref, link_opts(socket)) do
-      {:ok, _link} -> {:noreply, socket |> assign(:picker, nil) |> done({:linked, uuid})}
-      {:error, reason} -> {:noreply, fail(socket, reason)}
+    with %{kind: kind, ref: ref} <- link_target(socket.assigns),
+         true <- picked?(socket.assigns.picker, uuid) do
+      case Links.link(socket.assigns.scope, uuid, kind, ref, link_opts(socket)) do
+        {:ok, _link} -> {:noreply, socket |> assign(:picker, nil) |> done({:linked, uuid})}
+        {:error, reason} -> {:noreply, fail(socket, reason)}
+      end
+    else
+      _ -> {:noreply, socket}
     end
   end
 
@@ -329,12 +367,25 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   defp link_opts(%{assigns: %{can_link?: fun}}) when is_function(fun, 3), do: [can_link?: fun]
   defp link_opts(_socket), do: []
 
-  # The picker is offered when the host lets this viewer link to the object
-  # (as asked once in load/1).
-  defp linkable?(%{assigns: %{link_access: access, filter: [%{kind: kind, ref: ref} | _]}}),
-    do: Map.get(access, {kind, ref}, false)
+  # Where a manual link goes: the object the host named, else the only
+  # object of the filter. With several and no say, nowhere.
+  defp link_target(%{link_to: %{kind: _, ref: _} = object}), do: object
+  defp link_target(%{filter: [object]}), do: object
+  defp link_target(_assigns), do: nil
 
-  defp linkable?(_socket), do: false
+  # The picker is offered when the host lets this viewer link to the target
+  # (as asked once in load/1).
+  defp linkable?(%{link_access: access} = assigns) do
+    case link_target(assigns) do
+      %{kind: kind, ref: ref} -> Map.get(access, {kind, ref}, false) == true
+      nil -> false
+    end
+  end
+
+  defp picked?(picker, uuid) when is_list(picker),
+    do: Enum.any?(picker, &(&1.message.uuid == uuid))
+
+  defp picked?(_picker, _uuid), do: false
 
   defp find_entry(threads, message_uuid) do
     Enum.find_value(threads, fn thread ->
@@ -376,7 +427,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     assigns =
       assigns
       |> assign(:letters, shown(assigns.threads, assigns.selected))
-      |> assign(:can_pick?, linkable?(%{assigns: assigns}))
+      |> assign(:can_pick?, linkable?(assigns))
       |> assign(:now, DateTime.utc_now())
 
     ~H"""
@@ -440,6 +491,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
             entry={entry}
             attachments={Map.get(@attachments, entry.message.uuid, [])}
             link_access={@link_access}
+            link_labels={@link_labels}
             reply?={is_function(@compose, 1)}
             target={@myself}
             now={@now}
@@ -509,6 +561,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   attr(:entry, :map, required: true)
   attr(:attachments, :list, default: [])
   attr(:link_access, :map, default: %{})
+  attr(:link_labels, :map, default: %{})
   attr(:reply?, :boolean, required: true)
   attr(:target, :any, required: true)
   attr(:now, :any, required: true)
@@ -563,8 +616,8 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
         <div :if={@entry.links != []} class="flex flex-wrap items-center gap-1 text-xs">
           <span :for={link <- @entry.links} class="badge badge-ghost badge-sm gap-1">
             <.icon name="hero-link" class="w-3 h-3" />
-            {link.kind} · {link.ref}
-            <span class="opacity-60">({MailTree.source_label(link.source)})</span>
+            {Map.get(@link_labels, {link.kind, link.ref})}
+            <span class="opacity-60">{MailTree.source_label(link.source)}</span>
             <button
               :if={Map.get(@link_access, {link.kind, link.ref}, false)}
               type="button"
