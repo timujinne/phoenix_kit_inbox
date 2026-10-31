@@ -15,7 +15,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
       subscriptions follow the mailboxes the viewer reaches now.
 
   and a `:handle_info` hook turns these into `Phoenix.LiveView.send_update/3`
-  calls to the explorers: an access event reads every list again; a link event
+  calls to the explorers, gathered for a moment so that a burst of events
+  reads each list once, and not at all for an explorer that has read its list
+  since (the viewer's own click: its `{:inbox_explorer, id, {:linked, _}}`
+  message tells the hook so). An access event reads every list again; a link event
   reads the list of an explorer whose filter names an object the letter is
   linked to now, or that has the letter on its page (it may just have lost
   its link); a status event only if that letter is on the page. The hook
@@ -51,6 +54,13 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
 
   @hook :inbox_mail_explorers
   @key :inbox_mail_explorers
+
+  # Events are gathered for this long before the explorers are told: a burst
+  # of them (an import, a thread of replies) reads each list once.
+  @coalesce_ms 50
+  @flush :inbox_mail_explorers_flush
+  # More new links than this are not looked up one by one: the lists are read.
+  @max_looked_up 20
 
   @type object :: %{kind: String.t(), ref: String.t()}
 
@@ -95,7 +105,16 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
 
   defp state(socket) do
     Map.get(socket.assigns, @key) ||
-      %{explorers: %{}, objects: MapSet.new(), mailboxes: MapSet.new(), user: nil}
+      %{
+        explorers: %{},
+        objects: MapSet.new(),
+        mailboxes: MapSet.new(),
+        user: nil,
+        seq: 0,
+        events: [],
+        loaded: %{},
+        timer: nil
+      }
   end
 
   # ── subscriptions ───────────────────────────────────────────────────────────
@@ -183,37 +202,107 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorerHooks do
 
   @doc false
   @spec handle_info(term(), LiveView.Socket.t()) :: {:cont | :halt, LiveView.Socket.t()}
-  def handle_info({:inbox_message_linked, message_uuid}, socket) do
-    objects = message_uuid |> Links.for_message() |> MapSet.new(&{&1.kind, &1.ref})
+  def handle_info({:inbox_message_linked, message_uuid}, socket),
+    do: {:halt, record(socket, {:linked, message_uuid})}
 
-    for {id, filter} <- state(socket).explorers do
-      if Enum.any?(filter, &MapSet.member?(objects, {&1.kind, &1.ref})),
-        do: update_explorer(id, refresh: true),
-        else: update_explorer(id, message_changed: message_uuid)
-    end
-
-    {:halt, socket}
-  end
-
-  def handle_info({:inbox_external_updated, message_uuid}, socket) do
-    update_all(socket, message_changed: message_uuid)
-    {:halt, socket}
-  end
+  def handle_info({:inbox_external_updated, message_uuid}, socket),
+    do: {:halt, record(socket, {:status, message_uuid})}
 
   # Only a change of the viewer's mailboxes is the explorers' business; the
   # page may have subscribed to the others itself (the senders, say).
   def handle_info({:inbox_access_changed, :mailboxes}, socket) do
     state = state(socket)
     socket = assign(socket, @key, sync_mailboxes(state, socket))
-    update_all(socket, refresh: true)
-    {:halt, socket}
+    {:halt, record(socket, :access)}
   end
+
+  # The explorer acted (it linked or unlinked a letter) and has read its list
+  # since: what reached the page before this message is already in it. The
+  # page gets the message on, as the host asked for it.
+  def handle_info({:inbox_explorer, id, {tag, _uuid}}, socket)
+      when tag in [:linked, :unlinked] do
+    state = state(socket)
+
+    if Map.has_key?(state.explorers, id),
+      do: {:cont, assign(socket, @key, %{state | loaded: Map.put(state.loaded, id, state.seq)})},
+      else: {:cont, socket}
+  end
+
+  def handle_info(@flush, socket), do: {:halt, flush(socket)}
 
   def handle_info(_message, socket), do: {:cont, socket}
 
-  defp update_all(socket, assigns) do
-    for {id, _filter} <- state(socket).explorers, do: update_explorer(id, assigns)
-    :ok
+  # ── gathering and telling ───────────────────────────────────────────────────
+
+  defp record(socket, event) do
+    state = state(socket)
+    seq = state.seq + 1
+    state = %{state | seq: seq, events: [{seq, event} | state.events]}
+    assign(socket, @key, schedule(state))
+  end
+
+  defp schedule(%{timer: nil} = state),
+    do: %{state | timer: Process.send_after(self(), @flush, @coalesce_ms)}
+
+  defp schedule(state), do: state
+
+  # One update per explorer for everything gathered since it last read its
+  # list, and none for an explorer that has read it after the events.
+  defp flush(socket) do
+    state = state(socket)
+    events = Enum.reverse(state.events)
+    objects = linked_objects(events)
+
+    for {id, filter} <- state.explorers do
+      case since(events, Map.get(state.loaded, id, 0)) do
+        [] -> :ok
+        mine -> tell(id, filter, mine, objects)
+      end
+    end
+
+    assign(socket, @key, %{state | events: [], loaded: %{}, timer: nil})
+  end
+
+  defp since(events, seq), do: for({n, event} <- events, n > seq, do: event)
+
+  defp tell(id, filter, events, objects) do
+    changed = for {tag, uuid} <- events, tag in [:linked, :status], do: uuid
+
+    if :access in events or concerned?(filter, events, objects),
+      do: update_explorer(id, refresh: true),
+      else: update_explorer(id, messages_changed: changed)
+  end
+
+  # Whether a letter linked (or unlinked) just now is about an object of the
+  # filter — or too many were to look at one by one.
+  defp concerned?(filter, events, :too_many),
+    do: Enum.any?(events, &match?({:linked, _}, &1)) and filter != []
+
+  defp concerned?(filter, events, objects) do
+    Enum.any?(events, fn
+      {:linked, uuid} ->
+        Enum.any?(
+          filter,
+          &MapSet.member?(Map.get(objects, uuid, MapSet.new()), {&1.kind, &1.ref})
+        )
+
+      _ ->
+        false
+    end)
+  end
+
+  # message uuid => the objects it is linked to now, for the linked letters
+  # among `events`.
+  defp linked_objects(events) do
+    uuids = for {_n, {:linked, uuid}} <- events, uniq: true, do: uuid
+
+    if length(uuids) > @max_looked_up do
+      :too_many
+    else
+      Map.new(uuids, fn uuid ->
+        {uuid, uuid |> Links.for_message() |> MapSet.new(&{&1.kind, &1.ref})}
+      end)
+    end
   end
 
   defp update_explorer(id, assigns),

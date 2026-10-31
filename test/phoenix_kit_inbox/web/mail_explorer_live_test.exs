@@ -420,6 +420,65 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
     end
   end
 
+  describe "a burst of events" do
+    setup do
+      Application.put_env(:phoenix_kit_inbox, :explorer_test_pid, self())
+      on_exit(fn -> Application.delete_env(:phoenix_kit_inbox, :explorer_test_pid) end)
+    end
+
+    defp asks do
+      receive do
+        {:asked, _kind, _ref} -> [:asked | asks()]
+      after
+        200 -> []
+      end
+    end
+
+    test "is one reload", %{conn: conn} = ctx do
+      letter = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Kept"}, links: [@order])
+      view = open(ctx, conn, nil, %{can_link?: counting()})
+      assert length(asks()) >= 1
+
+      for _ <- 1..25 do
+        send(view.pid, {:inbox_message_linked, letter.uuid})
+        send(view.pid, {:inbox_external_updated, letter.uuid})
+        send(view.pid, {:inbox_access_changed, :mailboxes})
+      end
+
+      settle(view)
+      # One reload asks the host about the one object once.
+      assert asks() == [:asked]
+    end
+
+    test "the viewer's own link is not read twice", %{conn: conn} = ctx do
+      free = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+      view = open(ctx, conn, nil, %{can_link?: counting()})
+      asks()
+
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      view |> element("#mail-picker-demo button[phx-value-uuid='#{free.uuid}']") |> render_click()
+      assert_receive {:inbox_explorer, "demo", {:linked, _}}
+
+      assert has_element?(view, "#mail-row-demo-#{free.uuid}")
+      # `Links.link/5` asks the host once, the click's own reload once, and
+      # nothing after the event the link caused.
+      assert asks() == [:asked, :asked]
+    end
+
+    test "events after a reload of the explorer still count", %{conn: conn} = ctx do
+      free = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Free"})
+      view = open(ctx, conn, nil, %{can_link?: counting()})
+      asks()
+
+      view |> element("button[phx-click=open_picker]") |> render_click()
+      view |> element("#mail-picker-demo button[phx-value-uuid='#{free.uuid}']") |> render_click()
+      asks()
+
+      later = mail(ctx, :bob, handle(ctx.alice), %{"subject" => "Later"}, links: [@order])
+      eventually(fn -> has_element?(view, "#mail-row-demo-#{later.uuid}") end)
+    end
+  end
+
   describe "events the page keeps for itself" do
     test "senders changes (not the explorer's) pass on to the page, and read nothing",
          %{conn: conn} = ctx do

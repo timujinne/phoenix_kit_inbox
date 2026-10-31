@@ -102,9 +102,12 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   @impl true
   def update(%{refresh: true}, socket), do: {:ok, load(socket)}
 
-  # A delivery status changed: matters only if that letter is on the page.
-  def update(%{message_changed: uuid}, socket) do
-    if find_entry(Map.get(socket.assigns, :threads, []), uuid),
+  # A delivery status or a link of some letters changed: matters only if one
+  # of them is on the page.
+  def update(%{messages_changed: uuids}, socket) do
+    threads = Map.get(socket.assigns, :threads, [])
+
+    if Enum.any?(uuids, &find_entry(threads, &1)),
       do: {:ok, load(socket)},
       else: {:ok, socket}
   end
