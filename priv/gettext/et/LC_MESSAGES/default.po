@@ -42,7 +42,7 @@ msgstr "@kasutajanimi, e-posti aadress või jagatud postkast — komadega eralda
 msgid "A file can't be attached: it is in the trash or no longer available."
 msgstr "Faili ei saa lisada: see on prügikastis või pole enam saadaval."
 
-#: lib/phoenix_kit_inbox/errors.ex:164
+#: lib/phoenix_kit_inbox/errors.ex:182
 #, elixir-autogen, elixir-format
 msgid "A recorded email names its recipients as external recipients, with their outcome."
 msgstr "Salvestatud kirjas on saajad nimetatud välissaajatena koos tulemusega."
@@ -77,7 +77,7 @@ msgstr "Tegevused"
 msgid "Add at least one recipient."
 msgstr "Lisa vähemalt üks saaja."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:367
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:375
 #, elixir-autogen, elixir-format
 msgid "Add sender"
 msgstr "Lisa saatja"
@@ -140,7 +140,7 @@ msgstr "Lisa olemasolevaid faile"
 msgid "Attachments are not supported by this installation's file storage."
 msgstr "Selle paigalduse failihoidla manuseid ei toeta."
 
-#: lib/phoenix_kit_inbox/errors.ex:167
+#: lib/phoenix_kit_inbox/errors.ex:185
 #, elixir-autogen, elixir-format
 msgid "Attachments are unavailable right now. Try again."
 msgstr "Manused pole praegu saadaval. Proovi uuesti."
@@ -160,13 +160,13 @@ msgstr "Tagasi postkasti"
 msgid "Bcc"
 msgstr "Bcc"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:242
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:244
 #, elixir-autogen, elixir-format
 msgid "Broken"
 msgstr "Katki"
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1089
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:346
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:354
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
 #, elixir-autogen, elixir-format
 msgid "Cancel"
@@ -182,7 +182,7 @@ msgstr "Katkesta üleslaadimine"
 msgid "Cc"
 msgstr "Cc"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:260
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:262
 #, elixir-autogen, elixir-format
 msgid "Check"
 msgstr "Kontrolli"
@@ -222,7 +222,7 @@ msgstr "Loo ülal üks, et meeskond saaks aadressi jagada."
 msgid "Default"
 msgstr "Vaikimisi"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:269
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:271
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:154
 #, elixir-autogen, elixir-format
 msgid "Delete"
@@ -238,7 +238,7 @@ msgstr "Kustuta jäädavalt"
 msgid "Delete this message from your mailbox permanently?"
 msgstr "Kustutada see sõnum sinu postkastist jäädavalt?"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:267
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:269
 #, elixir-autogen, elixir-format
 msgid "Delete this sender?"
 msgstr "Kustutada see saatja?"
@@ -289,7 +289,7 @@ msgstr "Mustand salvestatud."
 msgid "Drafts"
 msgstr "Mustandid"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:252
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:254
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:145
 #, elixir-autogen, elixir-format
 msgid "Edit"
@@ -328,7 +328,7 @@ msgstr "Saabunud"
 msgid "Inside the application only"
 msgstr "Ainult rakenduse sees"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:408
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:416
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr "Selle meiliühendus puudub, on katkestatud või ei kõlba enam. Paranda see ja kontrolli uuesti."
@@ -347,7 +347,7 @@ msgstr "Ületab üleslaadimise piiri."
 msgid "Mail"
 msgstr "Post"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:299
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:307
 #, elixir-autogen, elixir-format
 msgid "Mail connection (its login is the From address)"
 msgstr "Meiliühendus (selle kasutajanimi on saatja aadress)"
@@ -425,12 +425,12 @@ msgstr "Sõnum saadetud. Kiri välisaadressidele on teel."
 msgid "Messages between users of this application"
 msgstr "Selle rakenduse kasutajate vahelised sõnumid"
 
-#: lib/phoenix_kit_inbox/errors.ex:184
+#: lib/phoenix_kit_inbox/errors.ex:202
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Sobib mitu saajat: %{recipients}. Kasuta selle asemel täielikku e-posti aadressi."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:291
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:293
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:351
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:413
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:170
@@ -438,7 +438,7 @@ msgstr "Sobib mitu saajat: %{recipients}. Kasuta selle asemel täielikku e-posti
 msgid "Name"
 msgstr "Nimi"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:295
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:297
 #, elixir-autogen, elixir-format
 msgid "Name shown to recipients"
 msgstr "Saajatele näidatav nimi"
@@ -469,12 +469,12 @@ msgstr "Uus jagatud postkast"
 msgid "No Reply-To — replies go to this mailbox"
 msgstr "Reply-To puudub — vastused tulevad sellesse postkasti"
 
-#: lib/phoenix_kit_inbox/errors.ex:174
+#: lib/phoenix_kit_inbox/errors.ex:192
 #, elixir-autogen, elixir-format
 msgid "No recipient matches: %{recipients}. Use @username, an email address, or a shared mailbox name."
 msgstr "Ühtegi saajat ei leitud: %{recipients}. Kasuta @kasutajanime, e-posti aadressi või jagatud postkasti nime."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:222
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:224
 #, elixir-autogen, elixir-format
 msgid "No senders yet."
 msgstr "Saatjaid pole veel."
@@ -499,7 +499,7 @@ msgstr "Allkirju pole veel."
 msgid "Not attached: %{names}. %{reason}"
 msgstr "Ei lisatud: %{names}. %{reason}"
 
-#: lib/phoenix_kit_inbox/errors.ex:160
+#: lib/phoenix_kit_inbox/errors.ex:178
 #, elixir-autogen, elixir-format
 msgid "Not email addresses: %{entries}."
 msgstr "Need pole e-posti aadressid: %{entries}."
@@ -597,7 +597,7 @@ msgstr "Proovi uuesti"
 msgid "Revoke"
 msgstr "Võta ära"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:348
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:356
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:246
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:181
 #, elixir-autogen, elixir-format
@@ -634,12 +634,12 @@ msgstr "Saatja nimel"
 msgid "Send from your own mail connection. The From address is the connection's login."
 msgstr "Saada oma meiliühenduse kaudu. Saatja aadress on ühenduse kasutajanimi."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:174
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:176
 #, elixir-autogen, elixir-format
 msgid "Sender deleted."
 msgstr "Saatja kustutatud."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:136
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:138
 #, elixir-autogen, elixir-format
 msgid "Sender saved."
 msgstr "Saatja salvestatud."
@@ -761,7 +761,7 @@ msgstr "See meiliühendus pole sellele saatjale saadaval."
 msgid "That mail connection isn't connected."
 msgstr "See meiliühendus pole ühendatud."
 
-#: lib/phoenix_kit_inbox/errors.ex:181
+#: lib/phoenix_kit_inbox/errors.ex:199
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "See nimi sobib mitmele saajale."
@@ -826,7 +826,7 @@ msgstr "Sisselogimise aadressiga meiliühendust, mille kaudu saata, pole veel."
 msgid "There is nothing to send again."
 msgstr "Uuesti saata pole midagi."
 
-#: lib/phoenix_kit_inbox/errors.ex:154
+#: lib/phoenix_kit_inbox/errors.ex:172
 #, elixir-autogen, elixir-format
 msgid "These addresses belong to people or mailboxes inside this application: %{addresses}."
 msgstr "Need aadressid kuuluvad selle rakenduse inimestele või postkastidele: %{addresses}."
@@ -877,7 +877,7 @@ msgstr "Faile on liiga palju."
 msgid "Trash"
 msgstr "Prügikast"
 
-#: lib/phoenix_kit_inbox/errors.ex:204
+#: lib/phoenix_kit_inbox/errors.ex:222
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1090,7 +1090,7 @@ msgid_plural "A message can carry at most %{max} files."
 msgstr[0] "Sõnumiga saab lisada kuni %{max} faili."
 msgstr[1] "Sõnumiga saab lisada kuni %{max} faili."
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:478
+#: lib/phoenix_kit_inbox/mailboxes.ex:504
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr "Kasutaja %{id}"
@@ -1105,7 +1105,7 @@ msgstr "Muuda mustandit"
 msgid "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
 msgstr "Süsteemne meiliühendus, mille nimel saadetakse isiklikust postkastist kujul „oma nimi | posti nimi“. Iga post on avatud märgitud rollidele; omanikule (Owner) alati."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:359
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:367
 #, elixir-autogen, elixir-format
 msgid "Add shared mail"
 msgstr "Lisa ühine post"
@@ -1120,7 +1120,7 @@ msgstr "Kolleeg"
 msgid "Find a colleague"
 msgstr "Leia kolleeg"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:390
 #, elixir-autogen, elixir-format
 msgid "Keep the current connection (it does not work now)"
 msgstr "Jäta praegune ühendus (see ei tööta praegu)"
@@ -1145,22 +1145,22 @@ msgstr "Ükski post pole sulle rakendusevälistele aadressidele kirjutamiseks av
 msgid "Nobody found"
 msgstr "Kedagi ei leitud"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:399
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:407
 #, elixir-autogen, elixir-format
 msgid "Owner only: no role is ticked"
 msgstr "Ainult Owner: ükski roll pole märgitud"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:316
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:324
 #, elixir-autogen, elixir-format
 msgid "Owner — always"
 msgstr "Owner — alati"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:402
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:410
 #, elixir-autogen, elixir-format
 msgid "Roles: %{roles}"
 msgstr "Rollid: %{roles}"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:339
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:347
 #, elixir-autogen, elixir-format
 msgid "Sending also needs the “Send to external addresses” permission. Nobody can read this mail here."
 msgstr "Saatmiseks on vaja ka õigust „Saada välisaadressidele“. Seda posti ei saa siin keegi lugeda."
@@ -1175,27 +1175,27 @@ msgstr "Ühine post"
 msgid "Shared mail is managed by holders of “Manage shared mailboxes”."
 msgstr "Ühist posti haldavad need, kellel on õigus „Halda jagatud postkaste“."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:238
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:240
 #, elixir-autogen, elixir-format
 msgid "Shown as “%{name}”"
 msgstr "Saajad näevad „%{name}“"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:397
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:405
 #, elixir-autogen, elixir-format
 msgid "Through the shared mailbox “%{name}”"
 msgstr "Jagatud postkasti „%{name}“ kaudu"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:304
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:312
 #, elixir-autogen, elixir-format
 msgid "Used through the shared mailbox “%{name}” by everyone who writes to it."
 msgstr "Seda kasutavad jagatud postkasti „%{name}“ kaudu kõik, kes saavad sinna kirjutada."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:313
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:321
 #, elixir-autogen, elixir-format
 msgid "Who may send from it"
 msgstr "Kes võivad selle nimel saata"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:333
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:341
 #, elixir-autogen, elixir-format
 msgid "the role has no “Send to external addresses” permission — grant it in the roles matrix"
 msgstr "rollil pole õigust „Saada välisaadressidele“ — anna see rollide maatriksis"
@@ -1271,7 +1271,7 @@ msgstr "Seotud objektide linke ei õnnestunud salvestada; sõnumit ei saadetud."
 msgid "The link to the related object is not valid."
 msgstr "Seotud objekti link ei kehti."
 
-#: lib/phoenix_kit_inbox/errors.ex:163
+#: lib/phoenix_kit_inbox/errors.ex:164
 #, elixir-autogen, elixir-format
 msgid "The Reply-To address is not a valid email address."
 msgstr "Vastusaadress ei ole kehtiv e-posti aadress."

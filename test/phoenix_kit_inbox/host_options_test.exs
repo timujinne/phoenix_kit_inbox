@@ -400,6 +400,29 @@ defmodule PhoenixKitInbox.HostOptionsTest do
       assert {"Alice Smith | Orders", _} = email.from
     end
 
+    # Documents what a retry fixes (the user's name) and what it reads anew at
+    # delivery (the identity: its name, its flag), see `External.retry/3`.
+    test "a retry takes the identity as it is now, with the first sender's name", ctx do
+      {:ok, bound} =
+        Identities.update_identity(ctx.manager, ctx.bound, %{"personalize_from_name" => true})
+
+      outbound_result({:error, :smtp_down})
+      assert {:ok, message} = send_from_desk(ctx, ctx.alice_scope)
+      assert_received {:outbound, %{from: {"Alice Smith | Desk", _}}, _, _}
+
+      {:ok, _} =
+        Identities.update_identity(ctx.manager, bound, %{"from_name" => "Orders"})
+
+      emails_module_enabled!()
+      email_log_fixture(%{"inbox_message_uuid" => message.uuid}, "failed")
+      outbound_result({:ok, %{id: "ok"}})
+
+      assert {:ok, :pending} = Messages.retry_external(ctx.carol_scope, ctx.desk, message.uuid)
+      await_external(message.uuid)
+
+      assert_received {:outbound, %{from: {"Alice Smith | Orders", _}}, _, _}
+    end
+
     test "retry by another user keeps the original From", ctx do
       {:ok, _} =
         Identities.update_identity(ctx.manager, ctx.bound, %{"personalize_from_name" => true})

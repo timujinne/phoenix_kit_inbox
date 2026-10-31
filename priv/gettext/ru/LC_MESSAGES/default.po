@@ -42,7 +42,7 @@ msgstr "@имя_пользователя, email или общий ящик — �
 msgid "A file can't be attached: it is in the trash or no longer available."
 msgstr "Файл нельзя прикрепить: он в корзине или больше недоступен."
 
-#: lib/phoenix_kit_inbox/errors.ex:164
+#: lib/phoenix_kit_inbox/errors.ex:182
 #, elixir-autogen, elixir-format
 msgid "A recorded email names its recipients as external recipients, with their outcome."
 msgstr "В записанном письме получатели указаны как внешние, вместе с результатом отправки."
@@ -77,7 +77,7 @@ msgstr "Действия"
 msgid "Add at least one recipient."
 msgstr "Добавьте хотя бы одного получателя."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:367
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:375
 #, elixir-autogen, elixir-format
 msgid "Add sender"
 msgstr "Добавить отправителя"
@@ -140,7 +140,7 @@ msgstr "Прикрепить существующие файлы"
 msgid "Attachments are not supported by this installation's file storage."
 msgstr "Файловое хранилище этой установки не поддерживает вложения."
 
-#: lib/phoenix_kit_inbox/errors.ex:167
+#: lib/phoenix_kit_inbox/errors.ex:185
 #, elixir-autogen, elixir-format
 msgid "Attachments are unavailable right now. Try again."
 msgstr "Вложения сейчас недоступны. Попробуйте ещё раз."
@@ -160,13 +160,13 @@ msgstr "Назад к ящику"
 msgid "Bcc"
 msgstr "Скрытая копия"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:242
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:244
 #, elixir-autogen, elixir-format
 msgid "Broken"
 msgstr "Не работает"
 
 #: lib/phoenix_kit_inbox/web/compose_live.ex:1089
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:346
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:354
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:179
 #, elixir-autogen, elixir-format
 msgid "Cancel"
@@ -182,7 +182,7 @@ msgstr "Отменить загрузку"
 msgid "Cc"
 msgstr "Копия"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:260
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:262
 #, elixir-autogen, elixir-format
 msgid "Check"
 msgstr "Проверить"
@@ -222,7 +222,7 @@ msgstr "Создайте ящик выше, чтобы команда польз
 msgid "Default"
 msgstr "По умолчанию"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:269
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:271
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:154
 #, elixir-autogen, elixir-format
 msgid "Delete"
@@ -238,7 +238,7 @@ msgstr "Удалить навсегда"
 msgid "Delete this message from your mailbox permanently?"
 msgstr "Удалить это сообщение из вашего ящика навсегда?"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:267
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:269
 #, elixir-autogen, elixir-format
 msgid "Delete this sender?"
 msgstr "Удалить этого отправителя?"
@@ -289,7 +289,7 @@ msgstr "Черновик сохранён."
 msgid "Drafts"
 msgstr "Черновики"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:252
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:254
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:145
 #, elixir-autogen, elixir-format
 msgid "Edit"
@@ -328,7 +328,7 @@ msgstr "Входящие"
 msgid "Inside the application only"
 msgstr "Только внутри приложения"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:408
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:416
 #, elixir-autogen, elixir-format
 msgid "Its mail connection is missing, disconnected or no longer usable. Fix it, then check again."
 msgstr "Его почтовое подключение отсутствует, отключено или больше не работает. Исправьте его и проверьте снова."
@@ -347,7 +347,7 @@ msgstr "Больше допустимого размера."
 msgid "Mail"
 msgstr "Почта"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:299
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:307
 #, elixir-autogen, elixir-format
 msgid "Mail connection (its login is the From address)"
 msgstr "Почтовое подключение (его логин — адрес отправителя)"
@@ -425,12 +425,12 @@ msgstr "Сообщение отправлено. Письмо на внешни�
 msgid "Messages between users of this application"
 msgstr "Сообщения между пользователями этого приложения"
 
-#: lib/phoenix_kit_inbox/errors.ex:184
+#: lib/phoenix_kit_inbox/errors.ex:202
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:291
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:293
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:351
 #: lib/phoenix_kit_inbox/web/mailboxes_live.ex:413
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:170
@@ -438,7 +438,7 @@ msgstr "Подходит несколько получателей: %{recipients
 msgid "Name"
 msgstr "Название"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:295
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:297
 #, elixir-autogen, elixir-format
 msgid "Name shown to recipients"
 msgstr "Имя, которое видят получатели"
@@ -469,12 +469,12 @@ msgstr "Новый общий ящик"
 msgid "No Reply-To — replies go to this mailbox"
 msgstr "Без Reply-To — ответы придут в этот ящик"
 
-#: lib/phoenix_kit_inbox/errors.ex:174
+#: lib/phoenix_kit_inbox/errors.ex:192
 #, elixir-autogen, elixir-format
 msgid "No recipient matches: %{recipients}. Use @username, an email address, or a shared mailbox name."
 msgstr "Получатель не найден: %{recipients}. Укажите @имя_пользователя, адрес email или название общего ящика."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:222
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:224
 #, elixir-autogen, elixir-format
 msgid "No senders yet."
 msgstr "Отправителей пока нет."
@@ -499,7 +499,7 @@ msgstr "Подписей пока нет."
 msgid "Not attached: %{names}. %{reason}"
 msgstr "Не прикреплено: %{names}. %{reason}"
 
-#: lib/phoenix_kit_inbox/errors.ex:160
+#: lib/phoenix_kit_inbox/errors.ex:178
 #, elixir-autogen, elixir-format
 msgid "Not email addresses: %{entries}."
 msgstr "Это не адреса email: %{entries}."
@@ -597,7 +597,7 @@ msgstr "Повторить"
 msgid "Revoke"
 msgstr "Отозвать"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:348
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:356
 #: lib/phoenix_kit_inbox/web/my_settings_live.ex:246
 #: lib/phoenix_kit_inbox/web/signature_editor.ex:181
 #, elixir-autogen, elixir-format
@@ -634,12 +634,12 @@ msgstr "Отправить как"
 msgid "Send from your own mail connection. The From address is the connection's login."
 msgstr "Отправка через ваше собственное почтовое подключение. Адрес отправителя — логин подключения."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:174
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:176
 #, elixir-autogen, elixir-format
 msgid "Sender deleted."
 msgstr "Отправитель удалён."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:136
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:138
 #, elixir-autogen, elixir-format
 msgid "Sender saved."
 msgstr "Отправитель сохранён."
@@ -761,7 +761,7 @@ msgstr "Это почтовое подключение недоступно дл
 msgid "That mail connection isn't connected."
 msgstr "Это почтовое подключение не подключено."
 
-#: lib/phoenix_kit_inbox/errors.ex:181
+#: lib/phoenix_kit_inbox/errors.ex:199
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "Это имя подходит нескольким получателям."
@@ -826,7 +826,7 @@ msgstr "Пока нет почтового подключения с адрес�
 msgid "There is nothing to send again."
 msgstr "Повторно отправлять нечего."
 
-#: lib/phoenix_kit_inbox/errors.ex:154
+#: lib/phoenix_kit_inbox/errors.ex:172
 #, elixir-autogen, elixir-format
 msgid "These addresses belong to people or mailboxes inside this application: %{addresses}."
 msgstr "Эти адреса принадлежат людям или ящикам внутри приложения: %{addresses}."
@@ -877,7 +877,7 @@ msgstr "Слишком много файлов."
 msgid "Trash"
 msgstr "Корзина"
 
-#: lib/phoenix_kit_inbox/errors.ex:204
+#: lib/phoenix_kit_inbox/errors.ex:222
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Непредвиденная ошибка: %{reason}"
@@ -1091,7 +1091,7 @@ msgstr[0] "К сообщению можно прикрепить не более
 msgstr[1] "К сообщению можно прикрепить не более %{max} файлов."
 msgstr[2] "К сообщению можно прикрепить не более %{max} файлов."
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:478
+#: lib/phoenix_kit_inbox/mailboxes.ex:504
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr "Пользователь %{id}"
@@ -1106,7 +1106,7 @@ msgstr "Редактировать черновик"
 msgid "A system mail connection people send from their personal mailbox, as “their name | the mail's name”. Each one is open to the roles ticked; the Owner always."
 msgstr "Системное почтовое подключение, от имени которого отправляют из личного ящика как «своё имя | имя почты». Каждая почта доступна отмеченным ролям; владельцу (Owner) — всегда."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:359
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:367
 #, elixir-autogen, elixir-format
 msgid "Add shared mail"
 msgstr "Добавить общую почту"
@@ -1121,7 +1121,7 @@ msgstr "Коллега"
 msgid "Find a colleague"
 msgstr "Найти коллегу"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:382
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:390
 #, elixir-autogen, elixir-format
 msgid "Keep the current connection (it does not work now)"
 msgstr "Оставить текущее подключение (сейчас не работает)"
@@ -1146,22 +1146,22 @@ msgstr "Вам не доступна ни одна почта для отпра�
 msgid "Nobody found"
 msgstr "Никого не найдено"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:399
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:407
 #, elixir-autogen, elixir-format
 msgid "Owner only: no role is ticked"
 msgstr "Только Owner: ни одна роль не отмечена"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:316
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:324
 #, elixir-autogen, elixir-format
 msgid "Owner — always"
 msgstr "Owner — всегда"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:402
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:410
 #, elixir-autogen, elixir-format
 msgid "Roles: %{roles}"
 msgstr "Доступна ролям: %{roles}"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:339
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:347
 #, elixir-autogen, elixir-format
 msgid "Sending also needs the “Send to external addresses” permission. Nobody can read this mail here."
 msgstr "Для отправки нужно ещё право «Отправка на внешние адреса». Читать эту почту здесь не может никто."
@@ -1176,27 +1176,27 @@ msgstr "Общая почта"
 msgid "Shared mail is managed by holders of “Manage shared mailboxes”."
 msgstr "Общей почтой управляют те, у кого есть право «Управление общими ящиками»."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:238
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:240
 #, elixir-autogen, elixir-format
 msgid "Shown as “%{name}”"
 msgstr "Получатели видят «%{name}»"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:397
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:405
 #, elixir-autogen, elixir-format
 msgid "Through the shared mailbox “%{name}”"
 msgstr "По ящику «%{name}»"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:304
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:312
 #, elixir-autogen, elixir-format
 msgid "Used through the shared mailbox “%{name}” by everyone who writes to it."
 msgstr "Ею пользуются через общий ящик «%{name}» все, кто может в него писать."
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:313
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:321
 #, elixir-autogen, elixir-format
 msgid "Who may send from it"
 msgstr "Кто может отправлять от её имени"
 
-#: lib/phoenix_kit_inbox/web/identity_editor.ex:333
+#: lib/phoenix_kit_inbox/web/identity_editor.ex:341
 #, elixir-autogen, elixir-format
 msgid "the role has no “Send to external addresses” permission — grant it in the roles matrix"
 msgstr "у роли нет права «Отправка на внешние адреса» — выдать в матрице ролей"
@@ -1272,7 +1272,7 @@ msgstr "Не удалось сохранить связи с объектами;
 msgid "The link to the related object is not valid."
 msgstr "Связь с объектом недействительна."
 
-#: lib/phoenix_kit_inbox/errors.ex:163
+#: lib/phoenix_kit_inbox/errors.ex:164
 #, elixir-autogen, elixir-format
 msgid "The Reply-To address is not a valid email address."
 msgstr "Адрес для ответа не является корректным адресом электронной почты."

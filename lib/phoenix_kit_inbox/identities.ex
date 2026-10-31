@@ -429,12 +429,12 @@ defmodule PhoenixKitInbox.Identities do
   def resolve(scope, identity_uuid, %Mailbox{} = mailbox),
     do: do_resolve(scope, identity_uuid, mailbox, nil)
 
-  @doc """
-  `resolve/3` with the sender's name given instead of read from the user
-  behind `scope`: the name a message recorded when it was sent
-  (`resolved.sender_name`), so that whoever sends it again does not put
-  their own name into a From name built from the sender's.
-  """
+  @doc false
+  # Server-side, with a trusted `sender_name`: `resolve/3` with the sender's
+  # name given instead of read from the user behind `scope` — the name a
+  # message recorded when it was sent (`resolved.sender_name`), so that whoever
+  # sends it again does not put their own name into a From name built from the
+  # sender's. Never call it with a name that came from a form.
   @spec resolve(Scope.t(), term(), Mailbox.t(), String.t() | nil) ::
           {:ok, resolved()}
           | {:error, :forbidden | :broken | :not_found | :identity_not_for_mailbox}
@@ -608,7 +608,10 @@ defmodule PhoenixKitInbox.Identities do
       else: name
   end
 
-  defp from_name(%Identity{kind: "personal", owner_uuid: owner_uuid, from_name: name}, _user) do
+  defp from_name(
+         %Identity{kind: "personal", owner_uuid: owner_uuid, from_name: name},
+         _sender_name
+       ) do
     if blank?(name) do
       case repo().get(User, owner_uuid) do
         nil -> ""

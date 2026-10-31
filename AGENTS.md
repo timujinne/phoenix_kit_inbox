@@ -105,6 +105,18 @@ Consequences worth remembering before changing anything:
 - `"identity_uuid"` and `"reply_to"` (scope form only; the `/3` form refuses them with `:sender_options_need_scope`) are checked by `Identities.resolve/3` against the sending mailbox and by `Identities.allowed_reply_to/3`, and recorded as `metadata["identity"]` / `metadata["reply_to"]` — server-written, a caller's copy is dropped. The identity is also what external recipients are sent as (see "Outbound mail"). An email address that resolves to nobody is an external recipient when the scope may write externally (`inbox.send_external`, or a personal identity), else an unknown recipient; the `/3` form refuses an address outside (`:external_needs_scope`). A draft keeps them as typed (`draft_sender/1`), unchecked until the send.
 - Bodies are `text`, `html` or `markdown`; compose writes `markdown`. The reading pane renders only `markdown` (`PhoenixKitInbox.Body`: core's `PhoenixKit.Email.Markdown` with no variables, so `{{x}}` stays as typed; typed line breaks kept; remote images turned into links, never loaded; links `target=_blank rel=noopener noreferrer nofollow`) and shows everything else escaped. Never render a body as raw HTML any other way.
 
+### Server-side options of `send_message/4` (scope form)
+
+Given by the host's code, never read from a form's `attrs` (a caller's copy in `attrs`, including `attrs["metadata"]`, is dropped):
+
+- `links: [%{kind:, ref:}]` — objects of the host the message is linked to; stored in the send's transaction with the links inherited from the conversation. Host subject resolvers (`link_resolver.ex`) run last, after the email has gone.
+- `reply_to_trusted: address` — a Reply-To the host vouches for, validated as an address but not matched against `reply_to_options`.
+- `html_body: html` — the host's HTML for the email to external recipients (≤ 256 KiB), kept in `metadata["html_body"]` for a retry and only when the message has external recipients. It never reaches a reader: every read function goes through `Messages.project_for_viewer/2`.
+- `idempotency_key: key` — a repeat answers with the first message and does nothing else; recorded in `phoenix_kit_inbox_send_keys` in the send's transaction.
+- A shared identity's `personalize_from_name` puts the sender's name in front of its own in the From name.
+
+Before sending, a host may ask what would happen: `Messages.resolve_recipient_routes/2` (read-only: the send's own lookup, `:internal` or `:email` per address, one address per entry) and `Outbound.preview/2` (the host's `outbound_filter`, told `preview: true`; nothing is sent).
+
 ## Identities and signatures
 
 `PhoenixKitInbox.Identities` and `PhoenixKitInbox.Signatures`; every write takes the caller's `%Scope{}` and checks the **stored** row.
@@ -174,11 +186,12 @@ lib/phoenix_kit_inbox/
 ├── notify.ex                             # activity log + optional email nudge
 ├── outbound.ex, outbound/mailer.ex       # THE way mail leaves: checks, filter, core call
 ├── external.ex                           # external recipients: rows, task, status, retry
+├── links.ex, link_resolver.ex            # message ↔ host-object links (+ the resolver behaviour)
 ├── access_events.ex                      # PubSub: grant/mailbox/sender changes for open pages
 ├── email_log.ex                          # reads phoenix_kit_emails' log (soft dependency)
 ├── migrations.ex                         # version coordinator
-├── migrations/v01.ex … v06.ex            # immutable
-├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,identity_role,signature,external_recipient}.ex
+├── migrations/v01.ex … v07.ex            # immutable
+├── schemas/{mailbox,mailbox_grant,message,delivery,attachment,identity,identity_role,signature,external_recipient,link,send_key}.ex
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
     web/{signature_editor,identity_editor}.ex   # editors the pages share
     web/scope_refresh.ex                  # scope copy + access-event subscriptions the pages share
