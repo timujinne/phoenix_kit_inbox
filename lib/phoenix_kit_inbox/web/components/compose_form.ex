@@ -195,6 +195,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       sent: false,
       send_ref: nil,
       summary: nil,
+      from_error: nil,
       open: %{cc: recipients.cc != [], bcc: recipients.bcc != [], signature: false},
       signature_uuid: "",
       signature_block: "",
@@ -270,12 +271,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp unresolved?(chip), do: is_nil(chip.address)
 
-  # Nothing can be sent while a chip has no address.
-  defp blocked?(assigns),
-    do:
+  # Nothing can be sent while a chip has no address, or while the sender of
+  # the outside mail is not chosen.
+  defp blocked?(assigns) do
+    assigns.from_error != nil or
       Enum.any?([:to, :cc, :bcc], fn role ->
         Enum.any?(assigns.recipients[role], &unresolved?/1)
       end)
+  end
 
   defp resolved_address(user, route) do
     case Mailboxes.recipient_address(user, route) do
@@ -645,16 +648,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   end
 
   defp run_send(socket, uploads, links) do
-    %{scope: scope, id: id, source_draft: source} = socket.assigns
-    r = socket.assigns.recipients
+    %{scope: scope, id: id} = socket.assigns
     host = for %{item: item} <- socket.assigns.host_files, do: item
 
     draft = %{
-      source
-      | to: Enum.map(r.to, &entry/1),
-        cc: Enum.map(r.cc, &entry/1),
-        bcc: Enum.map(r.bcc, &entry/1),
-        attachments: host ++ uploads,
+      chip_draft(socket)
+      | attachments: host ++ uploads,
         idempotency_key: socket.assigns.idempotency_key
     }
 
@@ -679,6 +678,18 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         Enum.each(links, &File.rm/1)
         assign(socket, error: Errors.message(:send_failed))
     end
+  end
+
+  # The host's draft with the recipients the person has now.
+  defp chip_draft(socket) do
+    %{source_draft: source, recipients: r} = socket.assigns
+
+    %{
+      source
+      | to: Enum.map(r.to, &entry/1),
+        cc: Enum.map(r.cc, &entry/1),
+        bcc: Enum.map(r.bcc, &entry/1)
+    }
   end
 
   defp put_picks(params, []), do: params
@@ -765,24 +776,57 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   defp refresh_summary(socket) do
     %{recipients: r} = socket.assigns
     people = r.to ++ r.cc ++ r.bcc
+    identity = effective_identity(socket)
+    socket = assign(socket, :from_error, from_error(identity))
 
     summary =
       if people == [] do
         nil
       else
+        {outside, unchecked?} = outside_addresses(socket, identity)
+
         %{
           from: socket.assigns |> current_option() |> then(&(&1 && &1.label)),
           to: Enum.map(r.to, &chip_text/1),
           cc: length(r.cc),
           bcc: length(r.bcc),
-          outside: outside_addresses(socket)
+          outside: outside,
+          unchecked: unchecked?,
+          sender_as: sender_as(people, identity)
         }
       end
 
     assign(socket, :summary, summary)
   end
 
-  defp outside_addresses(socket) do
+  # The sender an outside letter would go out as, worked out by the pipeline
+  # as the send works it out: what the line says, what the filter is asked
+  # with, and — when it cannot be worked out — what holds the send back.
+  defp effective_identity(socket) do
+    ComposePipeline.effective_identity(
+      socket.assigns.scope,
+      chip_draft(socket),
+      %{"from" => socket.assigns.from}
+    )
+  end
+
+  defp from_error({:error, :identity_required}), do: Errors.message(:identity_required)
+  defp from_error(_other), do: nil
+
+  defp sender_as(people, {:ok, %{from_address: address} = identity}) when is_binary(address) do
+    if Enum.any?(people, &(&1.route == :email and is_binary(&1.address))) do
+      case identity[:from_name] do
+        name when is_binary(name) and name != "" -> "#{name} <#{address}>"
+        _ -> address
+      end
+    end
+  end
+
+  defp sender_as(_people, _identity), do: nil
+
+  # {where the filter would send it (nil when as typed), whether the filter
+  # could not be asked}.
+  defp outside_addresses(socket, identity) do
     r = socket.assigns.recipients
 
     typed =
@@ -792,18 +836,26 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           is_binary(c.address),
           do: {role, c}
 
-    with [_ | _] <- typed,
-         {:ok, email} <- Outbound.preview(preview_email(typed), preview_context(socket)) do
-      shown = Enum.map(email.to ++ email.cc ++ email.bcc, fn {_name, address} -> address end)
-      asked = Enum.map(typed, fn {_role, c} -> c.address end)
+    case typed do
+      [] ->
+        {nil, false}
 
-      if Enum.sort(Enum.map(shown, &String.downcase/1)) ==
-           Enum.sort(Enum.map(asked, &String.downcase/1)),
-         do: nil,
-         else: Enum.uniq(shown)
-    else
-      _ -> nil
+      _ ->
+        case Outbound.preview(preview_email(typed), preview_context(socket, identity)) do
+          {:ok, email} -> {rewritten(email, typed), false}
+          {:error, _reason} -> {nil, true}
+        end
     end
+  end
+
+  defp rewritten(email, typed) do
+    shown = Enum.map(email.to ++ email.cc ++ email.bcc, fn {_name, address} -> address end)
+    asked = Enum.map(typed, fn {_role, c} -> c.address end)
+
+    if Enum.sort(Enum.map(shown, &String.downcase/1)) ==
+         Enum.sort(Enum.map(asked, &String.downcase/1)),
+       do: nil,
+       else: Enum.uniq(shown)
   end
 
   defp preview_email(typed) do
@@ -818,34 +870,34 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end)
   end
 
-  defp preview_context(socket) do
-    identity =
-      case current_option(socket.assigns) do
-        %{choice: {:identity, uuid}} -> uuid
-        _ -> nil
-      end
-
+  defp preview_context(socket, identity) do
     %{
       kind: :message,
       integration_uuid: nil,
       user_uuid: socket.assigns.scope.user && to_string(socket.assigns.scope.user.uuid),
-      identity_uuid: identity
+      identity_uuid: with({:ok, %{identity_uuid: uuid}} <- identity, do: uuid)
     }
   end
 
   defp summary_text(%{from: from, to: to} = summary) do
-    base = gettext("From %{from} → %{to}", from: from || "?", to: Enum.join(to, ", "))
-
     [
-      base,
+      base_text(from || "?", to),
       summary.cc > 0 && ngettext("%{count} in copy", "%{count} in copy", summary.cc),
       summary.bcc > 0 && ngettext("%{count} hidden", "%{count} hidden", summary.bcc),
+      summary.sender_as &&
+        gettext("outside mail goes out as %{sender}", sender: summary.sender_as),
       summary.outside &&
-        gettext("outside mail goes to %{addresses}", addresses: Enum.join(summary.outside, ", "))
+        gettext("outside mail goes to %{addresses}", addresses: Enum.join(summary.outside, ", ")),
+      summary.unchecked && gettext("Where the outside mail goes could not be checked.")
     ]
     |> Enum.filter(& &1)
     |> Enum.join("; ")
   end
+
+  defp base_text(from, []), do: gettext("From %{from}", from: from)
+
+  defp base_text(from, to),
+    do: gettext("From %{from} → %{to}", from: from, to: Enum.join(to, ", "))
 
   # ── attachments ─────────────────────────────────────────────────────────────
 
@@ -1169,6 +1221,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         </div>
         <p :if={@reply_to} id={"compose-#{@id}-reply-to"} class="text-xs text-base-content/60">
           {gettext("Replies go to %{address}", address: @reply_to)}
+        </p>
+        <p
+          :if={@from_error}
+          id={"compose-#{@id}-from-error"}
+          role="alert"
+          class="text-xs text-error"
+        >
+          {@from_error}
         </p>
         <div
           :if={@option && @option.personal?}

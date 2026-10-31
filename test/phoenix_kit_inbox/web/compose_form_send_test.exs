@@ -641,6 +641,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     test "without a rewrite there is nothing to add", %{conn: conn} = ctx do
       view = mount_form(ctx, conn, outside_draft(ctx))
       refute text(view, "#compose-demo-summary") =~ "goes to"
+      refute text(view, "#compose-demo-summary") =~ "could not be checked"
     end
 
     test "a filter that refuses, or breaks, leaves a plain line", %{conn: conn} = ctx do
@@ -650,6 +651,8 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
         line = text(view, "#compose-demo-summary")
         assert line =~ "The client"
         refute line =~ "goes to"
+        # Not silence: the person is told the address could not be checked.
+        assert line =~ "could not be checked"
       end
     end
 

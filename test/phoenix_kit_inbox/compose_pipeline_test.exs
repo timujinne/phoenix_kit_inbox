@@ -865,6 +865,73 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
     end
   end
 
+  describe "effective_identity/3" do
+    test "names what the send would use, for a form to show before it", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid}, username: "alice@mine.test")
+
+      {:ok, mine} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Zzz mine",
+          "integration_uuid" => own
+        })
+
+      outside_draft = draft(ctx, to: [outside()], from: :user_default)
+
+      assert {:ok, %{identity_uuid: uuid, from_address: "alice@mine.test"}} =
+               ComposePipeline.effective_identity(ctx.alice_scope, outside_draft, %{})
+
+      assert uuid == mine.uuid
+      assert {:ok, message} = run(ctx, %{}, outside_draft)
+      assert stored(message).metadata["identity"]["uuid"] == uuid
+    end
+
+    test "says when the person must choose, and nothing is sent to find out", ctx do
+      manager = scope_for(user_fixture(), ["inbox", "inbox.manage_shared"])
+      other = mail_integration_fixture(:system, username: "other2@company.test")
+
+      {:ok, second} =
+        Identities.create_shared(manager, %{"label" => "Second", "integration_uuid" => other})
+
+      outside_draft = draft(ctx, to: [outside()], from: :user_default)
+
+      assert {:error, :identity_required} =
+               ComposePipeline.effective_identity(ctx.alice_scope, outside_draft, %{})
+
+      # The choice of the form is believed as the send believes it.
+      assert {:ok, %{identity_uuid: uuid}} =
+               ComposePipeline.effective_identity(ctx.alice_scope, outside_draft, %{
+                 "from" => "identity:" <> second.uuid
+               })
+
+      assert uuid == second.uuid
+      assert message_count() == 0
+      refute_received {:outbound, _, _, _}
+    end
+
+    test "has nothing to name for mail that stays inside", ctx do
+      assert {:ok, nil} = ComposePipeline.effective_identity(ctx.alice_scope, draft(ctx), %{})
+    end
+
+    test "refuses what the send would refuse, and never raises", ctx do
+      assert {:error, {:identity_unusable, :not_found}} =
+               ComposePipeline.effective_identity(
+                 ctx.alice_scope,
+                 draft(ctx, to: [outside()]),
+                 %{"from" => "identity:#{ctx.closed.uuid}"}
+               )
+
+      assert {:error, :forbidden} =
+               ComposePipeline.effective_identity(nil, draft(ctx), %{})
+
+      assert {:error, :invalid_draft} =
+               ComposePipeline.effective_identity(ctx.alice_scope, %{}, %{})
+
+      # Params that are no map are no params, as for `run/4`.
+      assert {:ok, nil} = ComposePipeline.effective_identity(ctx.alice_scope, draft(ctx), "x")
+    end
+
+  end
+
   describe "the draft" do
     test "something that is not a ComposeDraft is an invalid draft, not a refusal of the person",
          ctx do

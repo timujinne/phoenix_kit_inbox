@@ -219,6 +219,40 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   def valid_address?(address) when is_binary(address), do: address_ok?(address)
   def valid_address?(_), do: false
 
+  @doc """
+  The identity an outside letter would go out as for `draft` and
+  `form_params`, worked out as `run/4` works it out: the one the person chose,
+  else their only personal one, else the only one open to them, else none.
+  `{:ok, nil}` when there is none to name (a letter that stays inside, or a
+  person with no identity); `{:error, :identity_required}` when there are
+  several and none is clearly theirs; the other refusals `run/4` gives for the
+  sender (`:invalid_from`, `:mailbox_access_denied`, `{:identity_unusable,
+  reason}`), or for the recipients, as they are. For a form to show the
+  sender before the send; nothing is sent or written.
+  """
+  @spec effective_identity(Scope.t() | nil, ComposeDraft.t(), term()) ::
+          {:ok, Identities.resolved() | nil} | {:error, term()}
+  def effective_identity(%Scope{} = scope, %ComposeDraft{} = draft, form_params) do
+    params = if is_map(form_params), do: form_params, else: %{}
+
+    if Scope.can?(scope, "inbox") do
+      with {:ok, recipients} <- recipients(draft, params),
+           {:ok, sender} <- sender(scope, draft, params, recipients) do
+        named_identity(scope, sender)
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  def effective_identity(%Scope{}, _draft, _form_params), do: {:error, :invalid_draft}
+  def effective_identity(_scope, _draft, _form_params), do: {:error, :forbidden}
+
+  defp named_identity(_scope, %{identity_uuid: nil}), do: {:ok, nil}
+
+  defp named_identity(scope, %{identity_uuid: uuid, mailbox: mailbox}),
+    do: resolve_identity(scope, uuid, mailbox)
+
   defp checked(scope, params, %ComposeDraft{} = draft, callbacks) do
     with {:ok, callbacks} <- callbacks(callbacks),
          {:ok, recipients} <- recipients(draft, params),

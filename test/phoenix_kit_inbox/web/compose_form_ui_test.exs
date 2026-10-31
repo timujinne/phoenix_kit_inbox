@@ -11,6 +11,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Signatures
   alias PhoenixKitInbox.Test.ComponentHostLive
+  alias PhoenixKitInbox.Test.OutboundFilters
   alias PhoenixKitInbox.Web.Components.ComposeDraft
   alias PhoenixKitInbox.Web.Components.ComposeForm
 
@@ -403,5 +404,106 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
 
       refute has_element?(view, "#compose-demo-cc")
     end
+  end
+  describe "outside mail and the sender it will go as" do
+    defp summary_text(view),
+      do:
+        view
+        |> render()
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("#compose-demo-summary")
+        |> LazyHTML.text()
+
+    defp second_sender!(ctx) do
+      {:ok, second} =
+        Identities.create_shared(ctx.manager, %{
+          "label" => "Second",
+          "from_name" => "Second Co",
+          "integration_uuid" => ctx.common.integration_uuid
+        })
+
+      second
+    end
+
+    defp send_disabled?(view),
+      do: has_element?(view, "button[type=submit][form=compose-demo-form][disabled]")
+
+    test "the one sender open to the person is named before the send", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft())
+
+      assert summary_text(view) =~ "goes out as"
+      assert summary_text(view) =~ "noreply@company.test"
+      refute has_element?(view, "#compose-demo-from-error")
+    end
+
+    test "the filter is asked with the sender that will really be used", %{conn: conn} = ctx do
+      PhoenixKitInbox.DataCase.outbound_filter({OutboundFilters, :record_context})
+
+      _view = mount_form(ctx, conn, draft())
+
+      assert_receive {:filter_context, %{preview: true, identity_uuid: uuid}}, 1000
+      assert uuid == ctx.common.uuid
+    end
+
+    test "two senders and no clear choice: the error is at From and the send is held",
+         %{conn: conn} = ctx do
+      second = second_sender!(ctx)
+      view = mount_form(ctx, conn, draft())
+
+      assert has_element?(view, "#compose-demo-from-error[role=alert]", "Choose which sender")
+      assert send_disabled?(view)
+
+      view
+      |> form("#compose-demo-from-form")
+      |> render_change(%{"from" => "identity:" <> second.uuid})
+
+      refute has_element?(view, "#compose-demo-from-error")
+      refute send_disabled?(view)
+      assert summary_text(view) =~ "goes out as"
+    end
+
+    test "a send forced past the held button is refused by the server too", %{conn: conn} = ctx do
+      _second = second_sender!(ctx)
+      view = mount_form(ctx, conn, draft())
+
+      view |> form("#compose-demo-form") |> render_submit()
+
+      refute_receive {:inbox_compose, _, {:sent, _}}, 200
+      assert has_element?(view, "#compose-demo-from-error[role=alert]")
+    end
+
+    test "mail to people inside needs no sender", %{conn: conn} = ctx do
+      _second = second_sender!(ctx)
+      inside = draft(to: [%{user: ctx.bob.uuid, route: :internal}])
+
+      view = mount_form(ctx, conn, inside)
+
+      refute has_element?(view, "#compose-demo-from-error")
+      refute send_disabled?(view)
+    end
+
+    test "with nobody in To the line has no dangling arrow", %{conn: conn} = ctx do
+      view =
+        mount_form(
+          ctx,
+          conn,
+          draft(to: [], cc: [%{address: "cc@example.com", route: :email}])
+        )
+
+      line = summary_text(view)
+      assert line =~ "1 in copy"
+      refute line =~ "→"
+    end
+
+    test "the error follows the recipients", %{conn: conn} = ctx do
+      _second = second_sender!(ctx)
+      view = mount_form(ctx, conn, draft())
+      assert has_element?(view, "#compose-demo-from-error")
+
+      view |> element("#compose-demo-to li button[phx-click=remove]") |> render_click()
+
+      refute has_element?(view, "#compose-demo-from-error")
+    end
+
   end
 end
