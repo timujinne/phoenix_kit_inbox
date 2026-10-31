@@ -837,9 +837,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # it was given are its own. Without a watcher the page waits for the
   # answer without a time limit, which is all that is lost.
   defp watch_worker(supervisor, worker, page, id, ref) do
-    timeout = Application.get_env(:phoenix_kit_inbox, :compose_send_timeout, @send_timeout)
-
-    case Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref, timeout)) do
+    case Task.Supervisor.start_child(supervisor, watch(worker, page, id, ref, send_timeout())) do
       {:ok, _watcher} ->
         :ok
 
@@ -849,6 +847,15 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   catch
     :exit, _reason ->
       Logger.warning("[Inbox] a compose send runs without a watcher: none could start")
+  end
+
+  # The setting is for tests; anything but a positive whole number of
+  # milliseconds is the default.
+  defp send_timeout do
+    case Application.get_env(:phoenix_kit_inbox, :compose_send_timeout) do
+      timeout when is_integer(timeout) and timeout > 0 -> timeout
+      _other -> @send_timeout
+    end
   end
 
   defp watch(worker, page, id, ref, timeout) do

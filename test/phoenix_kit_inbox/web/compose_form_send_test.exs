@@ -787,6 +787,27 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 1
     end
 
+    test "a send timeout that is no usable number is the default", %{conn: conn} = ctx do
+      for bad <- ["oops", nil, -1, 0, 1.5] do
+        put_env!(:compose_send_timeout, bad)
+        mode(:hold)
+        view = mount_form(ctx, conn, draft(ctx))
+        submit(view)
+        assert_receive {:around, task, _}, 2000
+
+        # The watcher started and waits: the send is running, not lost.
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            Process.sleep(150)
+            assert sending?(view), inspect(bad)
+          end)
+
+        refute log =~ "ArgumentError", inspect(bad)
+        send(task, :stop)
+        eventually(fn -> not send_button_disabled?(view) end)
+      end
+    end
+
     test "after a lost attempt the next one's result is the one that counts",
          %{conn: conn} = ctx do
       put_env!(:compose_send_timeout, 100)
