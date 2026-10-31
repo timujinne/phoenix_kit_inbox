@@ -437,8 +437,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   end
 
   defp resolve_sender(scope, :user_default, _accessible, external?) do
-    with {:ok, mailbox} <- Mailboxes.ensure_user_mailbox(scope.user) do
-      {:ok, sender(:user_default, mailbox, default_identity(scope, mailbox, external?))}
+    with {:ok, mailbox} <- Mailboxes.ensure_user_mailbox(scope.user),
+         {:ok, identity} <- default_identity(scope, mailbox, external?) do
+      {:ok, sender(:user_default, mailbox, identity)}
     end
   end
 
@@ -448,7 +449,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
         {:error, :mailbox_access_denied}
 
       mailbox ->
-        {:ok, sender({:mailbox, uuid}, mailbox, default_identity(scope, mailbox, external?))}
+        with {:ok, identity} <- default_identity(scope, mailbox, external?) do
+          {:ok, sender({:mailbox, uuid}, mailbox, identity)}
+        end
     end
   end
 
@@ -463,14 +466,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   defp sender(choice, mailbox, identity_uuid),
     do: %{choice: choice, mailbox: mailbox, identity_uuid: identity_uuid}
 
-  # The first identity the person may send from this mailbox as, by label: the
-  # module has no setting for a default of their own.
-  defp default_identity(_scope, _mailbox, false), do: nil
+  # The sender of an outside address when the person did not name one. The
+  # module keeps no default of its own for identities (the standard compose
+  # window starts at "inside only" and makes the person choose), so: their own
+  # personal sender if they have exactly one, else the only one open to them
+  # from this mailbox, else they must choose. Never a guess by label.
+  defp default_identity(_scope, _mailbox, false), do: {:ok, nil}
 
   defp default_identity(scope, mailbox, true) do
-    case Identities.list_usable(scope, mailbox) do
-      [%{identity_uuid: uuid} | _] -> uuid
-      [] -> nil
+    usable = Identities.list_usable(scope, mailbox)
+
+    case {Enum.filter(usable, &(&1.kind == "personal")), usable} do
+      {[%{identity_uuid: uuid}], _} -> {:ok, uuid}
+      {_, [%{identity_uuid: uuid}]} -> {:ok, uuid}
+      {_, []} -> {:ok, nil}
+      _ambiguous -> {:error, :identity_required}
     end
   end
 

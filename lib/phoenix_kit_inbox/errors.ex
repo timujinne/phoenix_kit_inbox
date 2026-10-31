@@ -252,6 +252,9 @@ defmodule PhoenixKitInbox.Errors do
 
   def message(:send_failed), do: gettext("The message could not be sent.")
 
+  def message(:identity_required),
+    do: gettext("Choose which sender to use for the addresses outside this application.")
+
   def message(:invalid_callbacks),
     do: gettext("This form is not set up correctly, so nothing was sent.")
 

@@ -441,7 +441,7 @@ msgstr ""
 msgid "Messages between users of this application"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:262
+#: lib/phoenix_kit_inbox/errors.ex:265
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr ""
@@ -783,7 +783,7 @@ msgstr ""
 msgid "That mail connection isn't connected."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:259
+#: lib/phoenix_kit_inbox/errors.ex:262
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr ""
@@ -904,7 +904,7 @@ msgstr ""
 msgid "Trash"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:284
+#: lib/phoenix_kit_inbox/errors.ex:287
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr ""
@@ -1122,7 +1122,7 @@ msgid_plural "A message can carry at most %{max} files."
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:529
+#: lib/phoenix_kit_inbox/mailboxes.ex:549
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr ""
@@ -1602,7 +1602,12 @@ msgstr ""
 msgid "outside mail goes to %{addresses}"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:256
+#: lib/phoenix_kit_inbox/errors.ex:259
 #, elixir-autogen, elixir-format
 msgid "This form is not set up correctly, so nothing was sent."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:256
+#, elixir-autogen, elixir-format
+msgid "Choose which sender to use for the addresses outside this application."
 msgstr ""

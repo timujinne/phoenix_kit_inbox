@@ -441,7 +441,7 @@ msgstr "Сообщение отправлено. Письмо на внешни�
 msgid "Messages between users of this application"
 msgstr "Сообщения между пользователями этого приложения"
 
-#: lib/phoenix_kit_inbox/errors.ex:262
+#: lib/phoenix_kit_inbox/errors.ex:265
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Подходит несколько получателей: %{recipients}. Укажите полный адрес email."
@@ -783,7 +783,7 @@ msgstr "Это почтовое подключение недоступно дл
 msgid "That mail connection isn't connected."
 msgstr "Это почтовое подключение не подключено."
 
-#: lib/phoenix_kit_inbox/errors.ex:259
+#: lib/phoenix_kit_inbox/errors.ex:262
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "Это имя подходит нескольким получателям."
@@ -904,7 +904,7 @@ msgstr "Слишком много файлов."
 msgid "Trash"
 msgstr "Корзина"
 
-#: lib/phoenix_kit_inbox/errors.ex:284
+#: lib/phoenix_kit_inbox/errors.ex:287
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Непредвиденная ошибка: %{reason}"
@@ -1123,7 +1123,7 @@ msgstr[0] "К сообщению можно прикрепить не более
 msgstr[1] "К сообщению можно прикрепить не более %{max} файлов."
 msgstr[2] "К сообщению можно прикрепить не более %{max} файлов."
 
-#: lib/phoenix_kit_inbox/mailboxes.ex:529
+#: lib/phoenix_kit_inbox/mailboxes.ex:549
 #, elixir-autogen, elixir-format
 msgid "User %{id}"
 msgstr "Пользователь %{id}"
@@ -1607,7 +1607,12 @@ msgstr "Отправка прервалась. Проверьте отправл
 msgid "outside mail goes to %{addresses}"
 msgstr "внешняя почта уйдёт на %{addresses}"
 
-#: lib/phoenix_kit_inbox/errors.ex:256
+#: lib/phoenix_kit_inbox/errors.ex:259
 #, elixir-autogen, elixir-format
 msgid "This form is not set up correctly, so nothing was sent."
 msgstr "Форма настроена неверно, поэтому ничего не отправлено."
+
+#: lib/phoenix_kit_inbox/errors.ex:256
+#, elixir-autogen, elixir-format
+msgid "Choose which sender to use for the addresses outside this application."
+msgstr "Выберите отправителя для адресов вне приложения."

@@ -186,6 +186,49 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       refute Map.has_key?(stored(internal).metadata, "identity")
     end
 
+    test "with several senders open to the person, a personal one is the default", ctx do
+      own = mail_integration_fixture({:user, ctx.alice.uuid}, username: "alice@mine.test")
+
+      {:ok, mine} =
+        Identities.create_personal(scope_for(ctx.alice), %{
+          "label" => "Zzz mine",
+          "integration_uuid" => own
+        })
+
+      assert {:ok, message} = run(ctx, %{}, draft(ctx, to: [outside()], from: :user_default))
+      assert stored(message).metadata["identity"]["uuid"] == mine.uuid
+    end
+
+    test "with several shared senders and no personal one, the person must choose", ctx do
+      manager = scope_for(user_fixture(), ["inbox", "inbox.manage_shared"])
+      other = mail_integration_fixture(:system, username: "other@company.test")
+
+      {:ok, _} =
+        Identities.create_shared(manager, %{
+          "label" => "A second common sender",
+          "integration_uuid" => other
+        })
+
+      assert {:error, :identity_required} =
+               run(ctx, %{}, draft(ctx, to: [outside()], from: :user_default))
+
+      assert message_count() == 0
+      refute_received {:outbound, _, _, _}
+      assert Errors.message(:identity_required) =~ "sender"
+
+      # Inside the application there is nothing to choose; naming one settles it.
+      assert {:ok, _} = run(ctx, %{}, draft(ctx, from: :user_default))
+
+      assert {:ok, chosen} =
+               run(
+                 ctx,
+                 %{"from" => "identity:#{ctx.common.uuid}"},
+                 draft(ctx, to: [outside()])
+               )
+
+      assert stored(chosen).metadata["identity"]["uuid"] == ctx.common.uuid
+    end
+
     test "a mailbox identity is the one bound to it", ctx do
       draft = draft(ctx, to: [outside()], from: {:identity, ctx.bound.uuid})
       assert {:ok, message} = run(ctx, %{}, draft)
