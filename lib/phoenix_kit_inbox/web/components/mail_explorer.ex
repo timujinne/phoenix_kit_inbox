@@ -63,6 +63,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   require Logger
 
+  alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Utils.Format
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Body
@@ -120,6 +121,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
     socket =
       socket
       |> assign(assigns)
+      |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
       |> assign_new(:title, fn -> gettext("Mail") end)
       |> assign_new(:folders, fn -> @folders end)
       |> assign_new(:compose, fn -> nil end)
@@ -160,6 +162,12 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   # Reads the list again, with the viewer's access of this moment, and keeps
   # the selection if it still points at something on the page.
+  defp load(%{assigns: %{allowed?: false}} = socket) do
+    socket
+    |> assign(threads: [], selected: nil, picker: nil, attachments: %{})
+    |> assign(link_access: %{}, link_labels: %{})
+  end
+
   defp load(socket) do
     %{scope: scope, filter: filter, folder: folder} = socket.assigns
     threads = ObjectMail.list_threads(scope, filter, folder: folder, limit: @page)
@@ -269,6 +277,10 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   # ── events ──────────────────────────────────────────────────────────────────
 
   @impl true
+  # A viewer without the module's right has nothing here to act on.
+  def handle_event(_event, _params, %{assigns: %{allowed?: false}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("folder", %{"folder" => name}, socket) do
     case Enum.find(socket.assigns.folders, &(Atom.to_string(&1) == name)) do
       nil -> {:noreply, socket}
@@ -423,6 +435,12 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   # ── rendering ───────────────────────────────────────────────────────────────
 
   @impl true
+  def render(%{allowed?: false} = assigns) do
+    ~H"""
+    <div id={"mail-explorer-#{@id}"}></div>
+    """
+  end
+
   def render(assigns) do
     assigns =
       assigns

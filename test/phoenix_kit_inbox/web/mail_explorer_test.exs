@@ -265,6 +265,40 @@ defmodule PhoenixKitInbox.Web.MailExplorerTest do
     end
   end
 
+  describe "a viewer without the inbox right" do
+    test "gets an empty container: no list, no buttons, no actions", %{conn: conn} = ctx do
+      letter = mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
+      [link] = Links.for_message(letter.uuid)
+
+      view =
+        mount_explorer(ctx, conn, %{
+          scope: scope_for(ctx.alice, []),
+          compose: composing(),
+          can_link?: allowing()
+        })
+
+      assert has_element?(view, "#mail-explorer-demo")
+      refute has_element?(view, "#mail-explorer-demo *")
+      refute render(view) =~ "Order mail"
+
+      for {event, value} <- [
+            {"write", %{}},
+            {"reply", %{"uuid" => letter.uuid}},
+            {"open_picker", %{}},
+            {"unlink", %{"link" => link.uuid}},
+            {"link", %{"uuid" => letter.uuid}},
+            {"select", %{"kind" => "message", "uuid" => letter.uuid}},
+            {"folder", %{"folder" => "sent"}}
+          ] do
+        forge(view, event, value)
+      end
+
+      refute_receive {:inbox_explorer, _, _}, 100
+      assert [_] = Links.for_message(letter.uuid)
+      refute has_element?(view, "#mail-explorer-demo *")
+    end
+  end
+
   describe "the words of the component" do
     test "the button is Compose and the folders are Inbox and Sent", %{conn: conn} = ctx do
       mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
