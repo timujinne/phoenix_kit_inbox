@@ -8,6 +8,7 @@ defmodule PhoenixKitInbox.HostOptionsTest do
 
   use PhoenixKitInbox.DataCase, async: false
 
+  alias PhoenixKitInbox.Attachments.Folders
   alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Identities
   alias PhoenixKitInbox.Mailboxes
@@ -135,16 +136,44 @@ defmodule PhoenixKitInbox.HostOptionsTest do
     end
 
     test "a malformed trusted address is refused", ctx do
-      for bad <- ["not an address", "a@b", "x@y.z\r\nBcc: spy@example.com", "", 42] do
+      for bad <- [
+            "not an address",
+            "a@b",
+            "x@y.z\r\nBcc: spy@example.com",
+            "a@b.c\0",
+            <<?a, ?@, ?b, ?., 0xFF>>,
+            42
+          ] do
         assert {:error, :invalid_reply_to} = send_external(ctx, %{}, reply_to_trusted: bad)
       end
 
       assert message_count() == 0
     end
 
-    test "nil and no option mean none", ctx do
-      assert {:ok, message} = send_external(ctx, %{}, reply_to_trusted: nil)
-      refute Map.has_key?(stored(message).metadata, "reply_to")
+    test "nil, an empty string and no option mean none", ctx do
+      for opts <- [[reply_to_trusted: nil], [reply_to_trusted: ""], []] do
+        assert {:ok, message} = send_external(ctx, %{}, opts)
+        refute Map.has_key?(stored(message).metadata, "reply_to")
+      end
+    end
+
+    test "a retry keeps the trusted Reply-To", ctx do
+      outbound_result({:error, :smtp_down})
+
+      assert {:ok, message} =
+               send_external(ctx, %{}, reply_to_trusted: "designer@elsewhere.example")
+
+      assert_received {:outbound, _, _, _}
+      emails_module_enabled!()
+      email_log_fixture(%{"inbox_message_uuid" => message.uuid}, "failed")
+      outbound_result({:ok, %{id: "ok"}})
+
+      assert {:ok, :pending} =
+               Messages.retry_external(ctx.alice_scope, ctx.alice_mb, message.uuid)
+
+      await_external(message.uuid)
+      assert_received {:outbound, retried, _, _}
+      assert retried.reply_to == {"", "designer@elsewhere.example"}
     end
   end
 
@@ -182,6 +211,38 @@ defmodule PhoenixKitInbox.HostOptionsTest do
       refute Map.has_key?(stored(sent).metadata, "html_body")
     end
 
+    test "atom keys in attrs metadata do not get round the server-only keys", ctx do
+      forged = %{
+        html_body: "<b>forged</b>",
+        reply_to: "spy@elsewhere.example",
+        identity: %{"from_name" => "Forged"},
+        kept: "yes"
+      }
+
+      {:ok, message} =
+        Messages.send_message(ctx.alice_scope, ctx.alice_mb, %{
+          "to" => "@#{ctx.bob.username}",
+          "subject" => "Hi",
+          "metadata" => forged
+        })
+
+      metadata = stored(message).metadata
+      refute Map.has_key?(metadata, "html_body")
+      refute Map.has_key?(metadata, "reply_to")
+      refute Map.has_key?(metadata, "identity")
+      assert metadata["kept"] == "yes"
+
+      # A draft keeps no forged copy of the folder key either.
+      {:ok, draft} =
+        Messages.save_draft(ctx.alice_scope, ctx.alice_mb, %{
+          "to" => "@#{ctx.bob.username}",
+          "subject" => "Draft",
+          "metadata" => %{String.to_atom(Folders.folder_key()) => "elsewhere"}
+        })
+
+      refute Map.has_key?(stored(draft).metadata, Folders.folder_key())
+    end
+
     test "html_body used in external email and kept for retry", ctx do
       outbound_result({:error, :smtp_down})
       assert {:ok, message} = send_external(ctx, %{}, html_body: @brand)
@@ -215,7 +276,9 @@ defmodule PhoenixKitInbox.HostOptionsTest do
 
     test "html_body absent from viewer projection", ctx do
       assert {:ok, returned} =
-               send_external(ctx, %{"to" => "@#{ctx.bob.username}"}, html_body: @brand)
+               send_external(ctx, %{"to" => "@#{ctx.bob.username}, client@example.com"},
+                 html_body: @brand
+               )
 
       refute Map.has_key?(returned.metadata, "html_body")
       raw = stored(returned)
@@ -242,6 +305,36 @@ defmodule PhoenixKitInbox.HostOptionsTest do
 
       assert [thread_message] = Messages.list_thread(raw.thread_uuid)
       refute Map.has_key?(thread_message.metadata, "html_body")
+    end
+
+    test "an internal-only message does not keep the html", ctx do
+      assert {:ok, message} =
+               send_external(ctx, %{"to" => "@#{ctx.bob.username}"}, html_body: @brand)
+
+      refute Map.has_key?(stored(message).metadata, "html_body")
+      assert message.external_status == :none
+    end
+
+    test "a mixed message keeps it, and its retry uses it", ctx do
+      outbound_result({:error, :smtp_down})
+
+      assert {:ok, message} =
+               send_external(ctx, %{"to" => "@#{ctx.bob.username}, client@example.com"},
+                 html_body: @brand
+               )
+
+      assert stored(message).metadata["html_body"] == @brand
+      assert_received {:outbound, %{html_body: @brand}, _, _}
+
+      emails_module_enabled!()
+      email_log_fixture(%{"inbox_message_uuid" => message.uuid}, "failed")
+      outbound_result({:ok, %{id: "ok"}})
+
+      assert {:ok, :pending} =
+               Messages.retry_external(ctx.alice_scope, ctx.alice_mb, message.uuid)
+
+      await_external(message.uuid)
+      assert_received {:outbound, %{html_body: @brand}, _, _}
     end
 
     test "a repeat of the send does not hand the html back either", ctx do

@@ -273,6 +273,8 @@ defmodule PhoenixKitInbox.IdempotencyTest do
     refute_receive {:inbox_message_linked, _}, 100
   end
 
+  # The repeat is answered by the early check here; the branch for a draft the
+  # rival sent in between is the race test below.
   test "a draft sent twice with one key is one message", ctx do
     {:ok, draft} = Messages.save_draft(ctx.scope, ctx.alice_mb, attrs(ctx))
 
@@ -304,6 +306,17 @@ defmodule PhoenixKitInbox.IdempotencyTest do
     assert message_count("Once") == 1
     assert [_] = key_rows()
     assert length(snapshot_files()) == 1
+  end
+
+  test "a key that is not text is refused; nil and an empty string are no key", ctx do
+    for key <- [:atom, 42, ["k"], %{"k" => 1}, 1.5] do
+      assert {:error, :invalid_idempotency_key} = send_keyed(ctx, key)
+    end
+
+    assert message_count("Once") == 0
+    assert {:ok, _} = send_keyed(ctx, nil)
+    assert {:ok, _} = send_keyed(ctx, "")
+    assert key_rows() == []
   end
 
   test "an empty key is no key", ctx do

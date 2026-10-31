@@ -64,6 +64,7 @@ defmodule PhoenixKitInbox.Messages do
   @sent_only_keys ["identity", "reply_to", "html_body"]
   # The host's ready-made HTML of the external email, at most this many bytes.
   @html_body_max_bytes 256 * 1024
+  @reply_to_max_chars 254
 
   @typedoc """
   A message as the UI consumes it: the delivery row (folder/seen/starred state
@@ -519,11 +520,17 @@ defmodule PhoenixKitInbox.Messages do
   # The caller's "metadata" when it is a map, else what the message had. The
   # key the server writes for the message's attachments folder is never the
   # caller's: it would send the files into a folder of their choosing.
+  # Atom keys are the strings they are stored as, so that the server-only
+  # keys cannot be reached by spelling them as atoms.
   defp caller_metadata(attrs, base) do
     case Map.get(attrs, "metadata") do
       metadata when is_map(metadata) -> metadata
       _ -> base.metadata || %{}
     end
+    |> Map.new(fn
+      {key, value} when is_atom(key) -> {Atom.to_string(key), value}
+      pair -> pair
+    end)
     |> Map.delete(Folders.folder_key())
   end
 
@@ -661,7 +668,8 @@ defmodule PhoenixKitInbox.Messages do
 
     * `reply_to_trusted: address` — a Reply-To the host vouches for, recorded
       in `metadata["reply_to"]` whatever `Identities.reply_to_options/2` says
-      (`{:error, :invalid_reply_to}` when it is not an email address). A
+      (`{:error, :invalid_reply_to}` when it is not an email address; `nil` or
+      `""` is no Reply-To). A
       `"reply_to"` in `attrs` still has to be one of those options.
     * `html_body: html` — the host's ready-made HTML for the email to external
       recipients, instead of the one built from the body. At most 256 KiB
@@ -694,8 +702,9 @@ defmodule PhoenixKitInbox.Messages do
       second message, email, nudge or notification. Two sends racing with one
       key make one message. A key used by another sender is
       `{:error, :idempotency_key_taken}`, a longer one
-      `{:error, :invalid_idempotency_key}`. Keys are kept 30 days. A blank
-      key, or an `"idempotency_key"` in `attrs`, means no key.
+      `{:error, :invalid_idempotency_key}`. Keys are kept 30 days. `nil` or
+      `""`, or an `"idempotency_key"` in `attrs`, means no key; any other
+      value that is not text is `{:error, :invalid_idempotency_key}`.
 
   Returns `{:error, {:unknown_recipients, ["typo@example.com"]}}` when an
   address doesn't resolve — the whole send is refused so the sender finds out
@@ -747,6 +756,8 @@ defmodule PhoenixKitInbox.Messages do
          sender_record = Map.merge(sender_record, host_record),
          {:ok, recipients, externals} <- resolve_recipients(attrs),
          {:ok, externals} <- admit_externals(scope, mailbox, sender_record, externals),
+         # Only an email to outsiders can be sent again, and so needs its HTML.
+         sender_record = keep_html_for_externals(sender_record, externals),
          :ok <- ensure_any_recipient(recipients ++ externals),
          {:ok, existing} <- draft_from_attrs(mailbox, attrs),
          {:ok, items} <- plan_attachments(scope, sender_user_uuid, existing, attrs, opts),
@@ -811,6 +822,9 @@ defmodule PhoenixKitInbox.Messages do
     end
   end
 
+  defp keep_html_for_externals(sender_record, []), do: Map.delete(sender_record, "html_body")
+  defp keep_html_for_externals(sender_record, _externals), do: sender_record
+
   defp without_html_body(%Message{metadata: %{"html_body" => _} = metadata} = message),
     do: %{message | metadata: Map.delete(metadata, "html_body")}
 
@@ -829,12 +843,12 @@ defmodule PhoenixKitInbox.Messages do
   end
 
   # An address the host vouches for: taken as it is, once it is an address.
-  defp trusted_reply_to(nil), do: {:ok, %{}}
+  defp trusted_reply_to(blank) when blank in [nil, ""], do: {:ok, %{}}
 
   defp trusted_reply_to(address) when is_binary(address) do
     address = String.trim(address)
 
-    if External.address?(address),
+    if Links.valid_text?(address, @reply_to_max_chars) and External.address?(address),
       do: {:ok, %{"reply_to" => address}},
       else: {:error, :invalid_reply_to}
   end
@@ -859,12 +873,14 @@ defmodule PhoenixKitInbox.Messages do
   @send_key_ttl_days 30
   @send_key_purge_batch 100
 
-  # The key comes from the server-side `opts` only (never from `attrs`). Blank
-  # or non-string means no key: the send behaves as it always did.
+  # The key comes from the server-side `opts` only (never from `attrs`). Nil or
+  # an empty string means no key: the send behaves as it always did. Anything
+  # else that is not text is `:invalid`.
   defp send_key(opts) do
     case Keyword.get(opts, :idempotency_key) do
-      key when is_binary(key) and key != "" -> key
-      _ -> nil
+      blank when blank in [nil, ""] -> nil
+      key when is_binary(key) -> key
+      _not_text -> :invalid
     end
   end
 
@@ -872,6 +888,9 @@ defmodule PhoenixKitInbox.Messages do
   # message, and nothing else happens. Only the sender who used the key gets
   # the message back; anyone else is refused.
   defp check_send_key(nil, _mailbox, _sender_user_uuid), do: :ok
+
+  defp check_send_key(:invalid, _mailbox, _sender_user_uuid),
+    do: {:error, :invalid_idempotency_key}
 
   defp check_send_key(key, mailbox, sender_user_uuid) do
     if Links.valid_text?(key, @send_key_max_chars) do
