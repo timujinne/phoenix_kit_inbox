@@ -231,6 +231,23 @@ defmodule PhoenixKitInbox.IdempotencyTest do
     assert Enum.any?(key_rows(), &(&1.key == "new"))
   end
 
+  test "the oldest expired keys go first", ctx do
+    {:ok, message} = send_keyed(ctx, "seed")
+
+    # old-1 expired a day ago, old-101 a hundred days ago.
+    Repo.query!(
+      """
+      INSERT INTO phoenix_kit_inbox_send_keys (key, message_uuid, inserted_at)
+      SELECT 'old-' || n, $1, now() - make_interval(days => 30 + n) FROM generate_series(1, 101) n
+      """,
+      [Ecto.UUID.dump!(message.uuid)]
+    )
+
+    {:ok, _} = send_keyed(ctx, "new")
+
+    assert for(%{key: "old-" <> _ = key} <- key_rows(), do: key) == ["old-1"]
+  end
+
   test "key from attrs ignored", ctx do
     extra = %{"idempotency_key" => "from-attrs"}
 

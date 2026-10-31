@@ -979,10 +979,15 @@ defmodule PhoenixKitInbox.Messages do
   defp purge_expired_send_keys(repo, now) do
     cutoff = DateTime.add(now, -@send_key_ttl_days * 86_400, :second)
 
+    # The oldest first, and rows another send is purging at the same moment
+    # are skipped, not waited for: two sends that purge together neither
+    # block each other nor deadlock on the same rows.
     expired =
       from(k in SendKey,
         where: k.inserted_at < ^cutoff,
+        order_by: [asc: k.inserted_at, asc: k.key],
         limit: @send_key_purge_batch,
+        lock: "FOR UPDATE SKIP LOCKED",
         select: k.key
       )
 
