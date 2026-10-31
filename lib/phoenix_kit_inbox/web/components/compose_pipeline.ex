@@ -235,7 +235,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   several and none is clearly theirs; the other refusals `run/4` gives for the
   sender (`:invalid_from`, `:mailbox_access_denied`, `{:identity_unusable,
   reason}`), or for the recipients, as they are. For a form to show the
-  sender before the send; nothing is sent or written.
+  sender before the send; nothing is sent, but the check of an identity may
+  store its outcome in the identity's `status`, as it does at the send.
   """
   @spec effective_identity(Scope.t() | nil, ComposeDraft.t(), term()) ::
           {:ok, Identities.resolved() | nil} | {:error, term()}
