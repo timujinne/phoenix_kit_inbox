@@ -196,7 +196,7 @@ lib/phoenix_kit_inbox/
 └── web/{inbox_live,compose_live,mailboxes_live,settings_live,my_settings_live}.ex
     web/{signature_editor,identity_editor}.ex   # editors the pages share
     web/scope_refresh.ex                  # scope copy + access-event subscriptions the pages share
-    web/components/{mail_explorer,mail_tree}.ex   # the embeddable per-object mail component
+    web/components/{mail_explorer,mail_tree,mail_explorer_hooks}.ex   # the embeddable per-object mail component (+ its live updates)
 ```
 
 - **Contexts own every query.** LiveViews call context functions; no `Repo` or `Ecto.Query` in `web/`.

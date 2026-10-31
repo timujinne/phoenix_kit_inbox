@@ -14,17 +14,32 @@ defmodule PhoenixKitInbox.Test.ComponentHostLive do
   A session cannot carry a function (it is signed as a non-executable term),
   so an attribute that must be one is given as `{:capture, module, name,
   arity}` and turned into the capture here.
+
+  With `session["attach"]` = `{id, filter}` the host does what a real page
+  does in `mount/3`: it has the viewer's scope as core's
+  `:phoenix_kit_current_scope` (the component's `:scope` attribute) and calls
+  `MailExplorer.attach/3`.
   """
 
   use Phoenix.LiveView
 
+  alias PhoenixKitInbox.Web.Components.MailExplorer
+
   @impl true
   def mount(_params, session, socket) do
-    {:ok,
-     socket
-     |> assign(:component, Map.fetch!(session, "component"))
-     |> assign(:component_assigns, session |> Map.get("assigns", %{}) |> captures())
-     |> assign(:test_pid, Map.fetch!(session, "test_pid"))}
+    assigns = session |> Map.get("assigns", %{}) |> captures()
+
+    socket =
+      socket
+      |> assign(:component, Map.fetch!(session, "component"))
+      |> assign(:component_assigns, assigns)
+      |> assign(:test_pid, Map.fetch!(session, "test_pid"))
+      |> assign(:phoenix_kit_current_scope, assigns[:scope])
+
+    case session do
+      %{"attach" => {id, filter}} -> {:ok, MailExplorer.attach(socket, id, filter)}
+      _ -> {:ok, socket}
+    end
   end
 
   @impl true

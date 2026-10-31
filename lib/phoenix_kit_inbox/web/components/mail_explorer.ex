@@ -56,6 +56,7 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Messages
   alias PhoenixKitInbox.ObjectMail
+  alias PhoenixKitInbox.Web.Components.MailExplorerHooks
   alias PhoenixKitInbox.Web.Components.MailTree
 
   @folders [:all, :inbox, :sent]
@@ -63,8 +64,24 @@ defmodule PhoenixKitInbox.Web.Components.MailExplorer do
 
   # ── the component ───────────────────────────────────────────────────────────
 
+  @doc """
+  Keeps the explorers of a host page current: call it in the page's
+  `mount/3` for each explorer, with the explorer's `id` and `filter`. See
+  `PhoenixKitInbox.Web.Components.MailExplorerHooks` for what it subscribes
+  to — and that the page then does not receive those events itself.
+  """
+  @spec attach(Phoenix.LiveView.Socket.t(), term(), [map()]) :: Phoenix.LiveView.Socket.t()
+  defdelegate attach(socket, id, filter), to: MailExplorerHooks
+
   @impl true
   def update(%{refresh: true}, socket), do: {:ok, load(socket)}
+
+  # A delivery status changed: matters only if that letter is on the page.
+  def update(%{message_changed: uuid}, socket) do
+    if find_entry(Map.get(socket.assigns, :threads, []), uuid),
+      do: {:ok, load(socket)},
+      else: {:ok, socket}
+  end
 
   def update(assigns, socket) do
     stale? =
