@@ -32,6 +32,8 @@ defmodule PhoenixKitInbox.ObjectMail do
 
   import Ecto.Query
 
+  require PhoenixKitInbox.Messages
+
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
@@ -256,7 +258,10 @@ defmodule PhoenixKitInbox.ObjectMail do
     thread_uuids = Enum.map(page, &elem(&1, 0))
 
     by_thread =
-      from(m in visible(mailbox_uuids), where: m.thread_uuid in ^thread_uuids)
+      from(m in visible(mailbox_uuids),
+        where: m.thread_uuid in ^thread_uuids,
+        select: Messages.lean(m)
+      )
       |> repo().all()
       |> entries(mailbox_uuids, objects)
       |> Enum.group_by(& &1.message.thread_uuid)

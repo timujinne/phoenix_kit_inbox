@@ -77,6 +77,20 @@ defmodule PhoenixKitInbox.Messages do
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
+  @doc false
+  # The message as a list reads it: the whole row but `metadata["html_body"]`,
+  # dropped in the database. The host's HTML (up to 256 KiB, kept for the retry
+  # of an external email) is for the email alone: a page of letters must not
+  # carry it out of Postgres to be thrown away by `project_for_viewer/2`,
+  # which stays as the guard. Use as `select: lean(m)` / `select: {d, lean(m)}`
+  # (`require` this module elsewhere). Whoever sends or retries reads the row
+  # whole.
+  defmacro lean(message) do
+    quote do
+      %{unquote(message) | metadata: fragment("? - 'html_body'", unquote(message).metadata)}
+    end
+  end
+
   # ── reads ───────────────────────────────────────────────────────────────────
 
   @doc """
@@ -129,7 +143,7 @@ defmodule PhoenixKitInbox.Messages do
       where: d.folder == ^folder,
       where: d.status == "active",
       order_by: [desc: d.inserted_at, desc: d.uuid],
-      select: {d, m}
+      select: {d, lean(m)}
     )
     |> maybe_unseen_only(Keyword.get(opts, :unseen_only, false))
     |> maybe_search(Keyword.get(opts, :search))
@@ -212,7 +226,7 @@ defmodule PhoenixKitInbox.Messages do
         where: d.message_uuid == ^message_uuid,
         where: d.status == "active",
         limit: 1,
-        select: {d, m}
+        select: {d, lean(m)}
       )
 
     case repo().one(query) do
@@ -237,7 +251,8 @@ defmodule PhoenixKitInbox.Messages do
       where: m.status == "sent",
       # `inserted_at` has second precision; the UUIDv7 key breaks a tie in
       # creation order instead of whatever order the rows come back in.
-      order_by: [asc: m.inserted_at, asc: m.uuid]
+      order_by: [asc: m.inserted_at, asc: m.uuid],
+      select: lean(m)
     )
     |> repo().all()
     |> Enum.map(&project_for_viewer(&1, nil))
