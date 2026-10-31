@@ -112,8 +112,10 @@ defmodule PhoenixKitInbox.RecipientSource do
   defp ask_all(sources, scope, context, query) do
     timeout = Application.get_env(:phoenix_kit_inbox, :recipient_source_timeout, @source_timeout)
 
+    language = language()
+
     sources
-    |> Task.async_stream(&ask(&1, scope, context, query),
+    |> Task.async_stream(&ask_in(language, &1, scope, context, query),
       timeout: timeout,
       on_timeout: :kill_task,
       max_concurrency: length(sources),
@@ -130,6 +132,27 @@ defmodule PhoenixKitInbox.RecipientSource do
       {:exit, {source, _reason}} ->
         skip(source, "ended without an answer")
     end)
+  end
+
+  # The caller's language is a thing of the caller's process (Gettext keeps
+  # it in the process dictionary), and a task starts without it: every
+  # heading a source translates would come in the default language. What is
+  # kept is only that — the locale of the global Gettext and of each Gettext
+  # backend that was given one — and the task takes it before it asks.
+  defp language do
+    for {key, locale} <- Process.get(), is_binary(locale), gettext_key?(key), do: {key, locale}
+  end
+
+  defp gettext_key?(Gettext), do: true
+
+  defp gettext_key?(backend) when is_atom(backend),
+    do: Code.ensure_loaded?(backend) and function_exported?(backend, :__gettext__, 1)
+
+  defp gettext_key?(_other), do: false
+
+  defp ask_in(language, source, scope, context, query) do
+    Enum.each(language, fn {key, locale} -> Process.put(key, locale) end)
+    ask(source, scope, context, query)
   end
 
   defp ask(source, scope, context, query) when is_atom(source) and not is_nil(source) do

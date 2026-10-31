@@ -64,6 +64,22 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
     def suggest(_scope, _context, query), do: exit({:gone, query})
   end
 
+  defmodule LocaleEcho do
+    @moduledoc false
+    # Tells the language of the process it is asked in.
+    @behaviour PhoenixKitInbox.RecipientSource
+    @impl true
+    def suggest(_scope, _context, _query) do
+      [
+        %{
+          address: "echo@example.com",
+          route: :email,
+          group: Gettext.get_locale() <> "/" <> Gettext.get_locale(PhoenixKitInbox.Gettext)
+        }
+      ]
+    end
+  end
+
   defmodule Slow do
     @moduledoc false
     @behaviour PhoenixKitInbox.RecipientSource
@@ -159,6 +175,26 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
       assert log =~ "Slow"
       assert log =~ "too slow"
       refute log =~ "zzquery"
+    end
+
+    test "the caller's language is the language the sources are asked in", ctx do
+      Gettext.put_locale("et")
+      Gettext.put_locale(PhoenixKitInbox.Gettext, "ru")
+
+      assert [%{group: "et/ru"}] = RecipientSource.suggest_all([LocaleEcho], ctx.scope, %{}, "x")
+    end
+
+    test "the module's own group heading comes in the caller's language", ctx do
+      for {locale, heading} <- [
+            {"ru", "Люди и общие ящики"},
+            {"et", "Inimesed ja ühised postkastid"}
+          ] do
+        Gettext.put_locale(PhoenixKitInbox.Gettext, locale)
+        groups = ctx.scope |> then(&RecipientSource.suggest_all([Members], &1, %{}, "src"))
+
+        assert groups != []
+        assert Enum.all?(groups, &(&1.group == heading)), locale
+      end
     end
 
     test "sources are asked at once, not one after the other", ctx do
