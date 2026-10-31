@@ -79,6 +79,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   alias PhoenixKitInbox.Schemas.Message
   alias PhoenixKitInbox.Web.Components.ComposeDraft
 
+  require Logger
+
   @max_per_role %{to: 20, cc: 5, bcc: 5}
   @callback_keys [:around_send, :authorize_attachments]
   @roles [:to, :cc, :bcc]
@@ -150,11 +152,49 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
           reply_to: reply_to && reply_to.address
       }
 
-      scope
-      |> callbacks.around_send.(draft, &send(scope, verified, draft, &1))
-      |> answer()
+      wrapped(scope, draft, callbacks.around_send, verified)
     end
   end
+
+  # The wrapper's call, with the one send behind `send_fun` remembered: what
+  # the wrapper answers is not what decides whether the letter went. The first
+  # call sends and its answer is kept; a second call gets that answer and
+  # sends nothing. After the wrapper, a send that happened is answered as
+  # sent (the stored message), a failed one as its error, and no send at all
+  # as the wrapper's own refusal, else `:send_failed`.
+  defp wrapped(scope, draft, around_send, verified) do
+    key = {__MODULE__, make_ref()}
+
+    send_fun = fn given ->
+      case Process.get(key) do
+        {:sent, result} ->
+          result
+
+        nil ->
+          result = deliver(scope, verified, draft, given)
+          Process.put(key, {:sent, result})
+          result
+      end
+    end
+
+    answer = around_send.(scope, draft, send_fun)
+    settle(answer, Process.delete(key))
+  end
+
+  defp settle({:error, _reason} = refusal, nil), do: refusal
+  defp settle(_answer, nil), do: {:error, :send_failed}
+
+  # The stored message is the answer, whatever message the wrapper holds.
+  defp settle(answer, {:sent, {:ok, %Message{}} = ok}) do
+    if answer != ok,
+      do: Logger.warning("[Inbox] the host's wrapper answered something else after the send")
+
+    ok
+  end
+
+  defp settle({:error, _reason} = error, {:sent, {:error, _}}), do: error
+  defp settle(_answer, {:sent, {:error, _} = error}), do: error
+  defp settle(_answer, {:sent, _other}), do: {:error, :send_failed}
 
   # The host's rules live in its wrapper: one that is set and does not work
   # must stop the send, never turn it into a direct one that skips them. A key
@@ -189,10 +229,6 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp valid_fun(fun, arity, _default) when is_function(fun, arity), do: fun
   defp valid_fun(_fun, _arity, default), do: default
-
-  defp answer({:ok, %Message{}} = ok), do: ok
-  defp answer({:error, _reason} = error), do: error
-  defp answer(_other), do: {:error, :send_failed}
 
   # ── recipients ──────────────────────────────────────────────────────────────
 
@@ -724,7 +760,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   # Handed to the host's wrapper. Runs in the wrapper's process and context:
   # the routes are checked here, then the message goes.
-  defp send(scope, verified, given, final) do
+  defp deliver(scope, verified, given, final) do
     with {:ok, final} <- final_draft(final, given),
          {:ok, text} <- text(final, %{}),
          {:ok, html} <- html_body(final.html_body),

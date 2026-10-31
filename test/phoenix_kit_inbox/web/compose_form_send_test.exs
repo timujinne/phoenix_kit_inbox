@@ -29,9 +29,6 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
     defp act(:pass, draft, send_fun), do: send_fun.(draft)
     defp act(:hold, draft, send_fun), do: hold(draft, send_fun)
 
-    defp act(:sent_then_error, draft, send_fun),
-      do: with({:ok, _} <- send_fun.(draft), do: {:error, :late})
-
     defp act(:error, _draft, _send_fun), do: {:error, :host_said_no}
     defp act(:text_error, _draft, _send_fun), do: {:error, "SQL timeout at db-7.internal:5432"}
     defp act(:unknown_error, _draft, _send_fun), do: {:error, {:db_down, "10.0.0.7"}}
@@ -240,20 +237,19 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
 
     test "an error leaves the button active and the next try keeps the key",
          %{conn: conn} = ctx do
-      mode(:sent_then_error)
+      mode(:error)
       view = mount_form(ctx, conn, draft(ctx))
 
       submit(view)
       assert_receive {:around, _, %{idempotency_key: key}}, 2000
       eventually(fn -> not send_button_disabled?(view) and has_element?(view, "[role=alert]") end)
-      assert messages() == 1
+      assert messages() == 0
 
       mode(:pass)
       submit(view)
       assert_receive {:around, _, %{idempotency_key: ^key}}, 2000
       assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
 
-      # The same letter, not a second one.
       assert messages() == 1
     end
   end

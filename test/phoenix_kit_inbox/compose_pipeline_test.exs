@@ -684,13 +684,69 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
       refuse = fn _scope, _draft, _send_fun -> {:error, :over_the_limit} end
       assert {:error, :over_the_limit} = run(ctx, %{}, draft(ctx), %{around_send: refuse})
 
-      garbage = fn _scope, draft, send_fun ->
-        send_fun.(draft)
-        :done
+      # Never called: whatever it says besides a refusal, nothing went out.
+      silent = fn _scope, _draft, _send_fun -> :done end
+      assert {:error, :send_failed} = run(ctx, %{}, draft(ctx), %{around_send: silent})
+      assert message_count() == 0
+      assert {:ok, _} = run(ctx, %{}, draft(ctx), %{around_send: nil})
+    end
+  end
+
+  describe "what the wrapper answers after the letter went" do
+    test "a send that happened is answered as sent, whatever the wrapper says", ctx do
+      for answer <- [:done, nil, {:error, :late}, {:ok, :not_a_message}] do
+        before = message_count()
+
+        wrapper = fn _scope, draft, send_fun ->
+          send_fun.(draft)
+          answer
+        end
+
+        log =
+          ExUnit.CaptureLog.capture_log(fn ->
+            assert {:ok, %Message{} = message} =
+                     run(ctx, %{}, draft(ctx), %{around_send: wrapper})
+
+            # It is the stored letter, not a stand-in.
+            assert Repo.get!(Message, message.uuid).subject == "Hello"
+          end)
+
+        assert message_count() == before + 1
+        assert log =~ "wrapper"
+        refute log =~ "Body text"
+      end
+    end
+
+    test "a wrapper that answers {:ok, a message} without sending has sent nothing", ctx do
+      fabricated = fn _scope, _draft, _send_fun -> {:ok, %Message{uuid: Ecto.UUID.generate()}} end
+
+      assert {:error, :send_failed} = run(ctx, %{}, draft(ctx), %{around_send: fabricated})
+      assert message_count() == 0
+    end
+
+    test "send_fun called twice sends once and gives both the first answer", ctx do
+      test = self()
+
+      twice = fn _scope, draft, send_fun ->
+        first = send_fun.(draft)
+        second = send_fun.(draft)
+        send(test, {:answers, first, second})
+        first
       end
 
-      assert {:error, :send_failed} = run(ctx, %{}, draft(ctx), %{around_send: garbage})
-      assert {:ok, _} = run(ctx, %{}, draft(ctx), %{around_send: nil})
+      assert {:ok, message} = run(ctx, %{}, draft(ctx), %{around_send: twice})
+      assert_received {:answers, {:ok, ^message}, {:ok, ^message}}
+      assert message_count() == 1
+    end
+
+    test "a send that failed is not turned into a success by the wrapper", ctx do
+      liar = fn _scope, draft, send_fun ->
+        send_fun.(%{draft | subject: String.duplicate("x", 501)})
+        {:ok, %Message{uuid: Ecto.UUID.generate()}}
+      end
+
+      assert {:error, _} = run(ctx, %{}, draft(ctx), %{around_send: liar})
+      assert message_count() == 0
     end
   end
 
