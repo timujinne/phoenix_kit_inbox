@@ -328,6 +328,66 @@ defmodule PhoenixKitInbox.Web.ComposeFormSendTest do
       assert messages() == 0
     end
 
+    test "text typed in a Cc that was then closed is not a recipient", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx))
+      cc_button = element(view, "button[phx-click=toggle][phx-value-block=cc]")
+      render_click(cc_button)
+      view |> form("#compose-demo-cc-form", %{"query" => "typed@example.com"}) |> render_change()
+      render_click(cc_button)
+      refute has_element?(view, "#compose-demo-cc")
+
+      submit(view)
+
+      assert_receive {:around, _, given}, 2000
+      assert given.cc == []
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+
+      render_click(cc_button)
+      assert has_element?(view, ~s(#compose-demo-cc-input[value=""]))
+    end
+
+    test "junk typed in a Cc that was then closed does not hold the send back",
+         %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx))
+      cc_button = element(view, "button[phx-click=toggle][phx-value-block=cc]")
+      render_click(cc_button)
+      view |> form("#compose-demo-cc-form", %{"query" => "not an address"}) |> render_submit()
+      assert has_element?(view, "#compose-demo-cc-error")
+      render_click(cc_button)
+
+      submit(view)
+
+      assert_receive {:around, _, %{cc: []}}, 2000
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+    end
+
+    test "a field the page does not show is not read at the send", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx))
+
+      view
+      |> with_target("#compose-form-demo")
+      |> render_click("suggest", %{"role" => "bcc", "query" => "ghost@example.com"})
+
+      submit(view)
+
+      assert_receive {:around, _, given}, 2000
+      assert given.bcc == []
+      assert_receive {:inbox_compose, "demo", {:sent, _}}, 2000
+    end
+
+    test "junk typed in an open Cc stops the send with the error at that field",
+         %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, draft(ctx))
+      view |> element("button[phx-click=toggle][phx-value-block=cc]") |> render_click()
+      view |> form("#compose-demo-cc-form", %{"query" => "not an address"}) |> render_change()
+
+      submit(view)
+
+      refute_receive {:around, _, _}, 200
+      assert has_element?(view, "#compose-demo-cc-error[role=alert]")
+      assert messages() == 0
+    end
+
     test "a member typed as an email stops the send with the hint", %{conn: conn} = ctx do
       view = mount_form(ctx, conn, draft(ctx))
       view |> form("#compose-demo-to-form", %{"query" => ctx.bob.email}) |> render_change()

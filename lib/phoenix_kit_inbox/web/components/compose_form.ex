@@ -524,13 +524,20 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # of adding; the first that cannot be added stops the send, and its reason
   # shows at its field. A recipient is never dropped silently.
   defp add_pending_input(socket) do
-    Enum.reduce([:to, :cc, :bcc], socket, fn role, acc ->
+    Enum.reduce(shown_roles(socket), socket, fn role, acc ->
       text = acc.assigns.inputs[role]
 
       if acc.assigns.recipient_error || String.trim(text) == "",
         do: acc,
         else: add_typed(acc, role, text)
     end)
+  end
+
+  # The lines the page shows: To always, Cc and Bcc while their block is open.
+  # What sits in the field of a line the person cannot see is not theirs to
+  # have sent, nor to be stopped by.
+  defp shown_roles(socket) do
+    [:to | Enum.filter([:cc, :bcc], &socket.assigns.open[&1])]
   end
 
   # Everything the pipeline gets is made here from the server's state: the
@@ -1028,9 +1035,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   end
 
   defp toggle(socket, role) do
-    if socket.assigns.recipients[role] == [],
-      do: update(socket, :open, &Map.update!(&1, role, fn open -> not open end)),
-      else: socket
+    cond do
+      socket.assigns.recipients[role] != [] -> socket
+      socket.assigns.open[role] -> close_line(socket, role)
+      true -> update(socket, :open, &Map.put(&1, role, true))
+    end
+  end
+
+  # A closed line keeps nothing of what was typed in it.
+  defp close_line(socket, role) do
+    list = socket.assigns.list
+    error = socket.assigns.recipient_error
+
+    socket
+    |> update(:open, &Map.put(&1, role, false))
+    |> assign(
+      inputs: Map.put(socket.assigns.inputs, role, ""),
+      list: if(match?(%{role: ^role}, list), do: nil, else: list),
+      recipient_error: if(match?({^role, _}, error), do: nil, else: error)
+    )
   end
 
   # Swaps the signature block at the end of the text; an edited block stays.
