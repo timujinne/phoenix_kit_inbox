@@ -595,6 +595,29 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
     end
   end
 
+  describe "the subject's length" do
+    test "is counted in code points, as the schema counts it, before the wrapper", ctx do
+      # 300 graphemes, 600 code points.
+      accents = String.duplicate("e\u0301", 300)
+      assert String.length(accents) == 300
+      test = self()
+
+      wrapper = fn _scope, draft, send_fun ->
+        send(test, :wrapper_ran)
+        send_fun.(draft)
+      end
+
+      assert {:error, :subject_too_long} =
+               run(ctx, %{"subject" => accents}, draft(ctx), %{around_send: wrapper})
+
+      refute_received :wrapper_ran
+      assert message_count() == 0
+
+      # 500 code points is the limit, and still goes.
+      assert {:ok, _} = run(ctx, %{"subject" => String.duplicate("e\u0301", 250)}, draft(ctx))
+    end
+  end
+
   describe "around_send" do
     test "around_send may replace subject, body and html_body", ctx do
       wrapper = fn _scope, draft, send_fun ->

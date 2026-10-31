@@ -389,7 +389,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     do: is_binary(value) and String.valid?(value) and not String.contains?(value, <<0>>)
 
   defp subject_length(subject) do
-    if String.length(subject) > @subject_max, do: {:error, :subject_too_long}, else: :ok
+    # In code points, as the schema counts (`count: :codepoints`), not graphemes.
+    if length(String.to_charlist(subject)) > @subject_max,
+      do: {:error, :subject_too_long},
+      else: :ok
   end
 
   # ── the sender ──────────────────────────────────────────────────────────────
