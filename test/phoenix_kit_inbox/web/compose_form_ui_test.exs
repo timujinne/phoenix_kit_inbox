@@ -509,6 +509,30 @@ defmodule PhoenixKitInbox.Web.ComposeFormUiTest do
       assert uuid == ctx.common.uuid
     end
 
+    test "the filter is asked with the fields the real send gives it", %{conn: conn} = ctx do
+      PhoenixKitInbox.DataCase.outbound_filter({OutboundFilters, :record_context})
+
+      _view = mount_form(ctx, conn, draft())
+
+      assert_receive {:filter_context, context}, 1000
+      assert context.kind == :message
+      assert context.preview == true
+      assert context.identity_uuid == ctx.common.uuid
+      assert context.integration_uuid == ctx.common.integration_uuid
+      assert context.user_uuid == to_string(ctx.alice.uuid)
+    end
+
+    test "a sender that can not be worked out is nil in the filter's context, not a tuple",
+         %{conn: conn} = ctx do
+      PhoenixKitInbox.DataCase.outbound_filter({OutboundFilters, :record_context})
+
+      _view = mount_form(ctx, conn, draft(from: {:identity, ctx.closed.uuid}))
+
+      assert_receive {:filter_context, context}, 1000
+      assert context.identity_uuid == nil
+      assert context.integration_uuid == nil
+    end
+
     test "two senders and no clear choice: the error is at From and the send is held",
          %{conn: conn} = ctx do
       second = second_sender!(ctx)

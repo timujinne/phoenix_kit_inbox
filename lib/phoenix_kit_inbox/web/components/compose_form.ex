@@ -959,12 +959,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end)
   end
 
+  # What a real send tells the filter (`External`), field by field, but the
+  # message that does not exist yet: the sender is the one the pipeline works
+  # out, `nil` when it cannot (or the letter stays inside).
   defp preview_context(socket, identity) do
+    sender =
+      case identity do
+        {:ok, %{} = resolved} -> resolved
+        _other -> %{}
+      end
+
     %{
       kind: :message,
-      integration_uuid: nil,
+      integration_uuid: sender[:integration_uuid],
       user_uuid: socket.assigns.scope.user && to_string(socket.assigns.scope.user.uuid),
-      identity_uuid: with({:ok, %{identity_uuid: uuid}} <- identity, do: uuid)
+      identity_uuid: sender[:identity_uuid]
     }
   end
 
