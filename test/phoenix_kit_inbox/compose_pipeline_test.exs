@@ -794,6 +794,18 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
     end
   end
 
+  describe "the draft" do
+    test "something that is not a ComposeDraft is an invalid draft, not a refusal of the person",
+         ctx do
+      for bad <- [%{}, nil, "draft", %{to: []}, [to: []]] do
+        assert {:error, :invalid_draft} = run(ctx, %{}, bad)
+      end
+
+      assert {:error, :forbidden} = ComposePipeline.run(nil, %{}, draft(ctx), %{})
+      assert Errors.message(:invalid_draft) =~ "form"
+    end
+  end
+
   describe "callbacks" do
     test "a wrapper that is set but not a fun of three never becomes a direct send", ctx do
       for bad <- ["not a function", {__MODULE__, :wrap}, fn draft -> draft end, 42] do

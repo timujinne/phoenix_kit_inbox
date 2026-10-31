@@ -38,6 +38,11 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
     use PhoenixKitInbox.RecipientSourceTest.Sourced, :b
   end
 
+  defmodule Odd do
+    @moduledoc false
+    defstruct route: :email, address: "odd@example.com"
+  end
+
   defmodule Raises do
     @moduledoc false
     @behaviour PhoenixKitInbox.RecipientSource
@@ -111,6 +116,23 @@ defmodule PhoenixKitInbox.RecipientSourceTest do
   end
 
   describe "suggest_all/4" do
+    test "an entry that is a struct is dropped, not a crash", ctx do
+      context = %{a: [%Odd{}, %{address: "ok@example.com", route: :email}]}
+
+      assert [%{address: "ok@example.com"}] =
+               RecipientSource.suggest_all([SourceA], ctx.scope, context, "x")
+    end
+
+    test "at most fifty suggestions are kept, the first ones", ctx do
+      many = for n <- 1..80, do: %{address: "p#{n}@example.com", route: :email}
+
+      kept = RecipientSource.suggest_all([SourceA], ctx.scope, %{a: many}, "p")
+
+      assert length(kept) == 50
+      assert hd(kept).address == "p1@example.com"
+      assert List.last(kept).address == "p50@example.com"
+    end
+
     test "merged and deduplicated across sources", ctx do
       user = Ecto.UUID.generate()
 

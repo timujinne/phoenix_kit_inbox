@@ -39,6 +39,10 @@ defmodule PhoenixKitInbox.RecipientSource do
 
   alias PhoenixKit.Users.Auth.Scope
 
+  # What a form can use of the answers: a source that returns thousands is
+  # not asked to show them all.
+  @max_suggestions 50
+
   @type route :: :internal | :email
 
   @type suggestion :: %{
@@ -74,6 +78,12 @@ defmodule PhoenixKitInbox.RecipientSource do
   * A source that raises, throws, exits, returns something but a list, or is
     not a module is logged — its module and the kind of failure, never what
     was asked or answered — and skipped.
+  * At most 50 suggestions are returned, the first ones in the order of the
+    sources.
+
+  The sources are asked one after the other **in the caller's process**: a
+  slow source makes the caller wait, so a source answers from an index or a
+  small query, not from a remote service.
   """
   @spec suggest_all([module()] | nil, Scope.t(), map(), String.t() | nil) :: [suggestion()]
   def suggest_all(sources, scope, context, query) when is_list(sources) do
@@ -82,6 +92,7 @@ defmodule PhoenixKitInbox.RecipientSource do
     sources
     |> Enum.flat_map(&ask(&1, scope, context, query))
     |> merge()
+    |> Enum.take(@max_suggestions)
   end
 
   def suggest_all(_sources, _scope, _context, _query), do: []
@@ -126,7 +137,8 @@ defmodule PhoenixKitInbox.RecipientSource do
 
   # ── entries ─────────────────────────────────────────────────────────────────
 
-  defp normalize(%{route: route} = entry) when route in [:internal, :email] do
+  defp normalize(%{route: route} = entry)
+       when route in [:internal, :email] and not is_struct(entry) do
     address = text(entry[:address])
     user = uuid(entry[:user])
 

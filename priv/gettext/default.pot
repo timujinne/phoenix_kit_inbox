@@ -441,7 +441,7 @@ msgstr ""
 msgid "Messages between users of this application"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:265
+#: lib/phoenix_kit_inbox/errors.ex:267
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr ""
@@ -783,7 +783,7 @@ msgstr ""
 msgid "That mail connection isn't connected."
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:262
+#: lib/phoenix_kit_inbox/errors.ex:264
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr ""
@@ -904,7 +904,7 @@ msgstr ""
 msgid "Trash"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:287
+#: lib/phoenix_kit_inbox/errors.ex:289
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr ""
@@ -1602,7 +1602,7 @@ msgstr ""
 msgid "outside mail goes to %{addresses}"
 msgstr ""
 
-#: lib/phoenix_kit_inbox/errors.ex:259
+#: lib/phoenix_kit_inbox/errors.ex:261
 #, elixir-autogen, elixir-format
 msgid "This form is not set up correctly, so nothing was sent."
 msgstr ""
@@ -1610,4 +1610,9 @@ msgstr ""
 #: lib/phoenix_kit_inbox/errors.ex:256
 #, elixir-autogen, elixir-format
 msgid "Choose which sender to use for the addresses outside this application."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/errors.ex:258
+#, elixir-autogen, elixir-format
+msgid "The form has nothing to send."
 msgstr ""

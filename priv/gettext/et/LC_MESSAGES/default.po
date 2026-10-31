@@ -441,7 +441,7 @@ msgstr "Sõnum saadetud. Kiri välisaadressidele on teel."
 msgid "Messages between users of this application"
 msgstr "Selle rakenduse kasutajate vahelised sõnumid"
 
-#: lib/phoenix_kit_inbox/errors.ex:265
+#: lib/phoenix_kit_inbox/errors.ex:267
 #, elixir-autogen, elixir-format
 msgid "More than one recipient matches: %{recipients}. Use the full email address instead."
 msgstr "Sobib mitu saajat: %{recipients}. Kasuta selle asemel täielikku e-posti aadressi."
@@ -783,7 +783,7 @@ msgstr "See meiliühendus pole sellele saatjale saadaval."
 msgid "That mail connection isn't connected."
 msgstr "See meiliühendus pole ühendatud."
 
-#: lib/phoenix_kit_inbox/errors.ex:262
+#: lib/phoenix_kit_inbox/errors.ex:264
 #, elixir-autogen, elixir-format
 msgid "That name matches more than one recipient."
 msgstr "See nimi sobib mitmele saajale."
@@ -904,7 +904,7 @@ msgstr "Faile on liiga palju."
 msgid "Trash"
 msgstr "Prügikast"
 
-#: lib/phoenix_kit_inbox/errors.ex:287
+#: lib/phoenix_kit_inbox/errors.ex:289
 #, elixir-autogen, elixir-format
 msgid "Unexpected error: %{reason}"
 msgstr "Ootamatu viga: %{reason}"
@@ -1602,7 +1602,7 @@ msgstr "Saatmine katkes. Kontrollige saadetud kirju enne uuesti saatmist."
 msgid "outside mail goes to %{addresses}"
 msgstr "väline kiri läheb aadressidele %{addresses}"
 
-#: lib/phoenix_kit_inbox/errors.ex:259
+#: lib/phoenix_kit_inbox/errors.ex:261
 #, elixir-autogen, elixir-format
 msgid "This form is not set up correctly, so nothing was sent."
 msgstr "Vorm on valesti seadistatud, seega midagi ei saadetud."
@@ -1611,3 +1611,8 @@ msgstr "Vorm on valesti seadistatud, seega midagi ei saadetud."
 #, elixir-autogen, elixir-format
 msgid "Choose which sender to use for the addresses outside this application."
 msgstr "Valige saatja rakendusest väljapoole jäävate aadresside jaoks."
+
+#: lib/phoenix_kit_inbox/errors.ex:258
+#, elixir-autogen, elixir-format
+msgid "The form has nothing to send."
+msgstr "Vormil pole midagi saata."

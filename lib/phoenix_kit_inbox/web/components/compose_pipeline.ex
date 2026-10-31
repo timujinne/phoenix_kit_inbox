@@ -113,6 +113,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
       else: {:error, :forbidden}
   end
 
+  def run(%Scope{}, _form_params, _draft, _callbacks), do: {:error, :invalid_draft}
   def run(_scope, _form_params, _draft, _callbacks), do: {:error, :forbidden}
 
   @doc """
@@ -470,9 +471,6 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
          {:ok, choice} <- from_choice(draft, params) do
       accessible = Mailboxes.list_accessible_mailboxes(user_uuid)
       resolve_sender(scope, choice, accessible, external?)
-    else
-      {:error, :forbidden} -> {:error, :forbidden}
-      {:error, _} = error -> error
     end
   end
 
@@ -743,13 +741,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
     case {source(entry), field(entry, :filename)} do
       {{:file, uuid}, _} ->
-        {:ok,
-         %{id: id(entry, uuid, index), file_uuid: uuid, name: field(entry, :name), flags: flags}}
+        {:ok, %{id: id(entry, uuid), file_uuid: uuid, name: field(entry, :name), flags: flags}}
 
       {{:data, source}, filename} when is_binary(filename) and filename != "" ->
         {:ok,
          Map.merge(source, %{
-           id: id(entry, "data-#{index}", index),
+           id: id(entry, "data-#{index}"),
            name: field(entry, :name) || filename,
            filename: filename,
            content_type: field(entry, :content_type),
@@ -782,7 +779,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp id(entry, default, _index) do
+  defp id(entry, default) do
     case field(entry, :id) do
       id when is_binary(id) and id != "" -> id
       _ -> default
