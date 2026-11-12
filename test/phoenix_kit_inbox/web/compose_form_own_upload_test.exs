@@ -13,6 +13,11 @@ defmodule PhoenixKitInbox.Web.ComposeFormOwnUploadTest do
   alias PhoenixKitInbox.Web.Components.ComposeDraft
   alias PhoenixKitInbox.Web.Components.ComposeForm
 
+  defmodule Authorizer do
+    @moduledoc false
+    def authorize(_scope, _context, _uuids), do: :ok
+  end
+
   @external ["inbox", "inbox.send_external"]
 
   setup :outbound_setup
@@ -27,13 +32,18 @@ defmodule PhoenixKitInbox.Web.ComposeFormOwnUploadTest do
 
   defp mount_form(ctx, conn, extra) do
     scope = ComponentHostLive.stash(ctx.scope)
-    on_exit(fn -> ComponentHostLive.unstash(scope) end)
 
-    draft = %ComposeDraft{
-      to: [%{address: "client@example.com", route: :email}],
-      subject: "Offer",
-      body: "Hello"
-    }
+    draft =
+      ComponentHostLive.stash(%ComposeDraft{
+        to: [%{address: "client@example.com", route: :email}],
+        subject: "Offer",
+        body: "Hello"
+      })
+
+    on_exit(fn ->
+      ComponentHostLive.unstash(scope)
+      ComponentHostLive.unstash(draft)
+    end)
 
     assigns = Map.merge(%{id: "demo", draft: draft, scope: scope}, extra)
 
@@ -87,14 +97,34 @@ defmodule PhoenixKitInbox.Web.ComposeFormOwnUploadTest do
     assert upload_form?(view)
   end
 
-  test "picks the host names still need the host's word", %{conn: conn} = ctx do
-    view = mount_form(ctx, conn, %{own_upload: false})
+  describe "picks the host names, with the form's own upload off" do
+    defp pick(view),
+      do:
+        view
+        |> with_target("#compose-form-demo")
+        |> render_click("pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
 
-    view
-    |> with_target("#compose-form-demo")
-    |> render_click("pick_attachments", %{"uuids" => [Ecto.UUID.generate()]})
+    test "are attached once the host's callback accepts them", %{conn: conn} = ctx do
+      view =
+        mount_form(ctx, conn, %{
+          own_upload: false,
+          authorize_attachments: {:capture, Authorizer, :authorize, 3}
+        })
 
-    # No authorize_attachments: refused, nothing attached.
-    refute has_element?(view, "#compose-demo-attachments li[data-file]")
+      pick(view)
+
+      assert has_element?(view, "#compose-demo-attachments li[data-file]")
+      refute has_element?(view, "#compose-demo-files-error")
+      refute upload_form?(view)
+    end
+
+    test "still need the host's word: with no callback they are refused", %{conn: conn} = ctx do
+      view = mount_form(ctx, conn, %{own_upload: false})
+
+      pick(view)
+
+      refute has_element?(view, "#compose-demo-attachments li[data-file]")
+      assert has_element?(view, "#compose-demo-files-error[role=alert]")
+    end
   end
 end
