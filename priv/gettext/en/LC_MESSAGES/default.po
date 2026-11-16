@@ -1754,6 +1754,7 @@ msgstr ""
 #: lib/phoenix_kit_inbox/errors.ex
 #, elixir-autogen, elixir-format
 msgid "Messages can't be moved into Outbox by hand."
+msgstr ""
 
 #: lib/phoenix_kit_inbox/errors.ex
 #, elixir-autogen, elixir-format
