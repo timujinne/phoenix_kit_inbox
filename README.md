@@ -423,8 +423,11 @@ Never filled from a form: `links:`, `html_body:` (the host's HTML for the outsid
 | `inbox_email_nudges_enabled` | `false` | Send a "new message" email to recipients — also needs a nudge sender and external sending open |
 | `inbox_nudge_identity_uuid` | none | The shared identity nudges go out from; without one there is no nudge |
 | `inbox_external_enabled` | `false` | Allow mail to addresses outside the application — also needs the host's `outbound_filter` |
+| `inbox_internal_enabled` | `true` (the host's `config :phoenix_kit_inbox, internal_mail_default:`, when never saved) | Deliver mail inside the application — between members and to shared mailboxes. Off: see below |
 | `inbox_external_max_bytes` | `26214400` | Largest total of attachments for external recipients, as base64 |
 | `inbox_max_upload_bytes` | `200000000` | Largest attachment accepted, in bytes |
+
+**Internal mail off** (`PhoenixKitInbox.set_internal_enabled(false)`, or the toggle on the module's Settings page for holders of `inbox.manage_shared`): nothing new is delivered inside. An email address — a member's login email, a shared mailbox's address — is an outside address and goes as an outside email (with the usual right and sending identity); `@username`, a shared mailbox's name or slug is refused with `{:error, :internal_mail_disabled}`; `Messages.resolve_recipient_routes/2` answers `:email`, with a `refused: :internal_mail_disabled` key on what the send refuses; a user without the outside right is told so (`:external_not_allowed`), not that the colleague is "not found"; the compose form has no inside suggestions, shows a host's inside chip on its email route and does not offer "Inside the application only" as a sender (the first identity is the default); `record_sent/4` takes a member's address as an outside address; nudges have no internal mail to be about. Delivered letters stay readable; Sent, Outbox, Drafts, shared mailboxes and their grants, retry and outside sending are unchanged. A host can ship it off with `config :phoenix_kit_inbox, internal_mail_default: false` (used until the setting is saved; `true` when not configured, so an upgrade changes nothing).
 
 ```elixir
 PhoenixKitInbox.set_email_nudges(true)

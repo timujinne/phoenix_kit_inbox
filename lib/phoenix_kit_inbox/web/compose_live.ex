@@ -66,7 +66,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
   The "Send as" picker offers the sending identities the user may use from
   the chosen mailbox (`Identities.list_usable/2`), plus "inside the
-  application only" — while external sending is open
+  application only" (not while internal mail is off: then the first identity
+  is the default) — while external sending is open
   (`PhoenixKitInbox.Outbound.open?/0`). An email address that is
   no member's or shared mailbox's goes to that address outside the
   application — it needs a chosen identity, and the send checks the rest
@@ -271,8 +272,8 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     resets =
       Enum.reject(
         [
-          {offered?(socket.assigns.identities, :identity_uuid, params["identity_uuid"]),
-           %{"identity_uuid" => ""},
+          {identity_offered?(socket, params["identity_uuid"]),
+           %{"identity_uuid" => default_identity(socket)},
            gettext("The sender you chose is no longer available, so it was reset.")},
           {offered?(socket.assigns.reply_to_options, :address, params["reply_to"]),
            %{"reply_to" => default_reply_to(socket)},
@@ -357,12 +358,15 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
         _ -> default_reply_to(socket)
       end
 
-    put_form_params(socket, %{"reply_to" => saved})
+    socket
+    |> put_form_params(%{"reply_to" => saved})
+    |> keep_identity()
   end
 
   defp init_sender(socket, false) do
     socket
     |> put_form_params(%{"reply_to" => default_reply_to(socket)})
+    |> keep_identity()
     |> switch_signature(default_signature(socket), socket.assigns.form.params["body"] || "")
   end
 
@@ -405,8 +409,23 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
 
     if Enum.any?(socket.assigns.identities, &(&1.identity_uuid == chosen)),
       do: socket,
-      else: put_form_params(socket, %{"identity_uuid" => ""})
+      else: put_form_params(socket, %{"identity_uuid" => default_identity(socket)})
   end
+
+  # No identity ("inside the application only") unless there is no inside:
+  # with internal mail off the first one usable is the default, and "inside
+  # only" is not a choice.
+  defp default_identity(socket) do
+    case socket.assigns.identities do
+      [first | _] -> if PhoenixKitInbox.internal_enabled?(), do: "", else: first.identity_uuid
+      [] -> ""
+    end
+  end
+
+  # A blank choice is never announced as lost: `keep_identity/1` puts the
+  # default in its place.
+  defp identity_offered?(socket, value),
+    do: offered?(socket.assigns.identities, :identity_uuid, value)
 
   defp sent_flash(%Message{external_status: :pending}),
     do: gettext("Message sent. The email to external addresses is on its way.")
@@ -1239,12 +1258,14 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
       else: [{gettext("No Reply-To — replies go to this mailbox"), ""} | choices]
   end
 
-  # "Inside only" first: an external send is a choice, never the default.
+  # "Inside only" first: an external send is a choice, never the default —
+  # and not a choice at all while internal mail is off.
   defp identity_choices(identities) do
-    [
-      {gettext("Inside the application only"), ""}
-      | Enum.map(identities, &{"#{&1.label} <#{&1.from_address}>", &1.identity_uuid})
-    ]
+    choices = Enum.map(identities, &{"#{&1.label} <#{&1.from_address}>", &1.identity_uuid})
+
+    if PhoenixKitInbox.internal_enabled?(),
+      do: [{gettext("Inside the application only"), ""} | choices],
+      else: choices
   end
 
   defp upload_error_text(:too_large), do: gettext("Larger than the upload limit.")

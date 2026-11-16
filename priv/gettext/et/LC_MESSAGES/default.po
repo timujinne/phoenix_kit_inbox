@@ -1755,3 +1755,23 @@ msgstr "Kirja ei õnnestunud koostada."
 #, elixir-autogen, elixir-format
 msgid "Messages can't be moved into Outbox by hand."
 msgstr "Sõnumeid ei saa käsitsi Väljuvatesse tõsta."
+
+#: lib/phoenix_kit_inbox/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside this application is turned off. Write to an email address instead."
+msgstr "Rakendusesisene post on välja lülitatud. Kirjuta e-posti aadressile."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside the application"
+msgstr "Rakendusesisene post"
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Deliver mail between people and to shared mailboxes inside the application. When this is off, a colleague is written to by their email address and “@name” addresses are refused; letters already delivered stay readable."
+msgstr "Toimeta kirjad inimeste vahel ja ühispostkastidesse rakenduse sees. Kui see on väljas, kirjutatakse kolleegile tema e-posti aadressil ja „@nimi“ aadressid lükatakse tagasi; juba kohale jõudnud kirjad jäävad loetavaks."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The setting could not be saved. Try again."
+msgstr "Seadistust ei õnnestunud salvestada. Proovi uuesti."

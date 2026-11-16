@@ -375,9 +375,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # A draft the form has not seen: everything it starts from is read again.
   defp open_draft(socket, %ComposeDraft{} = draft) do
-    {to, seq} = chips(draft.to, "to", 1)
-    {cc, seq} = chips(draft.cc, "cc", seq)
-    {bcc, seq} = chips(draft.bcc, "bcc", seq)
+    internal? = PhoenixKitInbox.internal_enabled?()
+    {to, seq} = chips(draft.to, "to", 1, internal?)
+    {cc, seq} = chips(draft.cc, "cc", seq, internal?)
+    {bcc, seq} = chips(draft.bcc, "bcc", seq, internal?)
     recipients = %{to: to, cc: cc, bcc: bcc}
 
     socket
@@ -424,23 +425,29 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # The chips of a draft's line, keyed "<role>-<n>" from `from`; also the next
   # free number. A key is only ever handed out once, so one that was removed
   # cannot name a later chip.
-  defp chips(list, role, from) when is_list(list) do
+  defp chips(list, role, from, internal?) when is_list(list) do
     list
-    |> Enum.flat_map(&chip/1)
+    |> Enum.flat_map(&chip(&1, internal?))
     |> Enum.map_reduce(from, fn chip, n -> {Map.put(chip, :key, "#{role}-#{n}"), n + 1} end)
   end
 
-  defp chips(_other, _role, from), do: {[], from}
+  defp chips(_other, _role, from, _internal?), do: {[], from}
+
+  # With internal mail off there is no inside route to show.
+  defp chip_route(route, internal?) when route in [:internal, "internal"],
+    do: if(internal?, do: :internal, else: :email)
+
+  defp chip_route(_route, _internal?), do: :email
 
   # What the pipeline reads as a recipient, the form reads: atom or string
   # keys, a bare text for an outside address. A field left empty names nobody
   # and is dropped. Anything else that gives no address (a user who is gone,
   # an entry that is no recipient) stays as a chip with `address: nil`, shown
   # as an error: a recipient is never lost silently, and never sent without.
-  defp chip(text) when is_binary(text), do: chip(%{address: text})
+  defp chip(text, internal?) when is_binary(text), do: chip(%{address: text}, internal?)
 
-  defp chip(%{} = entry) when not is_struct(entry) do
-    route = if field(entry, :route) in [:internal, "internal"], do: :internal, else: :email
+  defp chip(%{} = entry, internal?) when not is_struct(entry) do
+    route = chip_route(field(entry, :route), internal?)
 
     user =
       if is_binary(field(entry, :user)) and field(entry, :user) != "", do: field(entry, :user)
@@ -472,7 +479,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end
   end
 
-  defp chip(_), do: [%{user: nil, address: nil, label: nil, route: :email}]
+  defp chip(_, _internal?), do: [%{user: nil, address: nil, label: nil, route: :email}]
 
   defp blank_entry?(entry) do
     values = [field(entry, :user), field(entry, :address)]
@@ -1655,7 +1662,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     line = recipients[role]
     max = ComposePipeline.max_recipients(role)
 
-    case chip(entry) do
+    case chip(entry, PhoenixKitInbox.internal_enabled?()) do
       [%{address: address} = chip] when is_binary(address) ->
         cond do
           Enum.any?(line, &same_person?(&1, chip)) ->

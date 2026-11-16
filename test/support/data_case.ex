@@ -337,6 +337,18 @@ defmodule PhoenixKitInbox.DataCase do
     :ok
   end
 
+  @doc """
+  For a test that turns internal mail off or on: the setting is cached for the
+  whole node, and the sandbox only rolls the database back — so the cached
+  answer is dropped before the test and after it. A `setup` callback.
+  """
+  def internal_mail_setup(_context \\ %{}) do
+    forget = fn -> PhoenixKit.Cache.invalidate(:settings, "inbox_internal_enabled") end
+    forget.()
+    ExUnit.Callbacks.on_exit(forget)
+    :ok
+  end
+
   @doc "What the test transport answers from now on: a result, or a 3-arity fun."
   def outbound_result(result) do
     config = Application.get_env(:phoenix_kit_inbox, :test_outbound, %{})

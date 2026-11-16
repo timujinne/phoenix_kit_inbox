@@ -18,6 +18,7 @@ defmodule PhoenixKitInbox.Web.ComposeExternalTest do
   @external ["inbox", "inbox.send_external"]
 
   setup :outbound_setup
+  setup :internal_mail_setup
 
   setup %{conn: conn} do
     enable_inbox!()
@@ -103,6 +104,22 @@ defmodule PhoenixKitInbox.Web.ComposeExternalTest do
 
     assert has_element?(view, "#compose-identity option[value='#{ctx.desk_identity.uuid}']")
     refute has_element?(view, "#compose-identity option[value='#{ctx.common.uuid}']")
+  end
+
+  test "with internal mail off there is no inside-only choice, and the first identity is chosen",
+       ctx do
+    {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+
+    {:ok, view, _html} = live(as_alice(ctx), "/en/admin/inbox/compose")
+
+    refute has_element?(view, "#compose-identity option[value='']")
+    assert has_element?(view, "#compose-identity option[selected][value='#{ctx.common.uuid}']")
+
+    # A refresh with the same mailbox keeps it, and says nothing about a reset.
+    refresh_scope(view, scope_for(ctx.alice, @external, [ctx.senders]))
+
+    refute has_element?(view, "#flash-error")
+    assert has_element?(view, "#compose-identity option[selected][value='#{ctx.common.uuid}']")
   end
 
   test "without anything to send as, there is no picker", ctx do

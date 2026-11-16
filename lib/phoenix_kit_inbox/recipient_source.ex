@@ -91,6 +91,9 @@ defmodule PhoenixKitInbox.RecipientSource do
     A winner takes the place of the first appearance.
   * An entry that is not a map, has neither `:address` nor `:user`, or a
     `:route` other than `:internal` / `:email` is dropped.
+  * While internal mail is off (`PhoenixKitInbox.internal_enabled?/0`) an
+    `:internal` entry is an `:email` one: kept when it names a `:user` (the
+    pipeline writes the login email), dropped when it is only a handle.
   * A source that raises, throws, exits, returns something but a list, or is
     not a module is logged — its module and the kind of failure, never what
     was asked or answered — and skipped.
@@ -275,7 +278,8 @@ defmodule PhoenixKitInbox.RecipientSource do
     if Code.ensure_loaded?(source) and function_exported?(source, :suggest, 3) do
       case safely(source, scope, context, query) do
         {:ok, list} when is_list(list) ->
-          list |> Enum.take(@max_suggestions) |> Enum.flat_map(&normalize/1)
+          internal? = PhoenixKitInbox.internal_enabled?()
+          list |> Enum.take(@max_suggestions) |> Enum.flat_map(&normalize(&1, internal?))
 
         {:ok, _other} ->
           skip(source, "did not return a list")
@@ -314,10 +318,17 @@ defmodule PhoenixKitInbox.RecipientSource do
 
   # ── entries ─────────────────────────────────────────────────────────────────
 
-  defp normalize(%{route: route} = entry)
+  defp normalize(%{route: route} = entry, internal?)
        when route in [:internal, :email] and not is_struct(entry) do
     address = text(entry[:address])
     user = uuid(entry[:user])
+
+    # With internal mail off an inside entry has no inside route: an account
+    # is offered by its login email, a handle that works only inside not at all.
+    {route, address} =
+      if route == :internal and not internal?,
+        do: {:email, if(user, do: address)},
+        else: {route, address}
 
     case {user, address} do
       {nil, nil} -> []
@@ -326,7 +337,7 @@ defmodule PhoenixKitInbox.RecipientSource do
     end
   end
 
-  defp normalize(_), do: []
+  defp normalize(_, _internal?), do: []
 
   defp finish(identity, entry, route),
     do:

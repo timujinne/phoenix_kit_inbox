@@ -89,6 +89,7 @@ defmodule PhoenixKitInbox.Web.ComposeFormRecipientsTest do
   @anna %{address: "anna@client.test", label: "Anna Client", route: :email}
 
   setup :outbound_setup
+  setup :internal_mail_setup
 
   setup do
     enable_inbox!()
@@ -278,6 +279,43 @@ defmodule PhoenixKitInbox.Web.ComposeFormRecipientsTest do
 
       assert count(view, "#compose-demo-to li[data-route]") == 1
       assert text_of(view, "#compose-demo-to-error") =~ "Choose them from the list"
+    end
+
+    test "with internal mail off, a member's address typed by hand is an outside address",
+         %{conn: conn} = ctx do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+      view = mount_form(ctx, conn, draft())
+
+      add_by_hand(view, "to", ctx.bob.email)
+
+      assert has_element?(view, ~s(#compose-demo-to li[data-route=email]), ctx.bob.email)
+      refute has_element?(view, "#compose-demo-to-error")
+    end
+
+    test "with internal mail off, an inside handle typed by hand is no address",
+         %{conn: conn} = ctx do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+      view = mount_form(ctx, conn, draft())
+
+      add_by_hand(view, "to", "@#{ctx.bob.username}")
+
+      assert count(view, "#compose-demo-to li[data-route]") == 1
+      assert text_of(view, "#compose-demo-to-error") =~ "email address"
+    end
+
+    test "with internal mail off, the host's inside chip is shown on the email route",
+         %{conn: conn} = ctx do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+
+      view =
+        mount_form(
+          ctx,
+          conn,
+          draft(to: [%{user: ctx.bob.uuid, label: "Bobby", route: :internal}])
+        )
+
+      assert has_element?(view, ~s(#compose-demo-to li[data-route=email]), ctx.bob.email)
+      refute has_element?(view, "#compose-demo-to [data-internal-marker]")
     end
 
     test "with the members hidden, a member's address the host does not offer is refused plainly",

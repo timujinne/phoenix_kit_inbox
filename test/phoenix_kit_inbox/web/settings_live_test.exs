@@ -13,6 +13,8 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
   @path "/en/admin/settings/inbox"
   @manage ["inbox", "inbox.manage_shared"]
 
+  setup :internal_mail_setup
+
   setup %{conn: conn} do
     enable_inbox!()
     admin = user_fixture()
@@ -53,6 +55,26 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
   defp as(conn, user, permissions), do: put_test_scope(conn, scope_for(user, permissions))
 
   describe "without inbox.manage_shared" do
+    test "shows no switch, and a forged toggle changes nothing", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
+
+      refute has_element?(view, "#internal-mail-toggle")
+
+      render_click(view, "toggle_internal", %{})
+
+      assert has_element?(view, "#flash-error")
+      assert PhoenixKitInbox.internal_enabled?()
+    end
+
+    test "a malformed toggle from a manager is ignored, without a forbidden flash", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+
+      render_click(view, "toggle_internal", %{"enabled" => "maybe"})
+
+      refute has_element?(view, "#flash-error")
+      assert PhoenixKitInbox.internal_enabled?()
+    end
+
     test "shows no form", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
 
@@ -105,6 +127,20 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
   end
 
   describe "with inbox.manage_shared" do
+    test "the switch for internal mail shows its state and turns it off and on", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+
+      assert has_element?(view, "#internal-mail-toggle[checked]")
+
+      view |> element("#internal-mail-toggle") |> render_click()
+      refute PhoenixKitInbox.internal_enabled?()
+      refute has_element?(view, "#internal-mail-toggle[checked]")
+
+      view |> element("#internal-mail-toggle") |> render_click()
+      assert PhoenixKitInbox.internal_enabled?()
+      assert has_element?(view, "#internal-mail-toggle[checked]")
+    end
+
     test "shared mail is all the page holds: no mailbox signatures", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
 

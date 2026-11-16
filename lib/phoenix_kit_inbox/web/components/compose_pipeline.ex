@@ -499,6 +499,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   defp recipients(draft, params) do
     named = host_users(draft)
+    internal? = PhoenixKitInbox.internal_enabled?()
 
     Enum.reduce_while(@roles, {:ok, %{}}, fn role, {:ok, acc} ->
       source =
@@ -507,7 +508,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
           :error -> Map.fetch!(draft, role)
         end
 
-      case role_recipients(source, role, named) do
+      case role_recipients(source, role, named, internal?) do
         {:ok, list} -> {:cont, {:ok, Map.put(acc, role, list)}}
         {:error, _} = error -> {:halt, error}
       end
@@ -518,12 +519,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp role_recipients(source, role, named) do
+  defp role_recipients(source, role, named, internal?) do
     max = Map.fetch!(@max_per_role, role)
 
     with {:ok, entries} <- entries(source),
          :ok <- flood_check(entries, role, max),
-         {:ok, list} <- parse_entries(entries, named) do
+         {:ok, list} <- parse_entries(entries, named, internal?) do
       list = Enum.uniq_by(list, &String.downcase(&1.address))
 
       if length(list) > max,
@@ -559,9 +560,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
     end
   end
 
-  defp parse_entries(entries, named) do
+  defp parse_entries(entries, named, internal?) do
     Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, acc} ->
-      case recipient(entry, named) do
+      case recipient(entry, named, internal?) do
         :blank -> {:cont, {:ok, acc}}
         {:ok, recipient} -> {:cont, {:ok, [recipient | acc]}}
         {:error, _} = error -> {:halt, error}
@@ -575,21 +576,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
 
   # Text typed by hand: an outside address until the person picks it from the
   # inside suggestions.
-  defp recipient(text, named) when is_binary(text),
-    do: recipient(%{address: text, route: :email}, named)
+  defp recipient(text, named, internal?) when is_binary(text),
+    do: recipient(%{address: text, route: :email}, named, internal?)
 
-  defp recipient(%{} = entry, named) when not is_struct(entry) do
+  defp recipient(%{} = entry, named, internal?) when not is_struct(entry) do
     if blank_entry?(entry) do
       :blank
     else
-      with {:ok, route} <- route(field(entry, :route)),
+      with {:ok, route} <- route(field(entry, :route), internal?),
            {:ok, base} <- identity(entry, route, named) do
         {:ok, Map.merge(base, %{label: label(field(entry, :label)), route: route})}
       end
     end
   end
 
-  defp recipient(_, _named), do: {:error, :invalid_recipients}
+  defp recipient(_, _named, _internal?), do: {:error, :invalid_recipients}
 
   # An empty field of a form: it names nobody. An entry with neither key at
   # all is not that — it is malformed.
@@ -602,10 +603,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposePipeline do
   defp blank?(value) when is_binary(value), do: String.trim(value) == ""
   defp blank?(_), do: false
 
-  defp route(nil), do: {:ok, :email}
-  defp route(route) when route in [:internal, "internal"], do: {:ok, :internal}
-  defp route(route) when route in [:email, "email"], do: {:ok, :email}
-  defp route(_), do: {:error, :invalid_recipients}
+  defp route(nil, _internal?), do: {:ok, :email}
+  # With internal mail off there is no inside route: a recipient the host or
+  # the form chose as `:internal` goes by their login email, as any outside one.
+  defp route(route, internal?) when route in [:internal, "internal"],
+    do: {:ok, if(internal?, do: :internal, else: :email)}
+
+  defp route(route, _internal?) when route in [:email, "email"], do: {:ok, :email}
+  defp route(_, _internal?), do: {:error, :invalid_recipients}
 
   # The users the host's draft names (the form's own chips are in the draft
   # too): theirs to name by any route. Anyone else the browser names by uuid

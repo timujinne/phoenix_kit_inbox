@@ -60,6 +60,7 @@ defmodule PhoenixKitInbox.LiveCase do
           mail_integration_fixture: 1,
           mail_integration_fixture: 2,
           outbound_setup: 1,
+          internal_mail_setup: 1,
           outbound_result: 1,
           await_external: 1,
           emails_module_enabled!: 0,

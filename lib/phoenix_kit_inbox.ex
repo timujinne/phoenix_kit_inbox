@@ -60,6 +60,7 @@ defmodule PhoenixKitInbox do
   @settings_key "inbox_enabled"
   @nudges_settings_key "inbox_email_nudges_enabled"
   @external_settings_key "inbox_external_enabled"
+  @internal_settings_key "inbox_internal_enabled"
   @nudge_identity_key "inbox_nudge_identity_uuid"
   @external_max_bytes_key "inbox_external_max_bytes"
   @default_external_max_bytes 25 * 1024 * 1024
@@ -356,6 +357,7 @@ defmodule PhoenixKitInbox do
   def get_config do
     %{
       enabled: enabled?(),
+      internal_mail: internal_enabled?(),
       email_nudges: email_nudges_enabled?(),
       email_nudges_available: PhoenixKitInbox.Notify.email_nudges_available?()
     }
@@ -406,6 +408,45 @@ defmodule PhoenixKitInbox do
   @spec set_external_enabled(boolean()) :: term()
   def set_external_enabled(enabled) when is_boolean(enabled) do
     Settings.update_boolean_setting_with_module(@external_settings_key, enabled, module_key())
+  end
+
+  @doc """
+  Whether mail may be delivered inside the application — between members and
+  to shared mailboxes — the `inbox_internal_enabled` setting.
+
+  When the setting was never saved, the host's
+  `config :phoenix_kit_inbox, internal_mail_default: true | false` decides;
+  not configured, it is `true`, so an installation that upgrades keeps its
+  internal mail.
+
+  Off means: nothing new is delivered inside. A member addressed by an email
+  address is sent an outside email at that address (with the same right and
+  sending identity as any outside send); an address that only works inside
+  (`@username`, a shared mailbox's name or slug) is refused with
+  `{:error, :internal_mail_disabled}`; the compose form offers no inside
+  route and `Messages.resolve_recipient_routes/2` answers `:email` (with a
+  `refused: :internal_mail_disabled` key on what the send refuses). Letters
+  already delivered stay readable, and Sent, Outbox, Drafts, shared
+  mailboxes and their grants, `Messages.record_sent/4`, retry and outside
+  sending are as they were.
+  """
+  @spec internal_enabled?() :: boolean()
+  def internal_enabled? do
+    Settings.get_boolean_setting(@internal_settings_key, internal_default())
+  rescue
+    _ -> internal_default()
+  catch
+    :exit, _ -> internal_default()
+  end
+
+  defp internal_default do
+    Application.get_env(:phoenix_kit_inbox, :internal_mail_default, true) != false
+  end
+
+  @doc "Turns delivery inside the application on or off (see `internal_enabled?/0`)."
+  @spec set_internal_enabled(boolean()) :: term()
+  def set_internal_enabled(enabled) when is_boolean(enabled) do
+    Settings.update_boolean_setting_with_module(@internal_settings_key, enabled, module_key())
   end
 
   @doc """

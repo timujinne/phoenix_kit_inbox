@@ -145,6 +145,9 @@ defmodule PhoenixKitInbox.Errors do
   def message({:integration_unusable, :no_from_address}),
     do: gettext("That mail connection has no login email address to send from.")
 
+  def message(:internal_mail_disabled),
+    do: gettext("Mail inside this application is turned off. Write to an email address instead.")
+
   def message(:external_disabled),
     do: gettext("Sending to addresses outside this application is turned off.")
 

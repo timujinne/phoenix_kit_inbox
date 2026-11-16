@@ -1754,4 +1754,23 @@ msgstr ""
 #: lib/phoenix_kit_inbox/errors.ex
 #, elixir-autogen, elixir-format
 msgid "Messages can't be moved into Outbox by hand."
+
+#: lib/phoenix_kit_inbox/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside this application is turned off. Write to an email address instead."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside the application"
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Deliver mail between people and to shared mailboxes inside the application. When this is off, a colleague is written to by their email address and “@name” addresses are refused; letters already delivered stay readable."
+msgstr ""
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The setting could not be saved. Try again."
 msgstr ""

@@ -1760,3 +1760,23 @@ msgstr "Не удалось составить письмо."
 #, elixir-autogen, elixir-format
 msgid "Messages can't be moved into Outbox by hand."
 msgstr "Перемещать сообщения в «Исходящие» вручную нельзя."
+
+#: lib/phoenix_kit_inbox/errors.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside this application is turned off. Write to an email address instead."
+msgstr "Почта внутри приложения отключена. Напишите на адрес электронной почты."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Mail inside the application"
+msgstr "Почта внутри приложения"
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "Deliver mail between people and to shared mailboxes inside the application. When this is off, a colleague is written to by their email address and “@name” addresses are refused; letters already delivered stay readable."
+msgstr "Доставлять письма между людьми и в общие ящики внутри приложения. Когда выключено, коллеге пишут на его адрес электронной почты, а адреса вида «@имя» отклоняются; уже доставленные письма остаются доступными."
+
+#: lib/phoenix_kit_inbox/web/settings_live.ex
+#, elixir-autogen, elixir-format
+msgid "The setting could not be saved. Try again."
+msgstr "Не удалось сохранить настройку. Попробуйте ещё раз."

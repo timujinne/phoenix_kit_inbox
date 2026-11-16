@@ -31,6 +31,8 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
       |> assign(:page_title, gettext("Mail"))
       |> ScopeRefresh.assign_scope()
       |> assign_gates()
+      |> assign(:internal_enabled, PhoenixKitInbox.internal_enabled?())
+      |> assign(:toggle_nonce, 0)
 
     {:ok, load(socket, socket.assigns.can_manage_shared)}
   end
@@ -74,6 +76,38 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
   # ── Events ──────────────────────────────────────────────────────────────────
 
   @impl true
+  # The state to set is the one clicked on, not the opposite of what is read:
+  # a second admin or a double click sets it twice, it does not flip it back.
+  def handle_event(
+        "toggle_internal",
+        %{"enabled" => enabled},
+        %{assigns: %{can_manage_shared: true}} = socket
+      )
+      when enabled in ["true", "false"] do
+    enabled = enabled == "true"
+
+    case PhoenixKitInbox.set_internal_enabled(enabled) do
+      {:ok, _setting} ->
+        {:noreply, assign(socket, :internal_enabled, enabled)}
+
+      _failed ->
+        # The nonce renews the toggle's element: the state it shows is the
+        # old one again, which a browser that already flipped it would not
+        # be told by an unchanged assign.
+        {:noreply,
+         socket
+         |> assign(:internal_enabled, PhoenixKitInbox.internal_enabled?())
+         |> update(:toggle_nonce, &(&1 + 1))
+         |> put_flash(:error, gettext("The setting could not be saved. Try again."))}
+    end
+  end
+
+  def handle_event("toggle_internal", _params, %{assigns: %{can_manage_shared: true}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("toggle_internal", _params, socket),
+    do: {:noreply, put_flash(socket, :error, Errors.message(:forbidden))}
+
   def handle_event(
         "ident_" <> _ = event,
         params,
@@ -102,6 +136,30 @@ defmodule PhoenixKitInbox.Web.SettingsLive do
         </span>
         <.link navigate={Paths.my_settings()} class="link">{gettext("Your mail settings")}</.link>
       </div>
+
+      <section :if={@can_manage_shared} id="internal-mail" class="card bg-base-100 shadow max-w-4xl">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-base">{gettext("Mail inside the application")}</h2>
+          <label
+            id={"internal-mail-label-#{@toggle_nonce}"}
+            class="flex cursor-pointer items-start gap-3"
+          >
+            <input
+              id="internal-mail-toggle"
+              type="checkbox"
+              class="toggle toggle-primary"
+              checked={@internal_enabled}
+              phx-click="toggle_internal"
+              phx-value-enabled={to_string(not @internal_enabled)}
+            />
+            <span class="text-sm">
+              {gettext(
+                "Deliver mail between people and to shared mailboxes inside the application. When this is off, a colleague is written to by their email address and “@name” addresses are refused; letters already delivered stay readable."
+              )}
+            </span>
+          </label>
+        </div>
+      </section>
 
       <section :if={@can_manage_shared} class="card bg-base-100 shadow max-w-4xl">
         <div class="card-body gap-3">

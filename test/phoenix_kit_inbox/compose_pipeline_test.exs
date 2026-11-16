@@ -43,6 +43,7 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
   end
 
   setup :outbound_setup
+  setup :internal_mail_setup
 
   setup do
     enable_inbox!()
@@ -368,6 +369,26 @@ defmodule PhoenixKitInbox.ComposePipelineTest do
                  run(ctx, %{"to" => [bad]}, draft(ctx))
       end
 
+      assert message_count() == 0
+    end
+
+    test "with internal mail off, a person the host names goes by their login email", ctx do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+      named = %{user: ctx.bob.uuid, label: "Bob", route: :internal}
+
+      assert {:ok, %Message{external_status: :pending} = message} =
+               run(ctx, %{}, draft(ctx, to: [named]))
+
+      assert_received {:outbound, %{to: [{_, address}]}, _, _}
+      assert address == ctx.bob.email
+      assert [%{address: ^address}] = External.list(message.uuid)
+      assert Messages.list_folder(ctx.bob_mb.uuid, "inbox") == []
+    end
+
+    test "with internal mail off, an inside handle is refused with its own error", ctx do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+
+      assert {:error, :internal_mail_disabled} = run(ctx, %{}, draft(ctx))
       assert message_count() == 0
     end
 

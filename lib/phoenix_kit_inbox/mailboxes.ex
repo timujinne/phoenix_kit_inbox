@@ -29,6 +29,7 @@ defmodule PhoenixKitInbox.Mailboxes do
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKit.Users.Auth.User
   alias PhoenixKitInbox.AccessEvents
+  alias PhoenixKitInbox.External
   alias PhoenixKitInbox.Members
   alias PhoenixKitInbox.Schemas.Delivery
   alias PhoenixKitInbox.Schemas.Mailbox
@@ -288,12 +289,19 @@ defmodule PhoenixKitInbox.Mailboxes do
       when is_binary(owner_uuid) do
     case repo().get(User, owner_uuid) do
       nil -> nil
-      user -> user_handle(user)
+      user -> if PhoenixKitInbox.internal_enabled?(), do: user_handle(user), else: user.email
     end
   end
 
   def recipient_handle(%Mailbox{kind: "user"}), do: nil
-  def recipient_handle(%Mailbox{} = mailbox), do: mailbox.address || mailbox.slug
+
+  def recipient_handle(%Mailbox{} = mailbox) do
+    cond do
+      PhoenixKitInbox.internal_enabled?() -> mailbox.address || mailbox.slug
+      External.address?(mailbox.address) -> mailbox.address
+      true -> nil
+    end
+  end
 
   @doc "A user's To-field handle: `\"@username\"`, or the email without one."
   @spec user_handle(map()) :: String.t() | nil
@@ -364,6 +372,9 @@ defmodule PhoenixKitInbox.Mailboxes do
 
   Covers users who have no mailbox yet: a colleague who never opened Inbox
   is exactly the one a suggestion helps most.
+
+  Empty while internal mail is off (`PhoenixKitInbox.internal_enabled?/0`):
+  nothing here can be delivered then.
   """
   @spec search_recipients(binary(), String.t(), keyword()) :: [
           %{handle: String.t(), label: String.t()}
@@ -371,12 +382,16 @@ defmodule PhoenixKitInbox.Mailboxes do
   def search_recipients(user_uuid, term \\ "", opts \\ [])
 
   def search_recipients(user_uuid, term, opts) when is_binary(user_uuid) do
-    limit = Keyword.get(opts, :limit, 20)
+    if PhoenixKitInbox.internal_enabled?() do
+      limit = Keyword.get(opts, :limit, 20)
 
-    shared = shared_mailbox_suggestions(term, limit)
-    users = user_suggestions(user_uuid, term, limit)
+      shared = shared_mailbox_suggestions(term, limit)
+      users = user_suggestions(user_uuid, term, limit)
 
-    (shared ++ users) |> Enum.uniq_by(& &1.handle) |> Enum.take(limit)
+      (shared ++ users) |> Enum.uniq_by(& &1.handle) |> Enum.take(limit)
+    else
+      []
+    end
   end
 
   def search_recipients(_, _, _), do: []
