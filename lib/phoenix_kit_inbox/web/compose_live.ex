@@ -1043,7 +1043,7 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
             field={@form[:to]}
             type="text"
             label={gettext("To")}
-            placeholder={gettext("@username, email or shared mailbox — comma separated")}
+            placeholder={to_placeholder()}
             list="phoenix-kit-inbox-recipients"
           />
           <.input
@@ -1266,6 +1266,13 @@ defmodule PhoenixKitInbox.Web.ComposeLive do
     if PhoenixKitInbox.internal_enabled?(),
       do: [{gettext("Inside the application only"), ""} | choices],
       else: choices
+  end
+
+  # While internal mail is off nobody is written to by handle or shared name.
+  defp to_placeholder do
+    if PhoenixKitInbox.internal_enabled?(),
+      do: gettext("@username, email or shared mailbox — comma separated"),
+      else: gettext("Email addresses — comma separated")
   end
 
   defp upload_error_text(:too_large), do: gettext("Larger than the upload limit.")

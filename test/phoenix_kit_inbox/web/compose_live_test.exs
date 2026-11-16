@@ -28,6 +28,25 @@ defmodule PhoenixKitInbox.Web.ComposeLiveTest do
     assert html =~ "Send"
   end
 
+  describe "the To placeholder" do
+    setup :internal_mail_setup
+
+    test "names handles and shared mailboxes while internal mail is on", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/en/admin/inbox/compose")
+
+      assert has_element?(view, ~s(input[name=to][placeholder*="@username"]))
+    end
+
+    test "names only email addresses while it is off", %{conn: conn} do
+      {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+
+      {:ok, view, _html} = live(conn, "/en/admin/inbox/compose")
+
+      assert has_element?(view, ~s(input[name=to][placeholder^="Email addresses"]))
+      refute has_element?(view, ~s(input[name=to][placeholder*="@username"]))
+    end
+  end
+
   test "sending delivers the message and redirects to Sent", ctx do
     {:ok, view, _html} = live(ctx.conn, "/en/admin/inbox/compose")
 

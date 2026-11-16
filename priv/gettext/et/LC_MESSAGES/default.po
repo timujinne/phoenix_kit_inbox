@@ -1775,3 +1775,8 @@ msgstr "Toimeta kirjad inimeste vahel ja ühispostkastidesse rakenduse sees. Kui
 #, elixir-autogen, elixir-format
 msgid "The setting could not be saved. Try again."
 msgstr "Seadistust ei õnnestunud salvestada. Proovi uuesti."
+
+#: lib/phoenix_kit_inbox/web/compose_live.ex
+#, elixir-autogen, elixir-format
+msgid "Email addresses — comma separated"
+msgstr "E-posti aadressid — komadega eraldatud"

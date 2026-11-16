@@ -1775,3 +1775,8 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The setting could not be saved. Try again."
 msgstr ""
+
+#: lib/phoenix_kit_inbox/web/compose_live.ex
+#, elixir-autogen, elixir-format
+msgid "Email addresses — comma separated"
+msgstr ""

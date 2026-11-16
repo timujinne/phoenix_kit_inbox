@@ -1780,3 +1780,8 @@ msgstr "Доставлять письма между людьми и в общи
 #, elixir-autogen, elixir-format
 msgid "The setting could not be saved. Try again."
 msgstr "Не удалось сохранить настройку. Попробуйте ещё раз."
+
+#: lib/phoenix_kit_inbox/web/compose_live.ex
+#, elixir-autogen, elixir-format
+msgid "Email addresses — comma separated"
+msgstr "Адреса электронной почты — через запятую"
