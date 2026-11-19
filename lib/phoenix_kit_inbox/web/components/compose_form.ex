@@ -56,7 +56,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       people behind a «+» at the field's end; the subject has its label
       beside it and the message none on screen; the line under the files
       that says in words from whom and to whom the letter goes is left out
-      (the rows above say it). Anything else, or leaving it out, is today's
+      (the rows above say it). The lists open over the form, as a menu under
+      their field, and move nothing; the list behind «+» is then a menu to
+      tick people in: a press adds a person to the line or takes them off
+      it, the menu stays open until «Done» or a press outside it,
+      its tabs show one of the sources' groups at a time and its own field
+      searches the sources. Anything else, or leaving it out, is today's
       layout
     * `before_subject` — an optional slot rendered between the recipient
       lines and the subject, outside the form's own `<form>`: a host that
@@ -222,6 +227,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   @query_max 320
   @typed_shown 8
   @picker_shown 30
+  # The menu of the compact layout scrolls: all a source may answer with.
+  @menu_shown 50
   @email_shape ~r/^[^\s@]+@[^\s@]+\.[^\s@]+$/u
 
   # ── the component ───────────────────────────────────────────────────────────
@@ -293,6 +300,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     {:ok,
      assign(socket,
        source_draft: draft,
+       retext_origin: socket.assigns[:retext_origin] || socket.assigns.source_draft,
        pending_draft: nil,
        subject: text(draft.subject),
        body: text(draft.body),
@@ -322,6 +330,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
 
     draft = normalize_draft(assigns[:draft] || socket.assigns[:source_draft])
+    # The draft a `retext` replaced is still the letter the form holds.
+    draft = if draft == socket.assigns[:retext_origin], do: socket.assigns.source_draft, else: draft
     socket = forget_pending_draft(socket, draft)
     scope_changed? = socket.assigns[:options_scope] != socket.assigns.scope
 
@@ -450,6 +460,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     |> drop_uploads(:all)
     |> assign(
       source_draft: draft,
+      retext_origin: nil,
       pending_draft: nil,
       send_upload_refs: [],
       subject: text(draft.subject),
@@ -806,14 +817,48 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         {:noreply, socket}
 
       role ->
-        line = Enum.reject(recipients[role], &(&1.key == key))
-
-        {:noreply,
-         socket
-         |> assign(recipients: Map.put(recipients, role, line), recipient_error: nil)
-         |> refresh_summary()}
+        {:noreply, remove_chip(socket, role, key)}
     end
   end
+
+  # The menu of the compact layout: a press ticks a person into the line or
+  # out of it, and the menu stays as it is.
+  def handle_event("tick", %{"id" => id}, socket) when is_binary(id) do
+    with %{role: role, kind: :picker, items: items} = list <- socket.assigns.list,
+         %{entry: entry} <- Enum.find(items, &(&1.id == id)) do
+      socket =
+        case ticked_chip(socket.assigns.recipients[role], entry) do
+          nil -> add_entry(socket, role, entry)
+          chip -> remove_chip(socket, role, chip.key)
+        end
+
+      {:noreply, assign(socket, :list, list)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("picker_tab", params, %{assigns: %{list: %{kind: :picker} = list}} = socket) do
+    tab = if is_binary(params["group"]) and params["group"] != "", do: params["group"]
+    {:noreply, assign(socket, :list, Map.put(list, :tab, tab))}
+  end
+
+  def handle_event(
+        "picker_search",
+        %{"q" => query},
+        %{assigns: %{list: %{kind: :picker, role: role} = list}} = socket
+      )
+      when is_binary(query) do
+    query = String.slice(query, 0, @query_max)
+    socket = open_picker(socket, role, query)
+    {:noreply, assign(socket, :list, Map.merge(socket.assigns.list, %{tab: list[:tab], query: query}))}
+  end
+
+  def handle_event("close_picker", _params, %{assigns: %{list: %{kind: :picker}}} = socket),
+    do: {:noreply, assign(socket, list: nil)}
+
+  def handle_event(event, _params, socket) when event in ~w(picker_tab picker_search close_picker),
+    do: {:noreply, socket}
 
   def handle_event("toggle_picker", %{"role" => role}, socket) when is_binary(role) do
     with {:ok, role} <- role_atom(role),
@@ -1585,11 +1630,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     socket |> assign(recipient_error: nil) |> assign_list(role, :typed, entries)
   end
 
-  defp open_picker(socket, role) do
+  defp open_picker(socket, role, query \\ "") do
+    shown = if socket.assigns.compact, do: @menu_shown, else: @picker_shown
+
     entries =
       socket.assigns.recipient_sources
-      |> RecipientSource.suggest_all(socket.assigns.scope, context(socket), "")
-      |> Enum.take(@picker_shown)
+      |> RecipientSource.suggest_all(socket.assigns.scope, context(socket), query)
+      |> Enum.take(shown)
 
     socket |> assign(recipient_error: nil) |> assign_list(role, :picker, entries)
   end
@@ -1722,6 +1769,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # `manual: true` marks an address the person typed (kept on its chip for
   # the sources' `remember`), as against one picked or set by the host.
+  defp remove_chip(socket, role, key) do
+    recipients = socket.assigns.recipients
+    line = Enum.reject(recipients[role], &(&1.key == key))
+
+    socket
+    |> assign(recipients: Map.put(recipients, role, line), recipient_error: nil)
+    |> refresh_summary()
+  end
+
+  # The chip of the line that is this suggestion's person, if they are in it:
+  # the same account, or the same address.
+  defp ticked_chip(line, entry) do
+    candidate = %{user: entry[:user], address: entry[:address]}
+    Enum.find(line, &same_person?(&1, candidate))
+  end
+
   defp add_entry(socket, role, entry, opts \\ []) do
     %{recipients: recipients, chip_seq: seq} = socket.assigns
     line = recipients[role]
@@ -2181,8 +2244,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
-        <div :if={@footer_start != []} id={"compose-#{@id}-footer-start"}>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <div :if={@footer_start != []} id={"compose-#{@id}-footer-start"} class="min-w-0">
           {render_slot(@footer_start, %{sending: @sending})}
         </div>
         <span class="flex-1"></span>
@@ -2226,7 +2289,18 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       list: list,
       error: error,
       picker?: assigns.recipient_sources != [],
-      picker_open?: match?(%{kind: :picker}, list)
+      picker_open?: match?(%{kind: :picker}, list),
+      ticked:
+        if(match?(%{kind: :picker}, list),
+          do:
+            for(
+              %{id: id, entry: entry} <- list.items,
+              ticked_chip(assigns.recipients[role], entry),
+              into: MapSet.new(),
+              do: id
+            ),
+          else: MapSet.new()
+        )
     }
   end
 
@@ -2316,8 +2390,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       >
         {@line.error}
       </p>
-      <div :if={@line.list} class="col-start-2 min-w-0">
-        <.suggestions id={@id} role={@role} list={@line.list} target={@target} />
+      <%!-- The lists open over the form, under their field: nothing below moves. --%>
+      <div :if={@line.list} class="relative col-start-2 h-0 min-w-0">
+        <div
+          :if={@line.list.kind != :picker}
+          class="absolute inset-x-0 top-0 z-30 rounded-box bg-base-100 shadow-lg"
+        >
+          <.suggestions id={@id} role={@role} list={@line.list} target={@target} />
+        </div>
+        <.tick_menu
+          :if={@line.list.kind == :picker}
+          id={@id}
+          role={@role}
+          list={@line.list}
+          ticked={@line.ticked}
+          target={@target}
+        />
       </div>
     </div>
     """
@@ -2389,6 +2477,149 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         >
           {gettext("+ More addresses")}
         </.button>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:id, :string, required: true)
+  attr(:role, :string, required: true)
+  attr(:list, :map, required: true)
+  attr(:ticked, :any, required: true)
+  attr(:target, :any, required: true)
+
+  # The menu behind «+» of the compact layout: tabs of the sources' groups, a
+  # field that searches the sources, and the people — a press ticks one into
+  # the line or out of it. It stays open until «Done» or a press outside it
+  # (Escape is the dialog's, when the form stands in one).
+  defp tick_menu(assigns) do
+    tab = assigns.list[:tab]
+    names = assigns.list.items |> Enum.map(& &1.entry.group) |> Enum.uniq() |> Enum.reject(&is_nil/1)
+    tab = if tab in names, do: tab
+    items = if tab, do: Enum.filter(assigns.list.items, &(&1.entry.group == tab)), else: assigns.list.items
+
+    assigns =
+      assigns
+      |> assign(:tab, tab)
+      |> assign(:names, names)
+      |> assign(:groups, groups(items))
+      |> assign(:query, assigns.list[:query] || "")
+
+    ~H"""
+    <div
+      id={"compose-#{@id}-#{@role}-menu"}
+      class="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+      phx-click-away="close_picker"
+      phx-target={@target}
+    >
+      <div :if={@names != []} class="flex flex-wrap items-center gap-1" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={to_string(@tab == nil)}
+          class={["btn btn-xs", if(@tab == nil, do: "btn-primary", else: "btn-ghost")]}
+          phx-click="picker_tab"
+          phx-value-group=""
+          phx-target={@target}
+        >
+          {gettext("All")}
+        </button>
+        <button
+          :for={name <- @names}
+          type="button"
+          role="tab"
+          aria-selected={to_string(@tab == name)}
+          class={["btn btn-xs", if(@tab == name, do: "btn-primary", else: "btn-ghost")]}
+          phx-click="picker_tab"
+          phx-value-group={name}
+          phx-target={@target}
+        >
+          {name}
+        </button>
+      </div>
+      <form
+        id={"compose-#{@id}-#{@role}-menu-search"}
+        phx-change="picker_search"
+        phx-submit="picker_search"
+        phx-target={@target}
+      >
+        <label class="input input-sm flex w-full items-center gap-2">
+          <.icon name="hero-magnifying-glass" class="size-4 opacity-60" />
+          <input
+            type="search"
+            name="q"
+            value={@query}
+            class="grow"
+            placeholder={gettext("Name or email")}
+            autocomplete="off"
+            maxlength="320"
+            phx-debounce="300"
+            aria-label={gettext("Name or email")}
+          />
+        </label>
+      </form>
+      <p :if={@groups == []} role="status" class="px-1 text-sm text-base-content/60">
+        {gettext("No addresses found.")}
+      </p>
+      <div
+        :if={@groups != []}
+        id={"compose-#{@id}-#{@role}-suggestions"}
+        class="max-h-64 overflow-y-auto overscroll-contain"
+        role="listbox"
+        aria-multiselectable="true"
+      >
+        <div :for={{group, items} <- @groups} role="group" aria-label={group}>
+          <div
+            :if={group && @tab == nil}
+            class="px-2 pt-1 text-xs font-semibold uppercase tracking-wide text-base-content/60"
+          >
+            {group}
+          </div>
+          <button
+            :for={item <- items}
+            type="button"
+            id={"compose-#{@id}-#{@role}-tick-#{item.id}"}
+            role="option"
+            aria-selected={to_string(MapSet.member?(@ticked, item.id))}
+            class={[
+              "flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200",
+              MapSet.member?(@ticked, item.id) && "bg-primary/10"
+            ]}
+            phx-click="tick"
+            phx-value-id={item.id}
+            phx-target={@target}
+          >
+            <span class={[
+              "flex size-4 shrink-0 items-center justify-center rounded border",
+              if(MapSet.member?(@ticked, item.id),
+                do: "border-primary bg-primary text-primary-content",
+                else: "border-base-content/30"
+              )
+            ]}>
+              <.icon :if={MapSet.member?(@ticked, item.id)} name="hero-check" class="size-3" />
+            </span>
+            <span class="min-w-0 flex-1 truncate">
+              {item.entry.label || item.entry[:address]}
+              <span
+                :if={item.entry.label && item.entry[:address]}
+                class="text-xs text-base-content/60"
+              >
+                · {item.entry[:address]}
+              </span>
+            </span>
+          </button>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <button
+          type="button"
+          id={"compose-#{@id}-#{@role}-menu-done"}
+          class="btn btn-primary btn-xs"
+          phx-click="close_picker"
+          phx-target={@target}
+        >
+          {gettext("Done")}
+        </button>
       </div>
     </div>
     """
