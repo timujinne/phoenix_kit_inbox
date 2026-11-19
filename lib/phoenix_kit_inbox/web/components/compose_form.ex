@@ -51,10 +51,13 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       can go without a press); anything else, or leaving it out, is today's
       behaviour: the two lines wait behind their buttons
     * `compact` — `true` lays the form out in rows of a label and its field:
-      a recipient line is its label, then one field holding the chips and
-      the input, with the list of the host's people behind a «+» at the
-      field's end; the subject has its label beside it and the message none
-      on screen. Anything else, or leaving it out, is today's layout
+      the sender beside its label; a recipient line is its label, then one
+      field holding the chips and the input, with the list of the host's
+      people behind a «+» at the field's end; the subject has its label
+      beside it and the message none on screen; the line under the files
+      that says in words from whom and to whom the letter goes is left out
+      (the rows above say it). Anything else, or leaving it out, is today's
+      layout
     * `before_subject` — an optional slot rendered between the recipient
       lines and the subject, outside the form's own `<form>`: a host that
       fills the text from its templates puts the choice of one there
@@ -1883,11 +1886,29 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
             class="select-sm"
           />
         </form>
-        <div :if={not (@editable? and length(@from_options) > 1)} class="flex flex-col gap-1">
-          <span class="text-sm font-medium">{gettext("From")}</span>
-          <span class="text-sm">{@option && @option.label}</span>
+        <div
+          :if={not (@editable? and length(@from_options) > 1)}
+          class={if(@compact, do: compact_row_class(), else: "flex flex-col gap-1")}
+        >
+          <span class={if(@compact, do: compact_label_class(), else: "text-sm font-medium")}>
+            {gettext("From")}
+          </span>
+          <span class={["text-sm", @compact && "min-w-0 pt-1.5"]}>
+            {@option && @option.label}
+            <span
+              :if={@compact and @reply_to}
+              id={"compose-#{@id}-reply-to"}
+              class="text-xs text-base-content/60"
+            >
+              · {gettext("Replies go to %{address}", address: @reply_to)}
+            </span>
+          </span>
         </div>
-        <p :if={@reply_to} id={"compose-#{@id}-reply-to"} class="text-xs text-base-content/60">
+        <p
+          :if={@reply_to && not (@compact and not (@editable? and length(@from_options) > 1))}
+          id={"compose-#{@id}-reply-to"}
+          class="text-xs text-base-content/60"
+        >
           {gettext("Replies go to %{address}", address: @reply_to)}
         </p>
         <p
@@ -2151,7 +2172,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           {gettext("The letter was sent.")}
         </p>
         <p
-          :if={@summary}
+          :if={@summary && not @compact}
           id={"compose-#{@id}-summary"}
           class="text-sm text-base-content/70"
           data-sending={@sending || nil}
@@ -2381,19 +2402,19 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     ~H"""
     <li
       id={"compose-#{@id}-chip-#{@chip.key}"}
-      class={["badge badge-outline gap-1", unresolved?(@chip) && "badge-error"]}
+      class={["badge badge-outline max-w-full gap-1", unresolved?(@chip) && "badge-error"]}
       data-route={@chip.route}
       data-unresolved={unresolved?(@chip) || nil}
       title={@chip.address}
     >
       <.internal_marker :if={@chip.route == :internal} />
-      {chip_text(@chip)}
-      <span :if={labelled?(@chip)} data-chip-address class="text-xs opacity-70">
+      <span class="min-w-0 shrink-0 truncate">{chip_text(@chip)}</span>
+      <span :if={labelled?(@chip)} data-chip-address class="min-w-0 truncate text-xs opacity-70">
         {@chip.address}
       </span>
       <button
         type="button"
-        class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
+        class="btn btn-ghost btn-circle btn-xs size-4 min-h-0 shrink-0"
         aria-label={gettext("Remove %{name}", name: chip_name(@chip))}
         phx-click="remove"
         phx-value-key={@chip.key}
