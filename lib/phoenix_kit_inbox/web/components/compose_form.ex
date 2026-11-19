@@ -2332,7 +2332,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       >
         {@label}
       </label>
-      <%!-- One field: the chips, the input after them, «+» at its end. --%>
+      <%!-- One field: the chips, the input after them, «+» at its end. The
+           lists hang under it, over the form: they are out of the flow, so
+           the form keeps its height to the pixel. --%>
+      <div class="relative min-w-0">
       <div class={[
         "flex min-w-0 items-start gap-1 rounded-field border bg-base-100 px-1.5 py-1",
         "focus-within:border-primary",
@@ -2382,6 +2385,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           <.icon name="hero-plus" class="size-4" />
         </button>
       </div>
+      <div
+        :if={@line.list && @line.list.kind != :picker}
+        class="absolute inset-x-0 top-full z-30 mt-1 rounded-box bg-base-100 shadow-lg"
+      >
+        <.suggestions id={@id} role={@role} list={@line.list} target={@target} />
+      </div>
+      <.tick_menu
+        :if={@line.list && @line.list.kind == :picker}
+        id={@id}
+        role={@role}
+        list={@line.list}
+        ticked={@line.ticked}
+        target={@target}
+      />
+      </div>
       <p
         :if={@line.error}
         id={"compose-#{@id}-#{@role}-error"}
@@ -2390,23 +2408,6 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       >
         {@line.error}
       </p>
-      <%!-- The lists open over the form, under their field: nothing below moves. --%>
-      <div :if={@line.list} class="relative col-start-2 -mt-1 h-0 min-w-0">
-        <div
-          :if={@line.list.kind != :picker}
-          class="absolute inset-x-0 top-0 z-30 rounded-box bg-base-100 shadow-lg"
-        >
-          <.suggestions id={@id} role={@role} list={@line.list} target={@target} />
-        </div>
-        <.tick_menu
-          :if={@line.list.kind == :picker}
-          id={@id}
-          role={@role}
-          list={@line.list}
-          ticked={@line.ticked}
-          target={@target}
-        />
-      </div>
     </div>
     """
   end
@@ -2508,7 +2509,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     ~H"""
     <div
       id={"compose-#{@id}-#{@role}-menu"}
-      class="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+      class="absolute inset-x-0 top-full z-30 mt-1 flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
       phx-click-away="close_picker"
       phx-target={@target}
     >
