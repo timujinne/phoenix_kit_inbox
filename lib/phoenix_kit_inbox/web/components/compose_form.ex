@@ -831,7 +831,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     with %{role: role, kind: :picker, items: items} = list <- socket.assigns.list,
          %{entry: entry} <- Enum.find(items, &(&1.id == id)) do
       socket =
-        case ticked_chip(socket.assigns.recipients[role], entry) do
+        case ticked_chip(socket.assigns.recipients[role], shown_entry(Enum.find(items, &(&1.id == id)))) do
           nil -> add_entry(socket, role, entry)
           chip -> remove_chip(socket, role, chip.key)
         end
@@ -1808,6 +1808,11 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     end
   end
 
+  # A menu item's entry with the address the menu shows for it: a chip made
+  # from the draft may know the person by the address alone.
+  defp shown_entry(%{entry: entry} = item),
+    do: Map.put(entry, :address, item[:address] || entry[:address])
+
   # The chip of the line that is this suggestion's person, if they are in it:
   # the same account, or the same address.
   defp ticked_chip(line, entry) do
@@ -2326,8 +2331,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         if(match?(%{kind: :picker}, list),
           do:
             for(
-              %{id: id, entry: entry} <- list.items,
-              ticked_chip(assigns.recipients[role], entry),
+              %{id: id} = item <- list.items,
+              ticked_chip(assigns.recipients[role], shown_entry(item)),
               into: MapSet.new(),
               do: id
             ),
@@ -2337,9 +2342,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         if(match?(%{kind: :picker}, list),
           do:
             for(
-              %{id: id, entry: entry} <- list.items,
+              %{id: id} = item <- list.items,
               other <- [:to, :cc, :bcc] -- [role],
-              ticked_chip(assigns.recipients[other], entry),
+              ticked_chip(assigns.recipients[other], shown_entry(item)),
               into: %{},
               do: {id, other}
             ),
