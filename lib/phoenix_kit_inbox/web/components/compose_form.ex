@@ -2552,7 +2552,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # The menu behind «+» of the compact layout: tabs of the sources' groups, a
   # field that searches the sources, and the people — a press ticks one into
-  # the line or out of it. It stays open until «Done» or a press outside it
+  # the line or out of it. Core's `PkFitHeight` hook keeps it no taller than
+  # the room left under its field in the dialog (half the screen without the
+  # hook). It stays open until «Done» or a press outside it
   # (Escape is the dialog's, when the form stands in one).
   defp tick_menu(assigns) do
     tab = assigns.list[:tab]
@@ -2570,7 +2572,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     ~H"""
     <div
       id={"compose-#{@id}-#{@role}-menu"}
-      class="absolute inset-x-0 top-full z-30 mt-1 flex flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
+      phx-hook="PkFitHeight"
+      data-fit-min="200"
+      class="absolute inset-x-0 top-full z-30 mt-1 flex max-h-[50dvh] flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-2 shadow-lg"
       phx-click-away="close_picker"
       phx-target={@target}
     >
@@ -2624,7 +2628,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       <div
         :if={@groups != []}
         id={"compose-#{@id}-#{@role}-suggestions"}
-        class="max-h-[50dvh] overflow-y-auto overscroll-contain"
+        class="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         role="listbox"
         aria-multiselectable="true"
       >
