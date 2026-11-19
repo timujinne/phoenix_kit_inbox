@@ -45,6 +45,11 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       behaviour. It governs what the form *shows*: the slot is rendered
       either way, the files the host's picker names are checked as ever, and
       the limits of the send are the pipeline's
+    * `recipient_lines` — `:all` keeps the Cc and Bcc lines on the form at
+      all times, under To, and takes their «+ Cc» / «+ Bcc» buttons away (a
+      host whose letters often go to several people shows where each address
+      can go without a press); anything else, or leaving it out, is today's
+      behaviour: the two lines wait behind their buttons
     * `attachment_picker` — an optional slot for the host's file picker
     * `footer_start` — an optional slot rendered at the start of the form's
       last row, on the other side from Cancel and Send: a host that opens the
@@ -268,6 +273,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> assign_list(assigns, :recipient_sources)
       |> assign_member_suggestions(assigns)
       |> assign_own_upload(assigns)
+      |> assign_all_lines(assigns)
       |> assign_list(assigns, :attachment_picker)
       |> assign_list(assigns, :footer_start)
       |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
@@ -357,6 +363,16 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   # Only `false` takes the form's own upload control away; a missing key keeps
   # the value the form had (true at first), as the other attributes do.
+  # `recipient_lines={:all}`: Cc and Bcc are always shown. Kept apart from
+  # `open`, which a new draft rebuilds: the host's choice outlives a draft.
+  defp assign_all_lines(socket, assigns) do
+    if Map.has_key?(assigns, :recipient_lines),
+      do: assign(socket, :all_lines, assigns.recipient_lines == :all),
+      else: assign_new(socket, :all_lines, fn -> false end)
+  end
+
+  defp line_open?(assigns, role), do: assigns.all_lines or assigns.open[role]
+
   defp assign_own_upload(socket, assigns) do
     if Map.has_key?(assigns, :own_upload),
       do: assign(socket, :own_upload, assigns.own_upload != false),
@@ -860,7 +876,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # What sits in the field of a line the person cannot see is not theirs to
   # have sent, nor to be stopped by.
   defp shown_roles(socket) do
-    [:to | Enum.filter([:cc, :bcc], &socket.assigns.open[&1])]
+    [:to | Enum.filter([:cc, :bcc], &line_open?(socket.assigns, &1))]
   end
 
   # Everything the pipeline gets is made here from the server's state: the
@@ -1719,6 +1735,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   defp toggle(socket, role) do
     cond do
+      socket.assigns.all_lines -> socket
       socket.assigns.recipients[role] != [] -> socket
       socket.assigns.open[role] -> close_line(socket, role)
       true -> update(socket, :open, &Map.put(&1, role, true))
@@ -1873,9 +1890,22 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         target={@myself}
       />
 
-      <div class="flex flex-wrap items-center gap-1" role="group" aria-label={gettext("More fields")}>
-        <.block_button id={@id} block="cc" label={gettext("+ Cc")} open={@open.cc} target={@myself} />
+      <div
+        :if={not @all_lines or @signatures != []}
+        class="flex flex-wrap items-center gap-1"
+        role="group"
+        aria-label={gettext("More fields")}
+      >
         <.block_button
+          :if={not @all_lines}
+          id={@id}
+          block="cc"
+          label={gettext("+ Cc")}
+          open={@open.cc}
+          target={@myself}
+        />
+        <.block_button
+          :if={not @all_lines}
           id={@id}
           block="bcc"
           label={gettext("+ Bcc")}
@@ -1893,7 +1923,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       </div>
 
       <.recipients
-        :if={@open.cc}
+        :if={line_open?(assigns, :cc)}
         id={@id}
         role="cc"
         label={gettext("Cc")}
@@ -1901,7 +1931,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         target={@myself}
       />
       <.recipients
-        :if={@open.bcc}
+        :if={line_open?(assigns, :bcc)}
         id={@id}
         role="bcc"
         label={gettext("Bcc")}
@@ -2311,6 +2341,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   defp block_button(assigns) do
     ~H"""
     <.button
+      id={"compose-#{@id}-toggle-#{@block}"}
       type="button"
       variant="outline"
       size="xs"
