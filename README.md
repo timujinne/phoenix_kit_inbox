@@ -24,7 +24,7 @@ Neighbouring modules, so you pick the right one:
 
 - **Personal mailboxes** — one per user, created lazily on first visit; no signup hook, works for users who predate the install
 - **Shared mailboxes** — `support@`, `sales@`, … with per-user `read` / `write` / `admin` grants
-- **Six folders** — Inbox, Sent, Drafts, Spam, Trash, Archive
+- **Seven folders** — Inbox, Outbox, Sent, Drafts, Spam, Trash, Archive
 - **Per-recipient state** — seen/unseen, starred, and folder are per mailbox, so marking a group thread read doesn't mark it read for everyone else
 - **Compose, reply, forward** — with quoted bodies, `Re:`/`Fwd:` subjects, and inherited threading
 - **Drafts** — saved as real messages and *promoted* on send, so the uuid stays stable
@@ -209,7 +209,7 @@ Reply-To choices are the user's own email and the address of every shared mailbo
 })
 message.external_status                     #=> :pending (:none without external recipients)
 
-Messages.list_external_recipients(message.uuid, viewer_mailbox_uuid)  # Bcc only for the sender
+Messages.list_external_recipients(message.uuid, viewer_mailbox_uuid)  # Bcc only for the sender; rows as stored — `error` is the raw transport text, render ExternalReason.label(row.error)
 External.display_status(row)                #=> :pending | :sent | :failed | :unknown
 External.subscribe(from_mailbox.uuid)       # {:inbox_external_updated, message_uuid}
 Messages.retry_external(scope, from_mailbox, message.uuid)            #=> {:ok, :pending}

@@ -1648,6 +1648,14 @@ defmodule PhoenixKitInbox.Messages do
   The external recipients of a message, with their status, as the mailbox
   `viewer_mailbox_uuid` may see them: all for the sending mailbox, To and Cc
   for anyone else (`nil` sees To and Cc). See `PhoenixKitInbox.External`.
+
+  The rows are **as stored**: only the Bcc rows are filtered, so every row
+  carries its `error` — the technical text of the transport's answer, with
+  the relay's host and the remote server's words — and its
+  `email_log_message_id`, for any viewer. That is data for an operator; do not
+  render it to users. A screen shows the reason in words,
+  `PhoenixKitInbox.ExternalReason.label/1` of `error` (`ObjectMail` does this
+  already for the mail of an object).
   """
   @spec list_external_recipients(binary(), binary() | nil) :: [ExternalRecipient.t()]
   def list_external_recipients(message_uuid, viewer_mailbox_uuid),
@@ -1693,7 +1701,10 @@ defmodule PhoenixKitInbox.Messages do
       any outside one. Anything that is not an
       email address is `{:error, {:invalid_external_recipients, entries}}`.
       `"to"`, `"cc"` and `"bcc"` are not taken
-      (`{:error, :use_external_recipients}`).
+      (`{:error, :use_external_recipients}`). A recipient's `"error"` text is
+      stored as given, for the operator, and shown nowhere: the sender's
+      pages read it back through `PhoenixKitInbox.ExternalReason`, so a text
+      it has no words for reads "Sending failed.".
     * `"attachments"` — `[%{"filename" => name, "size_bytes" => n}]`: what
       the email carried, by name and size. **No file is stored**: the host
       keeps its files, so a recorded message can't be forwarded with them.

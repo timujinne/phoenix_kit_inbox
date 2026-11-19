@@ -52,6 +52,43 @@ defmodule PhoenixKitInbox.ExternalReasonTest do
       assert ExternalReason.label("{:external_too_large, 12") == "Sending failed."
     end
 
+    test "what a transport answers reads as the mail server not taking the email" do
+      server = "The mail server did not take the email."
+
+      # Swoosh's SMTP adapter: `{type, message}` of gen_smtp, the relay and the
+      # remote text inside.
+      assert label(
+               {:send, {:permanent_failure, ~c"mx.relay.example", ~c"550 5.7.1 <a@b.example>"}}
+             ) ==
+               server
+
+      assert label({:permanent_failure, ~c"mx.relay.example", ~c"550 5.7.1 <a@b.example>"}) ==
+               server
+
+      assert label(
+               {:retries_exceeded, {:network_failure, ~c"mx.relay.example", {:error, :nxdomain}}}
+             ) ==
+               server
+
+      for tag <- ~w(temporary_failure tls_failed auth_failed missing_requirement
+                    unexpected_response no_more_hosts)a do
+        assert label({tag, "421 try later"}) == server
+      end
+
+      # An API adapter: `{status, body}`.
+      assert label({550, %{"error" => "mailbox a@b.example unavailable"}}) == server
+      assert label({401, "bad key for account 42"}) == server
+
+      for reason <- [:timeout, :closed, :econnrefused, :nxdomain],
+          do: assert(label(reason) == server)
+    end
+
+    test "a number that is no HTTP status, and a tag that is no transport's, are not guessed" do
+      assert label({42, "x"}) == "Sending failed."
+      assert label({1000, "x"}) == "Sending failed."
+      assert label({:bad_option, "x"}) == "Sending failed."
+    end
+
     test "a stored text cut at 500 characters keeps the reason of its tag" do
       cut = "{:transport_failed, \"" <> String.duplicate("x", 480)
 
@@ -81,6 +118,8 @@ defmodule PhoenixKitInbox.ExternalReasonTest do
   test "known?/1 tells a known reason from the plain one" do
     assert ExternalReason.known?(stored(:external_disabled))
     assert ExternalReason.known?(stored({:transport_failed, "x"}))
+    assert ExternalReason.known?(stored({:permanent_failure, ~c"mx.example", ~c"550"}))
+    assert ExternalReason.known?(stored({550, "rejected"}))
     refute ExternalReason.known?(stored({:smtp, "550"}))
     refute ExternalReason.known?(nil)
   end

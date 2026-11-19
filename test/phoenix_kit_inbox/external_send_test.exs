@@ -843,6 +843,99 @@ defmodule PhoenixKitInbox.ExternalSendTest do
       refute folder_of(ctx, message, "sent")
     end
 
+    test "a row left pending by a task that died keeps the copy in Outbox too", ctx do
+      {message, uuids} = pending_send(ctx)
+      [stale | sending] = uuids
+
+      # The first row's task died: it stays pending (and reads unknown later).
+      # The others go out — a retry of the failed rows is this shape too.
+      External.deliver_now(message, sending, ctx.scope, ctx.alice_mb)
+
+      assert [%{uuid: ^stale, status: "pending"}, %{status: "sent"}, %{status: "sent"}] =
+               rows(message)
+
+      assert folder_of(ctx, message)
+      refute folder_of(ctx, message, "sent")
+
+      # Once that row goes too, the copy leaves.
+      External.deliver_now(message, [stale], ctx.scope, ctx.alice_mb)
+
+      assert Enum.all?(rows(message), &(&1.status == "sent"))
+      assert folder_of(ctx, message, "sent")
+      refute folder_of(ctx, message)
+    end
+
+    # The trigger below is DDL inside the test's sandbox transaction: it is
+    # rolled back with it, and it holds a lock on the deliveries table until
+    # then — which is only safe while this module is `async: false`.
+    test "the rows and the copy change together: a failure on the copy leaves the rows pending",
+         ctx do
+      {message, uuids} = pending_send(ctx)
+
+      # The move of the copy out of Outbox is refused by the database, after
+      # the rows were updated.
+      Repo.query!("""
+      CREATE FUNCTION inbox_test_refuse_move() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'the copy cannot move'; END $$
+      """)
+
+      Repo.query!("""
+      CREATE TRIGGER inbox_test_refuse_move BEFORE UPDATE ON phoenix_kit_inbox_deliveries
+      FOR EACH ROW WHEN (OLD.folder = 'outbox' AND NEW.folder = 'sent')
+      EXECUTE FUNCTION inbox_test_refuse_move()
+      """)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          External.deliver_now(message, uuids, ctx.scope, ctx.alice_mb)
+        end)
+
+      assert log =~ "could not record the external send"
+
+      # Neither half happened: not sent rows with the copy stranded in Outbox.
+      assert Enum.all?(rows(message), &(&1.status == "pending"))
+      assert folder_of(ctx, message)
+      refute folder_of(ctx, message, "sent")
+    end
+
+    test "the worst row decides the state of the letter: failed, then unknown, then pending",
+         ctx do
+      {message, [first, second, third]} = pending_send(ctx)
+      long_ago = DateTime.utc_now() |> DateTime.add(-20 * 60) |> DateTime.truncate(:second)
+
+      set = fn uuid, changes ->
+        Repo.update_all(from(r in ExternalRecipient, where: r.uuid == ^uuid), set: changes)
+      end
+
+      state = fn -> Map.fetch!(External.outbox_states([message.uuid]), message.uuid) end
+
+      # Failed beats unknown (and a fresh pending one), whatever the order.
+      set.(first, status: "pending", attempted_at: nil, inserted_at: long_ago)
+      set.(second, status: "failed", error: ":external_disabled")
+      assert %{state: :failed, reason: reason} = state.()
+      assert reason == PhoenixKitInbox.Errors.message(:external_disabled)
+
+      set.(first, status: "failed", error: ":external_disabled")
+      set.(second, status: "pending", attempted_at: nil, inserted_at: long_ago)
+      assert %{state: :failed} = state.()
+
+      # Unknown beats pending.
+      set.(first, status: "pending", attempted_at: nil, inserted_at: long_ago)
+      set.(second, status: "pending", attempted_at: nil, inserted_at: DateTime.utc_now())
+      set.(third, status: "sent")
+      assert %{state: :unknown, reason: nil} = state.()
+
+      set.(first, status: "pending", attempted_at: nil, inserted_at: DateTime.utc_now())
+      assert %{state: :pending, reason: nil} = state.()
+
+      # Every row sent: the letter is not in the answer.
+      Repo.update_all(from(r in ExternalRecipient, where: r.message_uuid == ^message.uuid),
+        set: [status: "sent"]
+      )
+
+      assert External.outbox_states([message.uuid]) == %{}
+    end
+
     test "a draft with external recipients is promoted into Outbox, and on to Sent", ctx do
       assert {:ok, draft} =
                Messages.save_draft(ctx.scope, ctx.alice_mb, %{

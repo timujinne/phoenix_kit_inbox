@@ -183,7 +183,10 @@ defmodule PhoenixKitInbox.ObjectMailTest do
           role: role,
           address: address,
           status: "failed",
-          error: "smtp 550 mailbox unavailable: #{address}",
+          error:
+            inspect(
+              {:send, {:permanent_failure, ~c"mx.relay.example", ~c"550 rejected: #{address}"}}
+            ),
           email_log_message_id: "<log-#{role}@mail.test>"
         })
       end
@@ -195,7 +198,10 @@ defmodule PhoenixKitInbox.ObjectMailTest do
 
       # How the send went is the sender's: a reader gets the addresses alone.
       assert [%{error: nil, email_log_message_id: nil}] = for_alice.external
-      assert Enum.all?(for_bob.external, &(&1.error =~ "smtp 550"))
+      # ... and even then as the reason in words: the server's answer (its
+      # relay host, its text) is read by every holder of a grant on the mailbox.
+      assert Enum.all?(for_bob.external, &(&1.error == "The mail server did not take the email."))
+      refute inspect(for_bob.external) =~ "mx.relay.example"
       assert Enum.all?(for_bob.external, &(&1.email_log_message_id =~ "<log-"))
       refute Map.has_key?(for_alice.message.metadata, "identity")
 
@@ -205,6 +211,30 @@ defmodule PhoenixKitInbox.ObjectMailTest do
              ]
 
       assert for_bob.message.metadata["identity"]["from_address"] == "desk@company.test"
+    end
+
+    test "a row that carries no error has none in the sender's entry either", ctx do
+      message = mail(ctx, :bob, handle(ctx.alice), %{}, links: [@order])
+
+      # A letter that went, and one still on its way: nothing to give a reason for.
+      for {role, address, status} <- [
+            {"to", "went@example.com", "sent"},
+            {"cc", "waits@example.com", "pending"}
+          ] do
+        Repo.insert!(%ExternalRecipient{
+          message_uuid: message.uuid,
+          role: role,
+          address: address,
+          status: status
+        })
+      end
+
+      [%{messages: [for_bob]}] = threads(ctx.bob_scope)
+
+      assert Enum.map(for_bob.external, &{&1.status, &1.error}) == [
+               {"sent", nil},
+               {"pending", nil}
+             ]
     end
 
     test "html_body never reaches the reader", ctx do

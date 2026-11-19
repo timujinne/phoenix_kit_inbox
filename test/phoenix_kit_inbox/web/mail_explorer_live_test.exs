@@ -218,6 +218,38 @@ defmodule PhoenixKitInbox.Web.MailExplorerLiveTest do
       assert Enum.all?(External.list(message.uuid), &(&1.status == "sent"))
     end
 
+    test "the chip's tooltip is the reason in words, not the server's answer",
+         %{conn: conn} = ctx do
+      :ok = External.subscribe(ctx.alice_mb.uuid)
+
+      outbound_result(
+        {:error, {:send, {:permanent_failure, ~c"mx.relay.example", ~c"550 rejected by policy"}}}
+      )
+
+      {:ok, message} = send_external(ctx, ctx.alice_mb)
+      await_external(message.uuid)
+
+      view = open(ctx, conn, ctx.sender_scope)
+      chip = status_of(view, message)
+
+      assert chip =~ "not delivered"
+      assert chip =~ ~s(title="The mail server did not take the email.")
+      refute render(view) =~ "mx.relay.example"
+      refute render(view) =~ "rejected by policy"
+    end
+
+    test "the chip of a letter that went has no tooltip", %{conn: conn} = ctx do
+      :ok = External.subscribe(ctx.alice_mb.uuid)
+      {:ok, message} = send_external(ctx, ctx.alice_mb)
+      await_external(message.uuid)
+
+      view = open(ctx, conn, ctx.sender_scope)
+      chip = status_of(view, message)
+
+      assert chip =~ "sent"
+      refute chip =~ "title="
+    end
+
     test "the status of a letter from a mailbox granted after the page opened",
          %{conn: conn} = ctx do
       view = open(ctx, conn, ctx.sender_scope)

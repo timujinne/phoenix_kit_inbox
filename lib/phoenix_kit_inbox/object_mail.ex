@@ -23,8 +23,10 @@ defmodule PhoenixKitInbox.ObjectMail do
       there, otherwise the first of the viewer's mailboxes holding a copy): another recipient's
       Bcc, the sending identity of someone else's letter and the host's
       `html_body` are not in it. The external recipients are filtered by the
-      same rule, and only the sending mailbox gets how the send went (the
-      transport's `error`, the email log's id).
+      same rule, and only the sending mailbox gets how the send went: the
+      reason in words in `error` (`PhoenixKitInbox.ExternalReason`, `nil` for
+      a row with no error — never the transport's own text) and the email
+      log's id.
 
   Needs `Scope.can?(scope, "inbox")`; without it every answer is `[]`.
 
@@ -37,6 +39,7 @@ defmodule PhoenixKitInbox.ObjectMail do
   require PhoenixKitInbox.Messages
 
   alias PhoenixKit.Users.Auth.Scope
+  alias PhoenixKitInbox.ExternalReason
   alias PhoenixKitInbox.Links
   alias PhoenixKitInbox.Mailboxes
   alias PhoenixKitInbox.Messages
@@ -62,7 +65,10 @@ defmodule PhoenixKitInbox.ObjectMail do
     * `:depth` — how deep it is in the conversation tree (0 for a root, and
       for a reply whose parent the viewer cannot read)
     * `:links` — its links to the objects asked for (`Links` rows)
-    * `:external` — its external recipients the viewer may see
+    * `:external` — its external recipients the viewer may see; for the
+      sending mailbox their `error` is the reason in words
+      (`PhoenixKitInbox.ExternalReason`; `nil` for a row with no error), never
+      the transport's own text, and `nil` in every row of any other viewer
   """
   @type entry :: %{
           message: Message.t(),
@@ -356,17 +362,23 @@ defmodule PhoenixKitInbox.ObjectMail do
 
   # An external Bcc stays blind, like an internal one: only the sending
   # mailbox sees it (the rule of `External.list_for_viewer/2`). How the send
-  # went — the transport's error and the email log's id — is the sender's
-  # too: anyone else gets the addresses.
+  # went — the reason and the email log's id — is the sender's too: anyone
+  # else gets the addresses. The reason is in words (`ExternalReason`), in the
+  # `error` field: the transport's own text (the relay's host, the remote
+  # server's words) goes to nobody, and the sending mailbox is read by every
+  # holder of a grant, a read-only one included.
   defp visible_externals(rows, message, viewer) do
     if message.sender_mailbox_uuid == viewer do
-      rows
+      for row <- rows, do: %{row | error: reason(row.error)}
     else
       for %{role: role} = row <- rows,
           role != "bcc",
           do: %{row | error: nil, email_log_message_id: nil}
     end
   end
+
+  defp reason(nil), do: nil
+  defp reason(error), do: ExternalReason.label(error)
 
   # Parents before their replies, siblings in the order sent. A reply whose
   # parent is not among the entries is a root; so, as a last resort, is the
