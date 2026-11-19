@@ -1780,3 +1780,8 @@ msgstr "Seadistust ei õnnestunud salvestada. Proovi uuesti."
 #, elixir-autogen, elixir-format
 msgid "Email addresses — comma separated"
 msgstr "E-posti aadressid — komadega eraldatud"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex
+#, elixir-autogen, elixir-format
+msgid "Done"
+msgstr "Valmis"

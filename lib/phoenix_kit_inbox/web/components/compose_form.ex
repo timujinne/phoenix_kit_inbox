@@ -2344,7 +2344,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           </ul>
           <form
             id={"compose-#{@id}-#{@role}-form"}
-            class="flex min-w-32 flex-1 items-center gap-1"
+            class="flex min-w-16 flex-1 items-center gap-1"
             phx-change="suggest"
             phx-submit="add"
             phx-target={@target}
@@ -2391,7 +2391,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         {@line.error}
       </p>
       <%!-- The lists open over the form, under their field: nothing below moves. --%>
-      <div :if={@line.list} class="relative col-start-2 h-0 min-w-0">
+      <div :if={@line.list} class="relative col-start-2 -mt-1 h-0 min-w-0">
         <div
           :if={@line.list.kind != :picker}
           class="absolute inset-x-0 top-0 z-30 rounded-box bg-base-100 shadow-lg"
@@ -2639,7 +2639,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       title={@chip.address}
     >
       <.internal_marker :if={@chip.route == :internal} />
-      <span class="min-w-0 shrink-0 truncate">{chip_text(@chip)}</span>
+      <span class={["min-w-0 truncate", labelled?(@chip) && "shrink-0"]}>{chip_text(@chip)}</span>
       <span :if={labelled?(@chip)} data-chip-address class="min-w-0 truncate text-xs opacity-70">
         {@chip.address}
       </span>

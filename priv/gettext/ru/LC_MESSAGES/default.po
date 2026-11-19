@@ -1785,3 +1785,8 @@ msgstr "Не удалось сохранить настройку. Попроб�
 #, elixir-autogen, elixir-format
 msgid "Email addresses — comma separated"
 msgstr "Адреса электронной почты — через запятую"
+
+#: lib/phoenix_kit_inbox/web/components/compose_form.ex
+#, elixir-autogen, elixir-format
+msgid "Done"
+msgstr "Готово"
