@@ -66,6 +66,20 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
       assert PhoenixKitInbox.internal_enabled?()
     end
 
+    test "a forged toggle that names the value is refused too, in both directions", ctx do
+      {:ok, view, _html} = live(as(ctx.conn, ctx.alice, ["inbox"]), @path)
+
+      # On, and a forged "off".
+      render_click(view, "toggle_internal", %{"enabled" => "false"})
+      assert has_element?(view, "#flash-error")
+      assert PhoenixKitInbox.internal_enabled?()
+
+      # Off, and a forged "on".
+      assert {:ok, _} = PhoenixKitInbox.set_internal_enabled(false)
+      render_click(view, "toggle_internal", %{"enabled" => "true"})
+      refute PhoenixKitInbox.internal_enabled?()
+    end
+
     test "a malformed toggle from a manager is ignored, without a forbidden flash", ctx do
       {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
 
@@ -139,6 +153,44 @@ defmodule PhoenixKitInbox.Web.SettingsLiveTest do
       view |> element("#internal-mail-toggle") |> render_click()
       assert PhoenixKitInbox.internal_enabled?()
       assert has_element?(view, "#internal-mail-toggle[checked]")
+    end
+
+    test "a toggle that cannot be saved puts the checkbox back and says so", ctx do
+      # The setting was never saved, so the toggle inserts it. The database
+      # refuses with the unique violation the settings changeset knows (a
+      # second writer got there first), which core answers as `{:error, _}`.
+      Repo.query!("""
+      CREATE FUNCTION inbox_test_refuse_setting() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'taken' USING ERRCODE = 'unique_violation',
+          CONSTRAINT = 'phoenix_kit_settings_key_uidx';
+      END $$
+      """)
+
+      Repo.query!("""
+      CREATE TRIGGER inbox_test_refuse_setting BEFORE INSERT ON phoenix_kit_settings
+      FOR EACH ROW WHEN (NEW.key = 'inbox_internal_enabled')
+      EXECUTE FUNCTION inbox_test_refuse_setting()
+      """)
+
+      {:ok, view, _html} = live(as(ctx.conn, ctx.admin, @manage), @path)
+      assert has_element?(view, "#internal-mail-toggle[checked]")
+      assert has_element?(view, "#internal-mail-label-0")
+
+      view |> element("#internal-mail-toggle") |> render_click()
+
+      assert has_element?(view, "#flash-error", "The setting could not be saved")
+      # Still on, in the page and in the setting.
+      assert has_element?(view, "#internal-mail-toggle[checked]")
+      assert PhoenixKitInbox.internal_enabled?()
+      # The element is renewed, so a browser that already flipped the box is
+      # told the state again.
+      refute has_element?(view, "#internal-mail-label-0")
+      assert has_element?(view, "#internal-mail-label-1")
+
+      # The next click tries again, and the nonce moves on.
+      view |> element("#internal-mail-toggle") |> render_click()
+      assert has_element?(view, "#internal-mail-label-2")
     end
 
     test "shared mail is all the page holds: no mailbox signatures", ctx do

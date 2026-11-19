@@ -1100,8 +1100,8 @@ msgstr "сен"
 
 #: lib/phoenix_kit_inbox.ex:158
 #, elixir-autogen, elixir-format
-msgid "Create shared mailboxes and set their addresses"
-msgstr "Создание общих ящиков и настройка их адресов"
+msgid "Create shared mailboxes, set their addresses and senders, and turn mail inside the application on or off for everyone"
+msgstr "Создание общих ящиков, настройка их адресов и отправителей, включение и выключение почты внутри приложения для всех"
 
 #: lib/phoenix_kit_inbox.ex:146
 #, elixir-autogen, elixir-format

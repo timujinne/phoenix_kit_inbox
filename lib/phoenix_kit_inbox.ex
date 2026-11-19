@@ -156,7 +156,10 @@ defmodule PhoenixKitInbox do
         %{
           key: "manage_shared",
           label: gettext_noop("Manage shared mailboxes"),
-          description: gettext_noop("Create shared mailboxes and set their addresses")
+          description:
+            gettext_noop(
+              "Create shared mailboxes, set their addresses and senders, and turn mail inside the application on or off for everyone"
+            )
         }
       ]
     }
@@ -426,7 +429,7 @@ defmodule PhoenixKitInbox do
   `{:error, :internal_mail_disabled}`; the compose form offers no inside
   route and `Messages.resolve_recipient_routes/2` answers `:email` (with a
   `refused: :internal_mail_disabled` key on what the send refuses). Letters
-  already delivered stay readable, and Sent, Outbox, Drafts, shared
+  already delivered stay readable, and Sent, Drafts, shared
   mailboxes and their grants, `Messages.record_sent/4`, retry and outside
   sending are as they were.
   """

@@ -122,8 +122,19 @@ defmodule PhoenixKitInbox.InternalMailSwitchTest do
 
       assert Messages.list_folder(ctx.bob_mb.uuid, "inbox") == []
       assert Messages.list_folder(ctx.alice_mb.uuid, "sent") == []
-      assert Messages.list_folder(ctx.alice_mb.uuid, "outbox") == []
+      assert Messages.list_folder(ctx.alice_mb.uuid, "drafts") == []
       assert Repo.aggregate(Message, :count) == 0
+
+      # The same send goes through once the switch is on again, and then the
+      # folders above are where the letter shows: the empty lists were the
+      # refusal, not a folder nobody reads.
+      assert {:ok, _} = PhoenixKitInbox.set_internal_enabled(true)
+      assert {:ok, sent} = send_to(ctx, "@#{ctx.bob.username}")
+
+      assert [%{message: %{uuid: uuid}}] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
+      assert uuid == sent.uuid
+      assert [%{message: %{uuid: ^uuid}}] = Messages.list_folder(ctx.alice_mb.uuid, "sent")
+      assert Messages.list_folder(ctx.alice_mb.uuid, "drafts") == []
     end
 
     test "so is a shared mailbox's name or slug, also next to an outside address", ctx do
@@ -149,6 +160,27 @@ defmodule PhoenixKitInbox.InternalMailSwitchTest do
                "subject" => "Hi",
                "body" => "Hi"
              }) == {:error, :internal_mail_disabled}
+    end
+
+    test "the three-argument form has no scope for outside email: a member's address is refused as such",
+         ctx do
+      send3 = fn ->
+        Messages.send_message(ctx.alice_mb, ctx.alice.uuid, %{
+          "to" => ctx.bob.email,
+          "subject" => "Hi",
+          "body" => "Hi"
+        })
+      end
+
+      # On, the member's address is the member: delivered inside.
+      assert {:ok, _} = send3.()
+      assert [_] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
+
+      # Off, it is an outside address, which this form cannot send (documented
+      # on `send_message/4` and in the README).
+      off!()
+      assert send3.() == {:error, :external_needs_scope}
+      assert [_] = Messages.list_folder(ctx.bob_mb.uuid, "inbox")
     end
 
     test "a member addressed by their email goes as an outside email", ctx do

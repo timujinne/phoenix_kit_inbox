@@ -1100,7 +1100,7 @@ msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:158
 #, elixir-autogen, elixir-format
-msgid "Create shared mailboxes and set their addresses"
+msgid "Create shared mailboxes, set their addresses and senders, and turn mail inside the application on or off for everyone"
 msgstr ""
 
 #: lib/phoenix_kit_inbox.ex:146
