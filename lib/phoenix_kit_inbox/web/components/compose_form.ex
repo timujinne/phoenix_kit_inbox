@@ -61,7 +61,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       tick people in: a press adds a person to the line or takes them off
       it, the menu stays open until «Done» or a press outside it,
       its tabs show one of the sources' groups at a time and its own field
-      searches the sources. Anything else, or leaving it out, is today's
+      searches the sources (the field has the focus when the menu opens and
+      after a tab is chosen); every person is shown with the address the
+      letter would go to and the source's `:note`; a person is in one line
+      at a time — ticked or typed into another, they move there. Anything else, or leaving it out, is today's
       layout
     * `before_subject` — an optional slot rendered between the recipient
       lines and the subject, outside the form's own `<form>`: a host that
@@ -198,6 +201,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   use PhoenixKitWeb, :live_component
   use Gettext, backend: PhoenixKitInbox.Gettext
 
+  alias Phoenix.LiveView.JS
   alias PhoenixKit.Users.Auth.Scope
   alias PhoenixKitInbox.Attachments
   alias PhoenixKitInbox.Errors
@@ -1638,8 +1642,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> RecipientSource.suggest_all(socket.assigns.scope, context(socket), query)
       |> Enum.take(shown)
 
-    socket |> assign(recipient_error: nil) |> assign_list(role, :picker, entries)
+    socket
+    |> assign(recipient_error: nil)
+    |> assign_list(role, :picker, entries)
+    |> shown_addresses()
   end
+
+  # The menu shows where a letter to each person would go: an account's
+  # address is looked up as the chip's will be.
+  defp shown_addresses(%{assigns: %{compact: true, list: %{items: items} = list}} = socket) do
+    items =
+      for %{entry: entry} = item <- items do
+        address = entry[:address] || (entry[:user] && resolved_address(entry.user, entry.route))
+        Map.put(item, :address, address)
+      end
+
+    assign(socket, :list, %{list | items: items})
+  end
+
+  defp shown_addresses(socket), do: socket
 
   # Every suggestion gets an id of this list only; a new list voids the old ids.
   defp assign_list(socket, _role, :typed, []), do: assign(socket, list: nil)
@@ -1778,6 +1799,15 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     |> refresh_summary()
   end
 
+  # The compact layout keeps a person in one line: the other two let go of them.
+  defp elsewhere_off(recipients, role, chip) do
+    for {other, line} <- recipients, into: %{} do
+      if other == role,
+        do: {other, line},
+        else: {other, Enum.reject(line, &same_person?(&1, chip))}
+    end
+  end
+
   # The chip of the line that is this suggestion's person, if they are in it:
   # the same account, or the same address.
   defp ticked_chip(line, entry) do
@@ -1806,6 +1836,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
               chip
               |> Map.put(:key, "#{role}-#{seq}")
               |> Map.put(:manual, opts[:manual] == true)
+
+            recipients = if socket.assigns.compact, do: elsewhere_off(recipients, role, chip), else: recipients
 
             socket
             |> assign(
@@ -2300,6 +2332,18 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
               do: id
             ),
           else: MapSet.new()
+        ),
+      elsewhere:
+        if(match?(%{kind: :picker}, list),
+          do:
+            for(
+              %{id: id, entry: entry} <- list.items,
+              other <- [:to, :cc, :bcc] -- [role],
+              ticked_chip(assigns.recipients[other], entry),
+              into: %{},
+              do: {id, other}
+            ),
+          else: %{}
         )
     }
   end
@@ -2397,6 +2441,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         role={@role}
         list={@line.list}
         ticked={@line.ticked}
+        elsewhere={@line.elsewhere}
         target={@target}
       />
       </div>
@@ -2483,10 +2528,21 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     """
   end
 
+  defp tab_click(group, target, id, role) do
+    "picker_tab"
+    |> JS.push(value: %{group: group}, target: target)
+    |> JS.focus(to: "#compose-#{id}-#{role}-menu-q")
+  end
+
+  defp role_label(:to), do: gettext("To")
+  defp role_label(:cc), do: gettext("Cc")
+  defp role_label(:bcc), do: gettext("Bcc")
+
   attr(:id, :string, required: true)
   attr(:role, :string, required: true)
   attr(:list, :map, required: true)
   attr(:ticked, :any, required: true)
+  attr(:elsewhere, :map, default: %{})
   attr(:target, :any, required: true)
 
   # The menu behind «+» of the compact layout: tabs of the sources' groups, a
@@ -2519,9 +2575,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           role="tab"
           aria-selected={to_string(@tab == nil)}
           class={["btn btn-xs", if(@tab == nil, do: "btn-primary", else: "btn-ghost")]}
-          phx-click="picker_tab"
-          phx-value-group=""
-          phx-target={@target}
+          phx-click={tab_click("", @target, @id, @role)}
         >
           {gettext("All")}
         </button>
@@ -2531,9 +2585,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           role="tab"
           aria-selected={to_string(@tab == name)}
           class={["btn btn-xs", if(@tab == name, do: "btn-primary", else: "btn-ghost")]}
-          phx-click="picker_tab"
-          phx-value-group={name}
-          phx-target={@target}
+          phx-click={tab_click(name, @target, @id, @role)}
         >
           {name}
         </button>
@@ -2548,8 +2600,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           <.icon name="hero-magnifying-glass" class="size-4 opacity-60" />
           <input
             type="search"
+            id={"compose-#{@id}-#{@role}-menu-q"}
             name="q"
             value={@query}
+            phx-mounted={JS.focus()}
             class="grow"
             placeholder={gettext("Name or email")}
             autocomplete="off"
@@ -2565,7 +2619,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       <div
         :if={@groups != []}
         id={"compose-#{@id}-#{@role}-suggestions"}
-        class="max-h-64 overflow-y-auto overscroll-contain"
+        class="max-h-[50dvh] overflow-y-auto overscroll-contain"
         role="listbox"
         aria-multiselectable="true"
       >
@@ -2599,14 +2653,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
             ]}>
               <.icon :if={MapSet.member?(@ticked, item.id)} name="hero-check" class="size-3" />
             </span>
-            <span class="min-w-0 flex-1 truncate">
-              {item.entry.label || item.entry[:address]}
-              <span
-                :if={item.entry.label && item.entry[:address]}
-                class="text-xs text-base-content/60"
-              >
-                · {item.entry[:address]}
+            <span class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+              <span class="truncate">{item.entry.label || item[:address]}</span>
+              <span :if={item.entry[:note]} class="badge badge-warning badge-soft badge-sm">
+                {item.entry.note}
               </span>
+              <span
+                :if={item.entry.label && item[:address]}
+                data-menu-address
+                class="truncate text-xs text-base-content/60"
+              >
+                {item[:address]}
+              </span>
+            </span>
+            <span
+              :if={@elsewhere[item.id]}
+              class="shrink-0 text-xs text-base-content/50"
+              data-menu-elsewhere
+            >
+              {role_label(@elsewhere[item.id])}
             </span>
           </button>
         </div>

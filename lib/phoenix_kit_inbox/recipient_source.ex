@@ -17,6 +17,9 @@ defmodule PhoenixKitInbox.RecipientSource do
           none
         * `:group` — the heading to list them under, already in the viewer's
           language, or `nil`
+        * `:note` (optional) — a word or two said beside the name, already in
+          the viewer's language ("Designer", "Primary contact"): what tells
+          this person apart among the others of the group
         * `:route` — `:internal` (delivered inside the application) or
           `:email` (sent out). The source says what it expects; the send
           checks that this is how the address really resolves and refuses the
@@ -64,6 +67,7 @@ defmodule PhoenixKitInbox.RecipientSource do
   @type suggestion :: %{
           optional(:address) => String.t(),
           optional(:user) => binary(),
+          optional(:note) => String.t() | nil,
           label: String.t() | nil,
           group: String.t() | nil,
           route: route()
@@ -341,7 +345,13 @@ defmodule PhoenixKitInbox.RecipientSource do
 
   defp finish(identity, entry, route),
     do:
-      Map.merge(identity, %{label: text(entry[:label]), group: text(entry[:group]), route: route})
+      identity
+      |> Map.merge(%{label: text(entry[:label]), group: text(entry[:group]), route: route})
+      |> put_note(text(entry[:note]))
+
+  # Only an entry that has a note carries the key: the others are as they were.
+  defp put_note(entry, nil), do: entry
+  defp put_note(entry, note), do: Map.put(entry, :note, String.slice(note, 0, 40))
 
   defp text(value) when is_binary(value) do
     case String.trim(value) do
