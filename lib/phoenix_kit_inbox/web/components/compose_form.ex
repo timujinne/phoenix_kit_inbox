@@ -2215,17 +2215,17 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         "A recipient here has no address, so nothing can be sent to them. Remove them to send."
       )
 
+  # A row of the compact layout: the label in a column of its own width on
+  # every row, so the fields line up; on a narrow screen the same.
+  defp compact_row_class, do: "grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
+  defp compact_label_class, do: "pt-1.5 text-sm font-medium text-base-content/70"
+
   attr(:id, :string, required: true)
   attr(:role, :string, required: true)
   attr(:label, :string, required: true)
   attr(:line, :map, required: true)
   attr(:compact, :boolean, default: false)
   attr(:target, :any, required: true)
-
-  # A row of the compact layout: the label in a column of its own width on
-  # every row, so the fields line up; on a narrow screen the same.
-  defp compact_row_class, do: "grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
-  defp compact_label_class, do: "pt-1.5 text-sm font-medium text-base-content/70"
 
   defp recipients(%{compact: true} = assigns) do
     ~H"""
