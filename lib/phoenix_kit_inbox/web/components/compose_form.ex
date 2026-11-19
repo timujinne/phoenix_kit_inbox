@@ -335,7 +335,9 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
     draft = normalize_draft(assigns[:draft] || socket.assigns[:source_draft])
     # The draft a `retext` replaced is still the letter the form holds.
-    draft = if draft == socket.assigns[:retext_origin], do: socket.assigns.source_draft, else: draft
+    draft =
+      if draft == socket.assigns[:retext_origin], do: socket.assigns.source_draft, else: draft
+
     socket = forget_pending_draft(socket, draft)
     scope_changed? = socket.assigns[:options_scope] != socket.assigns.scope
 
@@ -831,7 +833,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     with %{role: role, kind: :picker, items: items} = list <- socket.assigns.list,
          %{entry: entry} <- Enum.find(items, &(&1.id == id)) do
       socket =
-        case ticked_chip(socket.assigns.recipients[role], shown_entry(Enum.find(items, &(&1.id == id)))) do
+        case ticked_chip(
+               socket.assigns.recipients[role],
+               shown_entry(Enum.find(items, &(&1.id == id)))
+             ) do
           nil -> add_entry(socket, role, entry)
           chip -> remove_chip(socket, role, chip.key)
         end
@@ -855,14 +860,17 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       when is_binary(query) do
     query = String.slice(query, 0, @query_max)
     socket = open_picker(socket, role, query)
-    {:noreply, assign(socket, :list, Map.merge(socket.assigns.list, %{tab: list[:tab], query: query}))}
+
+    {:noreply,
+     assign(socket, :list, Map.merge(socket.assigns.list, %{tab: list[:tab], query: query}))}
   end
 
   def handle_event("close_picker", _params, %{assigns: %{list: %{kind: :picker}}} = socket),
     do: {:noreply, assign(socket, list: nil)}
 
-  def handle_event(event, _params, socket) when event in ~w(picker_tab picker_search close_picker),
-    do: {:noreply, socket}
+  def handle_event(event, _params, socket)
+      when event in ~w(picker_tab picker_search close_picker),
+      do: {:noreply, socket}
 
   def handle_event("toggle_picker", %{"role" => role}, socket) when is_binary(role) do
     with {:ok, role} <- role_atom(role),
@@ -1842,7 +1850,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
               |> Map.put(:key, "#{role}-#{seq}")
               |> Map.put(:manual, opts[:manual] == true)
 
-            recipients = if socket.assigns.compact, do: elsewhere_off(recipients, role, chip), else: recipients
+            recipients =
+              if socket.assigns.compact,
+                do: elsewhere_off(recipients, role, chip),
+                else: recipients
 
             socket
             |> assign(
@@ -2558,9 +2569,16 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   # (Escape is the dialog's, when the form stands in one).
   defp tick_menu(assigns) do
     tab = assigns.list[:tab]
-    names = assigns.list.items |> Enum.map(& &1.entry.group) |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
+    names =
+      assigns.list.items |> Enum.map(& &1.entry.group) |> Enum.uniq() |> Enum.reject(&is_nil/1)
+
     tab = if tab in names, do: tab
-    items = if tab, do: Enum.filter(assigns.list.items, &(&1.entry.group == tab)), else: assigns.list.items
+
+    items =
+      if tab,
+        do: Enum.filter(assigns.list.items, &(&1.entry.group == tab)),
+        else: assigns.list.items
 
     assigns =
       assigns
