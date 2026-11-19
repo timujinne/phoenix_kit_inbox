@@ -50,6 +50,14 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       host whose letters often go to several people shows where each address
       can go without a press); anything else, or leaving it out, is today's
       behaviour: the two lines wait behind their buttons
+    * `compact` — `true` lays the form out in rows of a label and its field:
+      a recipient line is its label, then one field holding the chips and
+      the input, with the list of the host's people behind a «+» at the
+      field's end; the subject has its label beside it and the message none
+      on screen. Anything else, or leaving it out, is today's layout
+    * `before_subject` — an optional slot rendered between the recipient
+      lines and the subject, outside the form's own `<form>`: a host that
+      fills the text from its templates puts the choice of one there
     * `attachment_picker` — an optional slot for the host's file picker
     * `footer_start` — an optional slot rendered at the start of the form's
       last row, on the other side from Cancel and Send: a host that opens the
@@ -58,6 +66,17 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       control while a send runs; what the control does is the host's (the
       form only shows it). It is rendered for a viewer without access too
       (`sending: false`), alone in the otherwise empty form
+
+  ## Another text for the same letter
+
+  `send_update(ComposeForm, id: id, retext: draft)` takes the subject, the
+  text and everything the person does not see (`:html_body`, `:body_format`,
+  `:context`, the sender's defaults) from `draft` and keeps what the person
+  did: the recipients as they stand, the files, what is typed in a recipient
+  field. It is how a host changes the template of a letter being written. The
+  host then renders the form with that same `draft` — the form takes it as
+  the one it has and starts nothing afresh. A signature that was inserted is
+  gone with the old text. While a letter is on its way the update is ignored.
 
   An attribute left out of a later update keeps its value, so a host may
   `send_update/3` the form with only what changed. Inbox's own access events
@@ -263,6 +282,25 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
 
   def update(%{refresh: true}, socket), do: {:ok, socket}
 
+  def update(%{retext: _draft}, %{assigns: %{sending: true}} = socket), do: {:ok, socket}
+
+  def update(%{retext: draft}, %{assigns: %{source_draft: %ComposeDraft{}}} = socket) do
+    draft = normalize_draft(draft)
+
+    {:ok,
+     assign(socket,
+       source_draft: draft,
+       pending_draft: nil,
+       subject: text(draft.subject),
+       body: text(draft.body),
+       signature_uuid: "",
+       signature_block: "",
+       error: nil
+     )}
+  end
+
+  def update(%{retext: _draft}, socket), do: {:ok, socket}
+
   def update(assigns, socket) do
     previous_suggestions = suggestion_options(socket)
 
@@ -274,6 +312,8 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
       |> assign_member_suggestions(assigns)
       |> assign_own_upload(assigns)
       |> assign_all_lines(assigns)
+      |> assign_compact(assigns)
+      |> assign_list(assigns, :before_subject)
       |> assign_list(assigns, :attachment_picker)
       |> assign_list(assigns, :footer_start)
       |> then(&assign(&1, :allowed?, Scope.can?(&1.assigns.scope, "inbox")))
@@ -369,6 +409,12 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
     if Map.has_key?(assigns, :recipient_lines),
       do: assign(socket, :all_lines, assigns.recipient_lines == :all),
       else: assign_new(socket, :all_lines, fn -> false end)
+  end
+
+  defp assign_compact(socket, assigns) do
+    if Map.has_key?(assigns, :compact),
+      do: assign(socket, :compact, assigns.compact == true),
+      else: assign_new(socket, :compact, fn -> false end)
   end
 
   defp line_open?(assigns, role), do: assigns.all_lines or assigns.open[role]
@@ -1887,6 +1933,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         role="to"
         label={gettext("To")}
         line={line(assigns, :to)}
+        compact={@compact}
         target={@myself}
       />
 
@@ -1928,6 +1975,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         role="cc"
         label={gettext("Cc")}
         line={line(assigns, :cc)}
+        compact={@compact}
         target={@myself}
       />
       <.recipients
@@ -1936,6 +1984,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         role="bcc"
         label={gettext("Bcc")}
         line={line(assigns, :bcc)}
+        compact={@compact}
         target={@myself}
       />
 
@@ -1957,6 +2006,10 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         </div>
       </form>
 
+      <div :if={@before_subject != []} id={"compose-#{@id}-before-subject"}>
+        {render_slot(@before_subject, %{sending: @sending})}
+      </div>
+
       <.form
         for={%{}}
         id={"compose-#{@id}-form"}
@@ -1966,6 +2019,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         class="flex flex-col gap-3"
       >
         <.input
+          :if={not @compact}
           id={"compose-#{@id}-subject"}
           name="subject"
           type="text"
@@ -1973,10 +2027,24 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
           value={@subject}
           maxlength={@subject_max}
         />
+        <div :if={@compact} class={compact_row_class()}>
+          <label class={compact_label_class()} for={"compose-#{@id}-subject"}>
+            {gettext("Subject")}
+          </label>
+          <.input
+            id={"compose-#{@id}-subject"}
+            name="subject"
+            type="text"
+            value={@subject}
+            maxlength={@subject_max}
+            class="input-sm"
+          />
+        </div>
         <.textarea
           id={"compose-#{@id}-body"}
           name="body"
-          label={gettext("Message")}
+          label={if(@compact, do: nil, else: gettext("Message"))}
+          aria-label={gettext("Message")}
           value={@body}
           rows="10"
         />
@@ -2151,7 +2219,88 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
   attr(:role, :string, required: true)
   attr(:label, :string, required: true)
   attr(:line, :map, required: true)
+  attr(:compact, :boolean, default: false)
   attr(:target, :any, required: true)
+
+  # A row of the compact layout: the label in a column of its own width on
+  # every row, so the fields line up; on a narrow screen the same.
+  defp compact_row_class, do: "grid grid-cols-[6.5rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
+  defp compact_label_class, do: "pt-1.5 text-sm font-medium text-base-content/70"
+
+  defp recipients(%{compact: true} = assigns) do
+    ~H"""
+    <div id={"compose-#{@id}-#{@role}"} class={compact_row_class()}>
+      <label
+        class={compact_label_class()}
+        id={"compose-#{@id}-#{@role}-label"}
+        for={"compose-#{@id}-#{@role}-input"}
+      >
+        {@label}
+      </label>
+      <%!-- One field: the chips, the input after them, «+» at its end. --%>
+      <div class={[
+        "flex min-w-0 items-start gap-1 rounded-field border bg-base-100 px-1.5 py-1",
+        "focus-within:border-primary",
+        if(@line.error, do: "border-error", else: "border-base-300")
+      ]}>
+        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <ul class="contents" aria-labelledby={"compose-#{@id}-#{@role}-label"}>
+            <.recipient_chip :for={chip <- @line.chips} id={@id} chip={chip} target={@target} />
+          </ul>
+          <form
+            id={"compose-#{@id}-#{@role}-form"}
+            class="flex min-w-32 flex-1 items-center gap-1"
+            phx-change="suggest"
+            phx-submit="add"
+            phx-target={@target}
+          >
+            <input type="hidden" name="role" value={@role} />
+            <input
+              id={"compose-#{@id}-#{@role}-input"}
+              name="query"
+              type="text"
+              value={@line.query}
+              placeholder={if(@line.chips == [], do: gettext("Name or email"))}
+              autocomplete="off"
+              maxlength="320"
+              phx-debounce="300"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={to_string(@line.list != nil and @line.list.items != [])}
+              aria-controls={"compose-#{@id}-#{@role}-suggestions"}
+              class="h-6 min-w-0 flex-1 bg-transparent text-sm outline-none"
+            />
+          </form>
+        </div>
+        <button
+          :if={@line.picker?}
+          type="button"
+          id={"compose-#{@id}-#{@role}-picker"}
+          class={["btn btn-ghost btn-xs btn-square shrink-0", @line.picker_open? && "btn-active"]}
+          aria-label={gettext("+ More addresses")}
+          title={gettext("+ More addresses")}
+          aria-expanded={to_string(@line.picker_open?)}
+          phx-click="toggle_picker"
+          phx-value-role={@role}
+          phx-target={@target}
+        >
+          <.icon name="hero-plus" class="size-4" />
+        </button>
+      </div>
+      <p
+        :if={@line.error}
+        id={"compose-#{@id}-#{@role}-error"}
+        role="alert"
+        class="col-start-2 text-xs text-error"
+      >
+        {@line.error}
+      </p>
+      <div :if={@line.list} class="col-start-2 min-w-0">
+        <.suggestions id={@id} role={@role} list={@line.list} target={@target} />
+      </div>
+    </div>
+    """
+  end
 
   defp recipients(assigns) do
     ~H"""
@@ -2167,30 +2316,7 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         class="flex flex-wrap items-center gap-1"
         aria-labelledby={"compose-#{@id}-#{@role}-label"}
       >
-        <li
-          :for={chip <- @line.chips}
-          id={"compose-#{@id}-chip-#{chip.key}"}
-          class={["badge badge-outline gap-1", unresolved?(chip) && "badge-error"]}
-          data-route={chip.route}
-          data-unresolved={unresolved?(chip) || nil}
-          title={chip.address}
-        >
-          <.internal_marker :if={chip.route == :internal} />
-          {chip_text(chip)}
-          <span :if={labelled?(chip)} data-chip-address class="text-xs opacity-70">
-            {chip.address}
-          </span>
-          <button
-            type="button"
-            class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
-            aria-label={gettext("Remove %{name}", name: chip_name(chip))}
-            phx-click="remove"
-            phx-value-key={chip.key}
-            phx-target={@target}
-          >
-            <.icon name="hero-x-mark" class="w-3 h-3" />
-          </button>
-        </li>
+        <.recipient_chip :for={chip <- @line.chips} id={@id} chip={chip} target={@target} />
       </ul>
       <form
         id={"compose-#{@id}-#{@role}-form"}
@@ -2244,6 +2370,38 @@ defmodule PhoenixKitInbox.Web.Components.ComposeForm do
         </.button>
       </div>
     </div>
+    """
+  end
+
+  attr(:id, :string, required: true)
+  attr(:chip, :map, required: true)
+  attr(:target, :any, required: true)
+
+  defp recipient_chip(assigns) do
+    ~H"""
+    <li
+      id={"compose-#{@id}-chip-#{@chip.key}"}
+      class={["badge badge-outline gap-1", unresolved?(@chip) && "badge-error"]}
+      data-route={@chip.route}
+      data-unresolved={unresolved?(@chip) || nil}
+      title={@chip.address}
+    >
+      <.internal_marker :if={@chip.route == :internal} />
+      {chip_text(@chip)}
+      <span :if={labelled?(@chip)} data-chip-address class="text-xs opacity-70">
+        {@chip.address}
+      </span>
+      <button
+        type="button"
+        class="btn btn-ghost btn-circle btn-xs size-4 min-h-0"
+        aria-label={gettext("Remove %{name}", name: chip_name(@chip))}
+        phx-click="remove"
+        phx-value-key={@chip.key}
+        phx-target={@target}
+      >
+        <.icon name="hero-x-mark" class="w-3 h-3" />
+      </button>
+    </li>
     """
   end
 
