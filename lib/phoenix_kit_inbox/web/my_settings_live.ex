@@ -3,8 +3,8 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
   "Mail settings" — the signed-in user's own Inbox settings, reached from
   the avatar menu (`PhoenixKitInbox.user_dashboard_tabs/0`). Not an admin
   page: core routes it under `/dashboard/inbox-settings` in its
-  authenticated session, so it checks access itself and draws its own
-  layout.
+  authenticated session, so it checks access itself and draws the user
+  dashboard's shell (`PhoenixKitWeb.Layouts.dashboard`) around itself.
 
     * **Signatures** of the user's personal mailbox (`Web.SignatureEditor`)
     * **Reply-To** their personal mailbox defaults to
@@ -174,15 +174,14 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <PhoenixKitWeb.Components.LayoutWrapper.app_layout
-      socket={@socket}
-      flash={@flash}
-      phoenix_kit_current_scope={@scope}
-      page_title={@page_title}
-      current_path={@url_path}
-      project_title={@project_title}
-      current_locale={assigns[:current_locale]}
-    >
+    <%!-- The user dashboard's own shell (header, sidebar, avatar menu), as
+         core's and the other modules' `/dashboard/…` pages draw it.
+         `LayoutWrapper.app_layout` gives the admin shell to admin paths only:
+         for this path it handed the page to the host's layout, and a host
+         whose layout is a bare `<main>` showed it with no header and no
+         sidebar. The scope is the page's own (`ScopeRefresh`), which follows
+         access changes. --%>
+    <PhoenixKitWeb.Layouts.dashboard {dashboard_assigns(assigns)} phoenix_kit_current_scope={@scope}>
       <div id="inbox-my-settings" class="flex flex-col px-4 py-6 gap-4">
         <div :if={not @module_access} class="alert alert-warning">
           <.icon name="hero-lock-closed" class="w-5 h-5" />
@@ -275,7 +274,7 @@ defmodule PhoenixKitInbox.Web.MySettingsLive do
           </div>
         </section>
       </div>
-    </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
+    </PhoenixKitWeb.Layouts.dashboard>
     """
   end
 end
